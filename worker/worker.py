@@ -8,6 +8,25 @@ QUEUE_NAME = "ocr_jobs"
 
 r = redis.from_url(REDIS_URL)
 
+def run_cmd(cmd):
+    print(f"[Worker] Running: {' '.join(cmd)}")
+    try:
+        result = subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        if result.stdout:
+            print(f"[Worker] stdout:\n{result.stdout}")
+        if result.stderr:
+            print(f"[Worker] stderr:\n{result.stderr}")
+    except subprocess.CalledProcessError as e:
+        print(f"[Worker] Command failed: {' '.join(cmd)}")
+        print(f"[Worker] stdout:\n{e.stdout}")
+        print(f"[Worker] stderr:\n{e.stderr}")
+        raise
+
 def process_file(path):
     base = os.path.basename(path)
     name, ext = os.path.splitext(base)
@@ -16,7 +35,7 @@ def process_file(path):
 
     try:
         if ext.lower() in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
-            subprocess.run(["magick", path, "-units", "PixelsPerInch", "-density", "300", tmp_path], check=True)
+            run_cmd(["magick", path, "-units", "PixelsPerInch", "-density", "300", tmp_path])
             inpdf = tmp_path
         elif ext.lower() == ".pdf":
             inpdf = path
@@ -34,9 +53,10 @@ def process_file(path):
             "--language", "eng",
             "--jobs", str(os.cpu_count() or 2),
             "--force-ocr",
+            "--pdfa-image-compression", "auto",
             inpdf, out_path
         ]
-        subprocess.run(cmd, check=True)
+        run_cmd(cmd)
         print(f"[Worker] Processed {base} -> {out_path}")
     except Exception as e:
         print(f"[Worker] Failed on {base}: {e}")
@@ -47,10 +67,18 @@ if __name__ == "__main__":
     os.makedirs("/tmp", exist_ok=True)
 
     while True:
-        job = r.brpop(QUEUE_NAME, timeout=5)
-        if job:
-            _, path = job
-            path = path.decode("utf-8")
-            process_file(path)
-        else:
-            time.sleep(1)
+        try:
+            job = r.brpop(QUEUE_NAME, timeout=5)
+            if job:
+                print(f"[Worker] Raw job: {job}")
+                _, path = job
+                if isinstance(path, bytes):
+                    path = path.decode("utf-8")
+                print(f"[Worker] Dequeued job: {path}")
+                process_file(path)
+            else:
+                print("[Worker] No job found, sleeping...")
+                time.sleep(1)
+        except Exception as e:
+            print(f"[Worker] Loop error: {e}")
+            time.sleep(2)

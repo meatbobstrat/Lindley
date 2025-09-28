@@ -1,26 +1,25 @@
-@"
-# Lindley Ingestor
+# Lindley
 
-OCR pipeline for historical archive documents.
+Lindley is your research partner for taming thousands of scanned pages — letters, deeds, books, manuscripts, and more.  
+It automatically turns raw images into sorted, searchable PDFs, and gives you an AI you can talk to about your documents.
 
-This project ingests scanned images (JPG/PNG/TIFF) or image-only PDFs, 
-converts them into **searchable PDF/A** files, and organizes them 
-into output folders. It uses:
+## Why Lindley?
+- Organize massive archives without manual sorting  
+- Search across handwritten or printed text instantly  
+- Ask questions like *“show me every letter mentioning John Branson in 1892”*  
+- Build connections between scattered documents into a story  
 
-- **watcher**: monitors the input folder for new files, enqueues jobs
-- **worker**: processes jobs with [OCRmyPDF](https://ocrmypdf.readthedocs.io/)
-  and [Tesseract OCR](https://github.com/tesseract-ocr/tesseract)
-- **redis**: lightweight queue for job distribution
-- **docker-compose**: ties it all together
+## Current Status
+**Watcher MVP**: watches folders, deduplicates files, moves/copies them into a processing queue, and tracks everything in SQLite + Redis.
 
----
+## Config
+Edit `settings.json` to set:
+- `watch_folders`: list of folders to monitor  
+- `processing_dir`, `quarantine_dir`, `db_path`  
+- `move_files`: `true` to move, `false` to copy  
 
-## Quickstart
-
-1. **Start Docker Desktop**  
-   Ensure Docker Desktop is running before continuing.
-
-2. **Clone the repo**  
-   ```powershell
-   git clone https://github.com/<your-username>/Lindley-Ingestor.git
-   cd Lindley-Ingestor
+## Roadmap
+- Watcher (✔)  
+- Worker (OCR → searchable PDFs)  
+- AI (chat with your docs)  
+- One-click installer (Windows/Mac)

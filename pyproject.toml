@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lindley"
+version = "0.1.0"
+description = "Lindley – Historical document intake, processing, and AI archivist"
+authors = [
+    { name = "Bob Stratton", email = "bob@example.com" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "watchdog==4.0.1",
+    "redis==5.0.8",
+    "loguru==0.7.2"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lindley*"]
+
+[project.scripts]
+lindley-intake = "lindley.watcher.watcher:main"
+lindley-worker = "lindley.worker.worker:main"
+lindley-ai     = "lindley.AI.__init__:main"

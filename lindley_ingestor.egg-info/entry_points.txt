@@ -1,0 +1,2 @@
+[console_scripts]
+lindley-watcher = watcher:main

@@ -1,13 +1,30 @@
+# Python cache / build artifacts
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.db
+*.log
+
+# Virtual environments
 .env
 .venv/
 env/
 venv/
-*.log
+
+# Local databases
+*.db
+
+# Lindley data directories
 data/input/
 data/output/
 data/tmp/
+data/quarantine/
+
+# PyInstaller / build outputs
+dist/
+build/
+*.spec
+
+# OS-specific
+.DS_Store
+Thumbs.db

@@ -1,0 +1,13 @@
+{
+  "watch_folders": [
+    "./data/input",
+    "C:/Users/bob/Dropbox/Scans",
+    "C:/Users/bob/OneDrive/Pictures/Scans"
+  ],
+  "move_files": true,
+  "processing_dir": "./data/tmp",
+  "quarantine_dir": "./data/quarantine",
+  "db_path": "./data/watcher.db",
+  "redis_url": "redis://localhost:6379/0",
+  "queue_name": "ocr_jobs"
+}

@@ -1,7 +1,7 @@
 @"
 # Lindley Ingestor
 
-OCR pipeline for Lindley C. Branson archive documents.
+OCR pipeline for historical archive documents.
 
 This project ingests scanned images (JPG/PNG/TIFF) or image-only PDFs, 
 converts them into **searchable PDF/A** files, and organizes them 

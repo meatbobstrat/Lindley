@@ -1,8 +1,6 @@
 {
   "watch_folders": [
-    "./data/input",
-    "C:/Users/bob/Dropbox/Scans",
-    "C:/Users/bob/OneDrive/Pictures/Scans"
+    "./data/input"
   ],
   "move_files": true,
   "processing_dir": "./data/tmp",

@@ -1,0 +1,150 @@
+# Lindley App – UI and UX Design Document
+
+## 📌 Project Summary
+
+Lindley is a document curation and archival assistant named for **Lindley C. Branson**, whose manuscripts are being used to test the system. Lindley helps users ingest, review, group, and export large volumes of scanned pages into meaningful, organized PDFs with embedded metadata. Designed for long-term archival use, the app supports AI-assisted sorting, human validation, and graceful return after periods of inactivity.
+
+---
+
+## 🧭 Multi-Panel Interface Design
+
+### Panel 1: **Ask Lindley (AI Assistant)**
+
+* Persistent conversational chat assistant.
+* Context-aware prompt injection from:
+
+  * Right-click menus on scans/folders.
+  * Action buttons (e.g., "Ask Lindley about this scan").
+* Example prompts:
+
+  * "What is this letter about?"
+  * "Is this page part of another known document?"
+  * "Find other pages like this."
+* Assistant identifies itself:
+
+  > "I'm named for Lindley C. Branson, the author whose historical manuscripts helped shape this project. Ask me anything, or I can help organize your archive."
+
+---
+
+### Panel 2: **Inbox Panel (Document Triage)**
+
+* Header: `Inbox: (####)`
+
+  * Indicates unmatched/unprocessed scans.
+  * Updates live as AI processes files.
+
+* **AI Behavior**:
+
+  * Continuously sorts inbox until all scans are either:
+
+    * Grouped with related documents.
+    * Tagged as "unmatchable" for valid reasons (e.g., receipts, post-its, blanks).
+  * Avoids false grouping by clustering on shared metadata, visual similarity, NER output, and structure.
+
+* **User Features**:
+
+  * **Right-click → Return to Inbox**: strips AI metadata and reprocesses.
+  * **Tagging UI**: allows bulk assignment of general tags (e.g. "Tax Documents").
+
+    * If tag is assigned: prompt user with:
+
+      > "Would you like Lindley to find other scans that match this general tag?"
+
+* **Completed Folder**:
+
+  * Located below the Inbox in the UI.
+  * Visually distinct (e.g., green check icon).
+  * Contains final PDFs generated from accepted folders.
+
+---
+
+### Panel 3: **Folder View Panel**
+
+* Displays all scans within a selected AI-created folder.
+* Supports:
+
+  * Drag-and-drop page reordering.
+  * Multi-select for batch actions.
+  * AI metadata summary (e.g., title, author, inferred date, tags).
+
+---
+
+### Panel 4: **Scan Detail + Metadata Panel**
+
+* Exposed on click or side-by-side with Folder View.
+* Includes:
+
+  * Page preview (image and OCR text).
+  * Editable fields:
+
+    * Title, Source, Notes, Date, Tags, Confidence.
+  * Buttons:
+
+    * ✅ Accept AI Suggestions
+    * ❌ Reject Suggestions
+    * 🔁 Return to Inbox
+    * 🧠 Ask Lindley (context-aware prompt injection)
+
+---
+
+## 📁 Finalization Workflow
+
+### Document Completion Logic
+
+* When AI deems a folder complete:
+
+  * Folder is highlighted in Inbox (e.g., bold text, color change).
+  * Prompt: “Lindley thinks this document is complete. Would you like to review and export it?”
+
+### User Action → PDF
+
+* Once approved:
+
+  * Pages are compiled into PDF.
+  * PDF includes metadata, page order, and optional summary.
+  * Output moved to **Completed Folder**.
+
+---
+
+## 🧠 Long-Term User Resilience
+
+### Return After Long Absence
+
+* System must:
+
+  * Save state of all folders (complete and incomplete).
+  * Allow user to sort Inbox by scan date to isolate newly added documents.
+  * Enable AI to match **new scans** against **completed PDFs** (e.g., a lost foreword).
+
+    * Prompt: “This new scan might belong to a completed document. Would you like to review the match?”
+
+---
+
+## 🔐 Guiding UX Principles
+
+* **Language Matters**:
+
+  * Use clear, friendly terms: “Return to Inbox” instead of “Send to Inbox.”
+  * Assume the user may be elderly or unfamiliar with technical jargon.
+* **Visual Anchors**:
+
+  * Show Inbox shrinking as work is done.
+  * Distinct visuals for AI-suggested folders, completed documents, and unmatched scans.
+* **Reversible Actions**:
+
+  * Everything should be undoable. Don’t delete or finalize without confirmation.
+
+---
+
+## 🧱 Future Ideas
+
+* Bulk actions: tag, confirm, reject.
+* Timeline view: see which documents were generated when.
+* User accounts / profiles for multi-person archives.
+* Version control: log changes to scan metadata or document groupings.
+
+---
+
+## 📜 Final Notes
+
+The Lindley app exists to help historians, families, and researchers preserve the past with dignity and accuracy — starting with the writings of Lindley C. Branson. All design choices should prioritize clarity, transparency, and continuity.

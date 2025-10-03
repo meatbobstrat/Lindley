@@ -7,6 +7,7 @@ def init_db(db_path="./data/watcher.db"):
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
+    # Full schema in one shot — no versioning, no migrations
     cur.execute("""
     CREATE TABLE IF NOT EXISTS files (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -16,16 +17,22 @@ def init_db(db_path="./data/watcher.db"):
         path TEXT NOT NULL,
         status TEXT DEFAULT 'queued',
         ocr_text TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        page_count INTEGER,
+        file_size INTEGER,
+        doc_created TEXT,
+        doc_modified TEXT,
+        word_count INTEGER,
+        lang TEXT,
+        ocr_confidence REAL,
+        metadata TEXT
     )
     """)
-
     conn.commit()
     conn.close()
 
-    print(f"[InitDB] Database initialized at {db_path}")
-
+    print(f"[InitDB] Database initialized fresh at {db_path}")
+    return "v-clean"
 
 if __name__ == "__main__":
-    # Run standalone to initialize DB at default path
     init_db()

@@ -16,8 +16,10 @@ import json
 from init_db import init_db
 
 # ---------------- Settings ----------------
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-BIN_DIR = os.path.join(BASE_DIR, "bin")
+# Point BASE_DIR to repo root instead of worker subdir
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+BIN_DIR = os.path.join(BASE_DIR, "lindley", "bin")
+
 TESSERACT_EXE = os.path.join(BIN_DIR, "tesseract.exe")
 TESSDATA_DIR = os.path.join(BIN_DIR, "tessdata")
 
@@ -75,15 +77,29 @@ def safe_detect(text: str) -> str:
 def ocr_with_confidence(img):
     """Run OCR on a PIL image and return text + avg confidence."""
     try:
-        df = pytesseract.image_to_data(img, lang="eng", output_type=pytesseract.Output.DATAFRAME)
-        df = df[df.conf != -1]  # filter out empty
+        df = pytesseract.image_to_data(
+            img, lang="eng", output_type=pytesseract.Output.DATAFRAME
+        )
+
+        # Keep rows with actual text (not just conf != -1)
+        df = df[df.text.notna()]
+        df = df[df.text.str.strip() != ""]
+
         if df.empty:
-            return "", 0.0
+            # fallback: try image_to_string directly
+            text = pytesseract.image_to_string(img, lang="eng")
+            return text, 0.0
+
         text = " ".join([str(w) for w in df.text if str(w).strip()])
-        avg_conf = df.conf.mean()
+        avg_conf = df[df.conf != -1].conf.mean() if not df.empty else 0.0
         return text, avg_conf
-    except Exception:
-        return "", 0.0
+    except Exception as e:
+        print(f"[Worker] OCR error: {e}")
+        # absolute last-resort fallback
+        try:
+            return pytesseract.image_to_string(img, lang="eng"), 0.0
+        except Exception:
+            return "", 0.0
 
 # ---------------- Metadata extraction ----------------
 def get_file_hash(path):

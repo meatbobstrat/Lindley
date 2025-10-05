@@ -16,5 +16,5 @@ six==1.17.0
 tabulate==0.9.0
 watchdog==4.0.1
 win32_setctime==1.2.0
-pandas==2.2.3
+pandas==2.2.3c 
 PyPDF2==3.0.1

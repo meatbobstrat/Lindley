@@ -12,7 +12,7 @@ import pandas as pd  # for OCR confidence parsing
 import hashlib
 import json
 
-# Import the central DB initializer
+# Import DB initializer
 from init_db import init_db
 
 # ---------------- Settings ----------------
@@ -23,7 +23,7 @@ BIN_DIR = os.path.join(BASE_DIR, "lindley", "bin")
 TESSERACT_EXE = os.path.join(BIN_DIR, "tesseract.exe")
 TESSDATA_DIR = os.path.join(BIN_DIR, "tessdata")
 
-# Force pytesseract to use the bundled exe + tessdata
+# Configure pytesseract to use bundled binaries
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
 os.environ["TESSDATA_PREFIX"] = TESSDATA_DIR
 
@@ -31,8 +31,10 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 QUEUE_NAME = "ocr_jobs"
 DB_PATH = os.path.abspath("./data/watcher.db")
 OCR_QUARANTINE = os.path.abspath("./data/ocr_quarantine")
+INBOX_DIR = os.path.abspath("./data/inbox")
 
 os.makedirs(OCR_QUARANTINE, exist_ok=True)
+os.makedirs(INBOX_DIR, exist_ok=True)
 
 # ---------------- Redis ----------------
 r = redis.from_url(REDIS_URL)

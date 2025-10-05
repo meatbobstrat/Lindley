@@ -5,96 +5,92 @@ This document exists to support continuity of AI collaboration across sessions. 
 ---
 
 ## 🏷️ Project Identity
-
-* **Project Name**: Lindley
-* **Named For**: [Lindley C. Branson](docs/lindley-c-branson.md) — educator, writer, historical figure
-* **Purpose**: Assist in organizing, interpreting, and compiling large archives of scanned documents into structured, searchable PDFs with embedded metadata
-* **Audience**: Historians, archivists, family researchers, power users — but designed to be usable by Grandma
-* **Philosophy**: Lean into AI, minimize friction, build human trust through clarity, reversibility, and continuity
+* **Project Repo**: https://github.com/meatbobstrat/Lindley  
+* **Project Name**: Lindley  
+* **Named For**: [Lindley C. Branson](docs/lindley-c-branson.md) — educator, writer, historical figure  
+* **Purpose**: Assist in organizing, interpreting, and compiling large archives of scanned documents into structured, searchable PDFs with embedded metadata  
+* **Audience**: Historians, archivists, family researchers, power users — but designed to be usable by Grandma  
+* **Philosophy**: Lean into AI, minimize friction, build human trust through clarity, reversibility, and continuity  
 
 ---
 
 ## 🧱 Architectural Goals
 
-* **One-click installer**: Lindley should run without requiring technical setup
-
-  * Bundles Redis, Tesseract, app core
-  * No CLI dependencies, just launch and go
-* **Local-first**: All processing occurs on the user’s machine
-* **Watcher + Worker** separation:
-
-  * `watcher`: Monitors for new scans, deduplicates, tracks in DB
-  * `worker`: Performs OCR, metadata extraction, similarity matching, document grouping
-* **SQLite + Redis** hybrid persistence
-* **Inbox and Completed paradigms** for clear user flow
+* **One-click installer**: Lindley should run without requiring technical setup  
+  * Bundles Redis, Tesseract, app core  
+  * No CLI dependencies, just launch and go  
+* **Local-first**: All processing occurs on the user’s machine  
+* **Watcher + Worker** separation:  
+  * `watcher`: Monitors for new scans, deduplicates, tracks in DB  
+  * `worker`: Performs OCR, metadata extraction, similarity matching, document grouping  
+* **SQLite + Redis** hybrid persistence  
+* **Inbox and Completed paradigms** for clear user flow  
 
 ---
 
 ## 🧠 AI Alignment + Role
 
-* The AI (you) is expected to:
-
-  * Assist in architectural decisions
-  * Provide feature ideation when asked
-  * Maintain memory of app state, naming conventions, and workflows
-  * Contribute UX/packaging advice when relevant
-  * Write code or shell commands only after asking clarifying questions when needed — **never** after code has already been generated
-  * Focus on the task at hand — no rabbit holes or speculative coding
-  * Work one file at a time; all production code must clearly indicate the filename being updated
-  * Clearly label example vs. production code blocks
-  * Provide terminal commands in **copy/pasteable** form — no prompt decoration like `PS C:\>` or `$`
-  * Use a tone that is helpful, precise, and fast — **not twee or verbose**
+* The AI (you) is expected to:  
+  * Assist in architectural decisions  
+  * Provide feature ideation when asked  
+  * Maintain memory of app state, naming conventions, and workflows  
+  * Contribute UX/packaging advice when relevant  
+  * Write code or shell commands only after asking clarifying questions when needed — **never** after code has already been generated  
+  * Focus on the task at hand — no rabbit holes or speculative coding  
+  * Work one file at a time; all production code must clearly indicate the filename being updated  
+  * Clearly label example vs. production code blocks  
+  * Provide terminal commands in **copy/pasteable** form — no prompt decoration like `PS C:\>` or `$`  
+  * Use a tone that is helpful, precise, and fast — **not twee or verbose**  
 
 ---
 
-## 📦 Current Project Status (As of Oct 1, 2025)
+## 📦 Current Project Status (As of Oct 4, 2025)
 
 ### ✅ Watcher: MVP Complete
+* Watches folders  
+* Deduplicates scans  
+* Populates DB  
+* Uses settings.json for config  
 
-* Watches folders
-* Deduplicates scans
-* Populates DB
-* Uses settings.json for config
-
-### 🟡 Worker: Near-MVP
-
-* OCR logic in progress
-* Grouping/association logic next
-* Output to be stored in SQLite and surfaced to UI
+### ✅ Worker: MVP Complete
+* OCR logic working  
+* Metadata extraction integrated  
+* Results persisted in SQLite  
+* Groundwork for similarity grouping + folder suggestion in place  
 
 ### ✅ Bin Directory
-
-* Created to hold `redis-server`, `tesseract`, and other binaries
-* Supports the one-file installer model
+* Created to hold `redis-server`, `tesseract`, and other binaries  
+* Supports the one-file installer model  
 
 ---
 
 ## 🧪 First-Run Experience (Future State)
 
-1. Installer runs
-2. Embedded Redis and Tesseract launch silently
-3. Lindley starts watching default folder
-4. Sample data (Lindley C. Branson's writings) are included to demonstrate functionality
+1. Installer runs  
+2. Embedded Redis and Tesseract launch silently  
+3. Lindley starts watching default folder  
+4. Sample data (Lindley C. Branson's writings) are included to demonstrate functionality  
 
 ---
 
 ## 🔁 Session Behavior
 
-* This document is:
-
-  * **Read** at the beginning of each new dev session
-  * **Updated** at the end to reflect latest changes, decisions, or TODOs
-* Acts as both continuity mechanism and mission briefing for the AI
-* Not intended for public consumption — humans get the README.md
+* This document is:  
+  * **Read** at the beginning of each new dev session  
+  * **Updated** at the end to reflect latest changes, decisions, or TODOs  
+* Acts as both continuity mechanism and mission briefing for the AI  
+* Not intended for public consumption — humans get the README.md  
 
 ---
 
 ## 🧭 Next Immediate Tasks
 
-* [ ] Finish OCR + metadata processing logic in `worker/`
-* [ ] Begin prototype of folder suggestion engine (via text similarity)
-* [ ] Decide on method for packaging and launching Redis + Tesseract (subprocess? supervisor?)
-* [ ] Draft `docs/lindley-c-branson.md`
+* [ ] Begin prototype of folder suggestion engine (via text similarity)  
+* [ ] Add OCR overlay + inline editing support in UI  
+* [ ] Add tagging + auto-tag suggestion logic  
+* [ ] Implement inbox sorting (by date, person, tags, metadata fields)  
+* [ ] Decide on method for packaging and launching Redis + Tesseract (subprocess? supervisor?)  
+* [ ] Draft `docs/lindley-c-branson.md`  
 
 ---
 

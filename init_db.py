@@ -14,8 +14,9 @@ def init_db(db_path="./data/watcher.db"):
         name TEXT NOT NULL,
         size INTEGER NOT NULL,
         sha256 TEXT NOT NULL,
-        path TEXT NOT NULL,
-        status TEXT DEFAULT 'queued',
+        path TEXT NOT NULL,                -- actual FS path
+        location TEXT DEFAULT 'inbox',     -- inbox/{folder}, singles, completed/{folder}
+        status TEXT DEFAULT 'queued',      -- queued | ready | filed | completed
         ocr_text TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         page_count INTEGER,

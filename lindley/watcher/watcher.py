@@ -1,221 +1,118 @@
 import os
+import sys
 import time
-import shutil
-import hashlib
-import redis
 import sqlite3
-import json
-import threading
-from watchdog.observers.polling import PollingObserver as Observer  # safer cross-platform
-from watchdog.events import FileSystemEventHandler
+import redis
+import pytesseract
+from PIL import Image
 
-# Import shared DB initializer
-from init_db import init_db  # <-- reuse canonical schema
+from init_db import init_db  # canonical schema
 
 # ---------------- Settings ----------------
 SETTINGS_PATH = os.path.abspath("./settings.json")
 
-def load_settings():
-    if not os.path.exists(SETTINGS_PATH):
-        raise FileNotFoundError(
-            f"[Watcher] ERROR: settings.json not found at {SETTINGS_PATH}"
-        )
-    with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-settings = load_settings()
+import json
+if not os.path.exists(SETTINGS_PATH):
+    raise FileNotFoundError(f"[Worker] settings.json not found at {SETTINGS_PATH}")
+with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+    settings = json.load(f)
 
 REDIS_URL = settings.get("redis_url", "redis://localhost:6379/0")
 QUEUE_NAME = settings.get("queue_name", "ocr_jobs")
-
-watch_config = settings.get("watch_folders", ["./data/input"])
-if isinstance(watch_config, str):
-    WATCH_FOLDERS = [os.path.abspath(watch_config)]
-elif isinstance(watch_config, list):
-    WATCH_FOLDERS = [os.path.abspath(p) for p in watch_config]
-else:
-    raise ValueError("[Watcher] ERROR: watch_folders must be a string or list of strings")
-
-PROCESSING_DIR = os.path.abspath(settings.get("processing_dir", "./data/tmp"))
-QUARANTINE_DIR = os.path.abspath(settings.get("quarantine_dir", "./data/quarantine"))
 DB_PATH = os.path.abspath(settings.get("db_path", "./data/watcher.db"))
-MOVE_FILES = bool(settings.get("move_files", True))
-RESCAN_INTERVAL = int(settings.get("rescan_interval", 60))  # seconds
 
-print("[Watcher] Starting up...")
-print(f"[Watcher] Using Redis URL: {REDIS_URL}")
-print(f"[Watcher] Watching folders: {WATCH_FOLDERS}")
-print(f"[Watcher] Mode: {'Move' if MOVE_FILES else 'Copy'}")
-
-# Redis connection
+# ---------------- Redis Connection ----------------
 try:
     r = redis.from_url(REDIS_URL)
     r.ping()
     redis_ok = True
-    print("[Watcher] Connected to Redis successfully.")
+    print("[Worker] Connected to Redis successfully.")
 except Exception as e:
     r = None
     redis_ok = False
-    print(f"[Watcher] WARNING: Redis unavailable, running without queueing. ({e})")
+    print(f"[Worker] WARNING: Redis unavailable, running without queueing. ({e})")
 
-# Ensure dirs exist
-os.makedirs(PROCESSING_DIR, exist_ok=True)
-os.makedirs(QUARANTINE_DIR, exist_ok=True)
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-for folder in WATCH_FOLDERS:
-    os.makedirs(folder, exist_ok=True)
-
-# ---------------- Helpers ----------------
-def hash_file(path, algo="sha256", chunk_size=8192):
-    h = hashlib.new(algo)
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(chunk_size), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-def is_duplicate(path):
-    name = os.path.basename(path)
-    size = os.path.getsize(path)
-
+# ---------------- DB Helpers ----------------
+def update_file_status(file_path, status, ocr_text=None):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    cur.execute("SELECT sha256 FROM files WHERE name=? AND size=?", (name, size))
-    row = cur.fetchone()
-    conn.close()
-
-    if not row:
-        return False
-
-    new_hash = hash_file(path)
-    return new_hash == row[0]
-
-def record_file(path, h, status="queued"):
-    name = os.path.basename(path)
-    size = os.path.getsize(path)
-
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO files (name, size, sha256, path, status)
-        VALUES (?, ?, ?, ?, ?)
-    """, (name, size, h, path, status))
+    if ocr_text is not None:
+        cur.execute("""
+            UPDATE files
+            SET status = ?, ocr_text = ?
+            WHERE path = ?
+        """, (status, ocr_text, file_path))
+    else:
+        cur.execute("""
+            UPDATE files
+            SET status = ?
+            WHERE path = ?
+        """, (status, file_path))
     conn.commit()
     conn.close()
 
-def is_file_stable(path, wait=0.5):
-    """Return True if file size hasn't changed across two checks."""
+# ---------------- OCR ----------------
+def perform_ocr(file_path):
     try:
-        s1 = os.path.getsize(path)
-        time.sleep(wait)
-        s2 = os.path.getsize(path)
-        return s1 == s2
-    except FileNotFoundError:
-        return False
+        img = Image.open(file_path)
+        text = pytesseract.image_to_string(img)
+        return text
+    except Exception as e:
+        print(f"[Worker] ERROR OCR {file_path}: {e}")
+        return ""
 
-# ---------------- Event Handler ----------------
-class Handler(FileSystemEventHandler):
-    def process_file(self, path):
-        if not os.path.isfile(path):
-            return
+# ---------------- Worker Loop ----------------
+def process_job(file_path):
+    print(f"[Worker] Starting OCR: {file_path}")
+    text = perform_ocr(file_path)
 
-        while not is_file_stable(path):
-            time.sleep(0.5)
+    if text.strip():
+        update_file_status(file_path, "ready", ocr_text=text)
+        print(f"[Worker] OCR complete for {file_path}")
+    else:
+        update_file_status(file_path, "error", ocr_text="")
+        print(f"[Worker] OCR failed for {file_path}")
 
+def redis_loop():
+    print("[Worker] Entering Redis loop...")
+    while True:
         try:
-            print(f"[Watcher] Processing {path}")
-
-            if is_duplicate(path):
-                print(f"[Watcher] Duplicate detected: {path}")
-                shutil.move(path, os.path.join(QUARANTINE_DIR, os.path.basename(path)))
-                return
-
-            print(f"[Watcher] Hashing {path}")
-            h = hash_file(path)
-
-            dest = os.path.join(PROCESSING_DIR, os.path.basename(path))
-            print(f"[Watcher] Moving {path} → {dest}")
-
-            if MOVE_FILES:
-                shutil.move(path, dest)
-            else:
-                shutil.copy2(path, dest)
-
-            print(f"[Watcher] Recording {dest} in DB")
-            record_file(dest, h)
-
-            if redis_ok and r:
-                print(f"[Watcher] Enqueuing {dest}")
-                r.lpush(QUEUE_NAME, dest)
-
-            print(f"[Watcher] SUCCESS for {dest}")
-
+            job = r.brpop(QUEUE_NAME, timeout=5)
+            if job:
+                _, file_path = job
+                file_path = file_path.decode("utf-8")
+                process_job(file_path)
         except Exception as e:
-            print(f"[Watcher] ERROR on {path}: {type(e).__name__}: {e}")
-            try:
-                shutil.move(path, os.path.join(QUARANTINE_DIR, os.path.basename(path)))
-                print(f"[Watcher] Quarantined {path}")
-            except Exception as qe:
-                print(f"[Watcher] FAILED to quarantine {path}: {type(qe).__name__}: {qe}")
+            print(f"[Worker] Redis loop error: {e}")
+            time.sleep(5)
 
-    def on_created(self, event):
-        if not event.is_directory:
-            print(f"[Watcher] CREATED event: {event.src_path}")
-            self.process_file(event.src_path)
+def db_scan_loop():
+    print("[Worker] Entering DB scan loop (no Redis)...")
+    while True:
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cur = conn.cursor()
+            cur.execute("SELECT path FROM files WHERE status = 'queued'")
+            rows = cur.fetchall()
+            conn.close()
 
-    def on_moved(self, event):
-        if not event.is_directory:
-            dest = getattr(event, "dest_path", event.src_path)
-            print(f"[Watcher] MOVED event: {dest}")
-            self.process_file(dest)
-
-    def on_closed(self, event):
-        if not event.is_directory:
-            print(f"[Watcher] CLOSED event: {event.src_path}")
-            self.process_file(event.src_path)
-
-# ---------------- Rescan Worker ----------------
-def rescan_loop(handler, stop_evt):
-    while not stop_evt.is_set():
-        for folder in WATCH_FOLDERS:
-            for fname in os.listdir(folder):
-                fpath = os.path.join(folder, fname)
-                if os.path.isfile(fpath):
-                    print(f"[Watcher] Rescan found: {fpath}")
-                    handler.process_file(fpath)
-        stop_evt.wait(RESCAN_INTERVAL)
+            for (file_path,) in rows:
+                if os.path.exists(file_path):
+                    process_job(file_path)
+                else:
+                    print(f"[Worker] File not found: {file_path}")
+        except Exception as e:
+            print(f"[Worker] DB scan error: {e}")
+        time.sleep(5)
 
 # ---------------- Main ----------------
 def main():
-    # Use the central DB initializer from init_db.py
     init_db(DB_PATH)
 
-    observer = Observer()
-    handler = Handler()
-
-    for folder in WATCH_FOLDERS:
-        observer.schedule(handler, folder, recursive=False)
-        print(f"[Watcher] Watching {folder} ...")
-
-        # Startup scan
-        for fname in os.listdir(folder):
-            fpath = os.path.join(folder, fname)
-            if os.path.isfile(fpath):
-                print(f"[Watcher] Startup scan found: {fpath}")
-                handler.process_file(fpath)
-
-    observer.start()
-
-    stop_evt = threading.Event()
-    rescan_thread = threading.Thread(target=rescan_loop, args=(handler, stop_evt), daemon=True)
-    rescan_thread.start()
-
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        stop_evt.set()
-        observer.stop()
-    observer.join()
+    if redis_ok and r:
+        redis_loop()
+    else:
+        db_scan_loop()
 
 if __name__ == "__main__":
     main()

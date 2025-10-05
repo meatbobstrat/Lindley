@@ -6,7 +6,7 @@ import pytesseract
 from PIL import Image
 from pdf2image import convert_from_path
 
-# Import the central DB initializer
+# Import DB initializer
 from init_db import init_db
 
 # ---------------- Settings ----------------
@@ -15,7 +15,7 @@ BIN_DIR = os.path.join(BASE_DIR, "bin")
 TESSERACT_EXE = os.path.join(BIN_DIR, "tesseract.exe")
 TESSDATA_DIR = os.path.join(BIN_DIR, "tessdata")
 
-# Force pytesseract to use the bundled exe + tessdata
+# Configure pytesseract to use bundled binaries
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
 os.environ["TESSDATA_PREFIX"] = TESSDATA_DIR
 
@@ -23,23 +23,40 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 QUEUE_NAME = "ocr_jobs"
 DB_PATH = os.path.abspath("./data/watcher.db")
 OCR_QUARANTINE = os.path.abspath("./data/ocr_quarantine")
+INBOX_DIR = os.path.abspath("./data/inbox")
 
 os.makedirs(OCR_QUARANTINE, exist_ok=True)
+os.makedirs(INBOX_DIR, exist_ok=True)
 
 # ---------------- Redis ----------------
 r = redis.from_url(REDIS_URL)
 
 # ---------------- DB helpers ----------------
-def update_status(path, status, text=None):
+def update_file(path, status, text=None, location=None):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    if text is not None:
+
+    if text is not None and location is not None:
+        cur.execute(
+            "UPDATE files SET status=?, ocr_text=?, location=? WHERE path=?",
+            (status, text, location, path),
+        )
+    elif text is not None:
         cur.execute(
             "UPDATE files SET status=?, ocr_text=? WHERE path=?",
-            (status, text, path)
+            (status, text, path),
+        )
+    elif location is not None:
+        cur.execute(
+            "UPDATE files SET status=?, location=? WHERE path=?",
+            (status, location, path),
         )
     else:
-        cur.execute("UPDATE files SET status=? WHERE path=?", (status, path))
+        cur.execute(
+            "UPDATE files SET status=? WHERE path=?",
+            (status, path),
+        )
+
     conn.commit()
     conn.close()
 
@@ -50,7 +67,7 @@ def process_file(path):
 
     try:
         print(f"[Worker] Processing {base}")
-        update_status(path, "processing")
+        update_file(path, "processing")
 
         text = ""
         if ext in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
@@ -65,11 +82,16 @@ def process_file(path):
 
         else:
             print(f"[Worker] Unsupported type: {ext}")
-            update_status(path, "error")
+            update_file(path, "error")
             return
 
-        update_status(path, "processed", text)
-        print(f"[Worker] Completed {base}")
+        if text.strip():
+            update_file(path, "ready", text, location="inbox")
+            print(f"[Worker] OCR complete for {base}")
+        else:
+            print(f"[Worker] Empty OCR result for {base}")
+            os.rename(path, os.path.join(OCR_QUARANTINE, base))
+            update_file(path, "error", "", location="ocr_quarantine")
 
     except Exception as e:
         print(f"[Worker] ERROR on {base}: {e}")
@@ -77,11 +99,10 @@ def process_file(path):
             os.rename(path, os.path.join(OCR_QUARANTINE, base))
         except Exception:
             pass
-        update_status(path, "error")
+        update_file(path, "error", "", location="ocr_quarantine")
 
 # ---------------- Main loop ----------------
 if __name__ == "__main__":
-    # Ensure DB schema is initialized
     init_db(DB_PATH)
 
     print("[Worker] Starting loop...")

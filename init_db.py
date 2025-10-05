@@ -13,19 +13,25 @@ def init_db(db_path="./data/watcher.db"):
         name TEXT NOT NULL,
         size INTEGER NOT NULL,
         sha256 TEXT NOT NULL,
-        path TEXT NOT NULL,
-        status TEXT DEFAULT 'queued',
+        path TEXT NOT NULL,                -- actual FS path
+        location TEXT DEFAULT 'inbox',     -- inbox/{folder}, singles, completed/{folder}
+        status TEXT DEFAULT 'queued',      -- queued | ready | filed | completed
         ocr_text TEXT,
+        ai_suggestion TEXT,                -- folder/tag AI suggested
+        tags TEXT,                         -- JSON array string (quick tags)
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
+
+    # Helpful indexes for speed on common queries
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sha256 ON files(sha256)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_status ON files(status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_location ON files(location)")
 
     conn.commit()
     conn.close()
 
     print(f"[InitDB] Database initialized at {db_path}")
 
-
 if __name__ == "__main__":
-    # Run standalone to initialize DB at default path
     init_db()

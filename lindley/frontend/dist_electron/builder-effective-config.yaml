@@ -1,0 +1,13 @@
+directories:
+  output: dist_electron
+  buildResources: build
+appId: com.lindley.archives
+productName: Lindley
+files:
+  - filter:
+      - dist/**/*
+      - src/main/electron-main.js
+win:
+  target:
+    - nsis
+electronVersion: 38.2.1

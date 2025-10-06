@@ -1,6 +1,7 @@
 {
   "watch_folders": [
-    "./data/input"
+    "./data/input",
+    "./data/inbox"
   ],
   "move_files": true,
   "processing_dir": "./data/tmp",

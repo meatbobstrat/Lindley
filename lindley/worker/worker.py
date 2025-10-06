@@ -16,7 +16,6 @@ import json
 from init_db import init_db
 
 # ---------------- Settings ----------------
-# Point BASE_DIR to repo root instead of worker subdir
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 BIN_DIR = os.path.join(BASE_DIR, "lindley", "bin")
 
@@ -52,7 +51,6 @@ def update_file_record(path, fields: dict):
 
 # ---------------- Timestamp logic ----------------
 def get_fallback_timestamps(path):
-    """Return created/modified ISO8601 strings, fallback to system times."""
     try:
         created = datetime.fromtimestamp(os.path.getctime(path)).isoformat()
         modified = datetime.fromtimestamp(os.path.getmtime(path)).isoformat()
@@ -61,14 +59,13 @@ def get_fallback_timestamps(path):
         now = datetime.utcnow().isoformat()
         return now, now
 
-# ---------------- Language detection helper ----------------
-DetectorFactory.seed = 0  # deterministic results
+# ---------------- Language detection ----------------
+DetectorFactory.seed = 0
 
 def safe_detect(text: str) -> str:
-    """Detect language safely with fallbacks for short/empty text."""
     if not text.strip():
         return "unknown"
-    if len(text.split()) < 5:  # too short for accuracy
+    if len(text.split()) < 5:
         return "unknown"
     try:
         return detect(text)
@@ -77,18 +74,14 @@ def safe_detect(text: str) -> str:
 
 # ---------------- OCR with confidence ----------------
 def ocr_with_confidence(img):
-    """Run OCR on a PIL image and return text + avg confidence."""
     try:
         df = pytesseract.image_to_data(
             img, lang="eng", output_type=pytesseract.Output.DATAFRAME
         )
-
-        # Keep rows with actual text (not just conf != -1)
         df = df[df.text.notna()]
         df = df[df.text.str.strip() != ""]
 
         if df.empty:
-            # fallback: try image_to_string directly
             text = pytesseract.image_to_string(img, lang="eng")
             return text, 0.0
 
@@ -97,7 +90,6 @@ def ocr_with_confidence(img):
         return text, avg_conf
     except Exception as e:
         print(f"[Worker] OCR error: {e}")
-        # absolute last-resort fallback
         try:
             return pytesseract.image_to_string(img, lang="eng"), 0.0
         except Exception:
@@ -105,7 +97,6 @@ def ocr_with_confidence(img):
 
 # ---------------- Metadata extraction ----------------
 def get_file_hash(path):
-    """Compute sha256 for deduplication."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
@@ -113,7 +104,6 @@ def get_file_hash(path):
     return h.hexdigest()
 
 def extract_image_metadata(img: Image.Image):
-    """Extract EXIF metadata from an image."""
     try:
         exif = img._getexif()
         if not exif:
@@ -123,7 +113,6 @@ def extract_image_metadata(img: Image.Image):
         return {}
 
 def extract_pdf_metadata(path):
-    """Extract PDF document metadata using PyPDF2."""
     try:
         reader = PdfReader(path)
         info = reader.metadata
@@ -136,6 +125,11 @@ def process_file(path):
     base = os.path.basename(path)
     ext = os.path.splitext(base)[1].lower()
 
+    # Only process if in inbox
+    if not os.path.abspath(path).startswith(INBOX_DIR):
+        print(f"[Worker] Skipping {base} (not in inbox)")
+        return
+
     try:
         print(f"[Worker] Processing {base}")
         update_file_record(path, {"status": "processing"})
@@ -147,7 +141,6 @@ def process_file(path):
         confidences = []
         metadata = {}
 
-        # --- File hash ---
         file_hash = get_file_hash(path)
 
         if ext in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
@@ -173,7 +166,6 @@ def process_file(path):
             update_file_record(path, {"status": "error"})
             return
 
-        # ---- Word count + safe language detection ----
         word_count = len(text.split())
         lang = safe_detect(text)
         avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
@@ -204,7 +196,6 @@ def process_file(path):
 
 # ---------------- Main loop ----------------
 if __name__ == "__main__":
-    # Ensure DB schema is initialized
     db_version = init_db(DB_PATH)
     print(f"[Worker] Connected to DB schema version {db_version}")
 

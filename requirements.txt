@@ -7,14 +7,14 @@ pdf2image==1.17.0
 pefile==2023.2.7
 pillow==11.0.0
 pyinstaller==6.11.0
-pyinstaller-hooks-contrib==2025.9
+pyinstaller-hooks-contrib==2024.8
 pytesseract==0.3.13
 pywin32-ctypes==0.2.3
 redis==6.0.0
-setuptools==80.9.0
+setuptools>=70.0.0
 six==1.17.0
 tabulate==0.9.0
 watchdog==4.0.1
 win32_setctime==1.2.0
-pandas==2.2.3c 
+pandas==2.2.3
 PyPDF2==3.0.1

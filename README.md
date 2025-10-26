@@ -11,6 +11,7 @@ It automatically turns raw images into sorted, searchable PDFs, and gives you an
 
 ## Current Status
 **Watcher MVP**: watches folders, deduplicates files, moves/copies them into a processing queue, and tracks everything in SQLite + Redis.
+**Worker MVP**: OCR and Metadata retrieved for each file and added to the DB for AI processing.
 
 ## Config
 Edit `settings.json` to set:
@@ -19,7 +20,7 @@ Edit `settings.json` to set:
 - `move_files`: `true` to move, `false` to copy  
 
 ## Roadmap
-- Watcher (✔)  
-- Worker (OCR → searchable PDFs)  
-- AI (chat with your docs)  
+- Watcher (✔)
+- Worker (OCR → searchable PDFs)  (✔)
+- AI (chat with your docs)
 - One-click installer (Windows/Mac)

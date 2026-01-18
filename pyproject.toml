@@ -20,6 +20,22 @@ dependencies = [
 where = ["."]
 include = ["lindley*"]
 
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "--cov=lindley --cov-report=term-missing --cov-report=html"
+
 [project.scripts]
 lindley-intake = "lindley.watcher.watcher:main"
 lindley-worker = "lindley.worker.worker:main"

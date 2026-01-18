@@ -1,6 +1,7 @@
 import os
 import sqlite3
 
+
 def init_db(db_path="./data/watcher.db"):
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
@@ -34,6 +35,7 @@ def init_db(db_path="./data/watcher.db"):
 
     print(f"[InitDB] Database initialized fresh at {db_path}")
     return "v-clean"
+
 
 if __name__ == "__main__":
     init_db()

@@ -1,15 +1,15 @@
-import os
-import time
-import sqlite3
-import pytesseract
-from PIL import Image, ExifTags
-from pdf2image import convert_from_path
-from PyPDF2 import PdfReader
-from datetime import datetime
-from langdetect import detect, DetectorFactory
-import pandas as pd  # for OCR confidence parsing
 import hashlib
 import json
+import os
+import sqlite3
+import time
+from datetime import datetime
+
+import pytesseract
+from langdetect import DetectorFactory, detect
+from pdf2image import convert_from_path
+from PIL import ExifTags, Image
+from PyPDF2 import PdfReader
 
 # Import DB initializer
 from init_db import init_db
@@ -33,6 +33,7 @@ POLL_INTERVAL = 2  # seconds between database polls
 os.makedirs(OCR_QUARANTINE, exist_ok=True)
 os.makedirs(INBOX_DIR, exist_ok=True)
 
+
 # ---------------- DB helpers ----------------
 def update_file_record(path, fields: dict):
     """Update arbitrary fields for a file row in the DB."""
@@ -44,6 +45,7 @@ def update_file_record(path, fields: dict):
     conn.commit()
     conn.close()
 
+
 # ---------------- Timestamp logic ----------------
 def get_fallback_timestamps(path):
     try:
@@ -54,8 +56,10 @@ def get_fallback_timestamps(path):
         now = datetime.utcnow().isoformat()
         return now, now
 
+
 # ---------------- Language detection ----------------
 DetectorFactory.seed = 0
+
 
 def safe_detect(text: str) -> str:
     if not text.strip():
@@ -67,12 +71,11 @@ def safe_detect(text: str) -> str:
     except Exception:
         return "unknown"
 
+
 # ---------------- OCR with confidence ----------------
 def ocr_with_confidence(img):
     try:
-        df = pytesseract.image_to_data(
-            img, lang="eng", output_type=pytesseract.Output.DATAFRAME
-        )
+        df = pytesseract.image_to_data(img, lang="eng", output_type=pytesseract.Output.DATAFRAME)
         df = df[df.text.notna()]
         df = df[df.text.str.strip() != ""]
 
@@ -90,6 +93,7 @@ def ocr_with_confidence(img):
         except Exception:
             return "", 0.0
 
+
 # ---------------- Metadata extraction ----------------
 def get_file_hash(path):
     h = hashlib.sha256()
@@ -97,6 +101,7 @@ def get_file_hash(path):
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
 
 def extract_image_metadata(img: Image.Image):
     try:
@@ -107,6 +112,7 @@ def extract_image_metadata(img: Image.Image):
     except Exception:
         return {}
 
+
 def extract_pdf_metadata(path):
     try:
         reader = PdfReader(path)
@@ -114,6 +120,7 @@ def extract_pdf_metadata(path):
         return {k[1:]: str(v) for k, v in info.items()} if info else {}
     except Exception:
         return {}
+
 
 # ---------------- OCR logic ----------------
 def process_file(path):
@@ -165,21 +172,26 @@ def process_file(path):
         lang = safe_detect(text)
         avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
 
-        update_file_record(path, {
-            "status": "processed",
-            "ocr_text": text,
-            "page_count": page_count,
-            "file_size": file_size,
-            "sha256": file_hash,
-            "doc_created": created,
-            "doc_modified": modified,
-            "word_count": word_count,
-            "lang": lang,
-            "ocr_confidence": avg_conf,
-            "metadata": json.dumps(metadata)
-        })
-        print(f"[Worker] Completed {base} "
-              f"({page_count} pages, {word_count} words, lang={lang}, conf={avg_conf:.1f})")
+        update_file_record(
+            path,
+            {
+                "status": "processed",
+                "ocr_text": text,
+                "page_count": page_count,
+                "file_size": file_size,
+                "sha256": file_hash,
+                "doc_created": created,
+                "doc_modified": modified,
+                "word_count": word_count,
+                "lang": lang,
+                "ocr_confidence": avg_conf,
+                "metadata": json.dumps(metadata),
+            },
+        )
+        print(
+            f"[Worker] Completed {base} "
+            f"({page_count} pages, {word_count} words, lang={lang}, conf={avg_conf:.1f})"
+        )
 
     except Exception as e:
         print(f"[Worker] ERROR on {base}: {e}")
@@ -188,6 +200,7 @@ def process_file(path):
         except Exception:
             pass
         update_file_record(path, {"status": "error"})
+
 
 # ---------------- Main loop ----------------
 if __name__ == "__main__":
@@ -208,7 +221,7 @@ if __name__ == "__main__":
             """)
             result = cur.fetchone()
             conn.close()
-            
+
             if result:
                 path = result[0]
                 process_file(path)

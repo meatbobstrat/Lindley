@@ -12,6 +12,7 @@ WORKER = os.path.join(BASE_DIR, "lindley", "worker", "worker.py")
 
 processes = []
 
+
 def run_process(name, cmd, use_python=False):
     """Run a process (Python script or exe) with PYTHONPATH set to repo root."""
     env = os.environ.copy()
@@ -27,6 +28,7 @@ def run_process(name, cmd, use_python=False):
     proc = subprocess.Popen(full_cmd, env=env)
     processes.append(proc)
     return proc
+
 
 def main():
     try:
@@ -45,6 +47,7 @@ def main():
                 p.terminate()
             except Exception:
                 pass
+
 
 if __name__ == "__main__":
     main()

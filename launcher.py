@@ -7,7 +7,6 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 BIN_DIR = os.path.join(BASE_DIR, "lindley", "bin")
 
 # Executables and scripts
-REDIS_EXE = os.path.join(BIN_DIR, "redis-server.exe")
 WATCHER = os.path.join(BASE_DIR, "lindley", "watcher", "watcher.py")
 WORKER = os.path.join(BASE_DIR, "lindley", "worker", "worker.py")
 

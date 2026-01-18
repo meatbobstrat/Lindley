@@ -1,6 +1,5 @@
 import os
 import time
-import redis
 import sqlite3
 import pytesseract
 from PIL import Image, ExifTags
@@ -26,17 +25,13 @@ TESSDATA_DIR = os.path.join(BIN_DIR, "tessdata")
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
 os.environ["TESSDATA_PREFIX"] = TESSDATA_DIR
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-QUEUE_NAME = "ocr_jobs"
 DB_PATH = os.path.abspath("./data/watcher.db")
 OCR_QUARANTINE = os.path.abspath("./data/ocr_quarantine")
 INBOX_DIR = os.path.abspath("./data/inbox")
+POLL_INTERVAL = 2  # seconds between database polls
 
 os.makedirs(OCR_QUARANTINE, exist_ok=True)
 os.makedirs(INBOX_DIR, exist_ok=True)
-
-# ---------------- Redis ----------------
-r = redis.from_url(REDIS_URL)
 
 # ---------------- DB helpers ----------------
 def update_file_record(path, fields: dict):
@@ -199,17 +194,26 @@ if __name__ == "__main__":
     db_version = init_db(DB_PATH)
     print(f"[Worker] Connected to DB schema version {db_version}")
 
-    print("[Worker] Starting loop...")
+    print("[Worker] Starting loop - polling database for queued files...")
     while True:
         try:
-            job = r.brpop(QUEUE_NAME, timeout=5)
-            if job:
-                _, path = job
-                if isinstance(path, bytes):
-                    path = path.decode("utf-8")
+            # Query for the next queued job
+            conn = sqlite3.connect(DB_PATH)
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT path FROM files 
+                WHERE status = 'queued'
+                ORDER BY created_at ASC
+                LIMIT 1
+            """)
+            result = cur.fetchone()
+            conn.close()
+            
+            if result:
+                path = result[0]
                 process_file(path)
             else:
-                time.sleep(1)
+                time.sleep(POLL_INTERVAL)
         except Exception as e:
             print(f"[Worker] Loop error: {e}")
-            time.sleep(2)
+            time.sleep(POLL_INTERVAL)

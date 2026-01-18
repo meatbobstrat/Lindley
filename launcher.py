@@ -31,14 +31,6 @@ def run_process(name, cmd, use_python=False):
 
 def main():
     try:
-        # Start Redis
-        if not os.path.exists(REDIS_EXE):
-            print("[Launcher] ERROR: redis-server.exe not found in lindley/bin/")
-            sys.exit(1)
-
-        run_process("Redis", REDIS_EXE, use_python=False)
-        time.sleep(2)  # wait a moment so Redis is ready
-
         # Start Watcher and Worker
         run_process("Watcher", WATCHER, use_python=True)
         run_process("Worker", WORKER, use_python=True)

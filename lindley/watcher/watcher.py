@@ -1,214 +1,300 @@
 import os
-import time
-import shutil
-import hashlib
-import redis
 import sqlite3
-import json
-import threading
-from watchdog.observers.polling import PollingObserver as Observer  # safer cross-platform
-from watchdog.events import FileSystemEventHandler
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from datetime import datetime
 
-# Import shared DB initializer
-from init_db import init_db  # <-- reuse canonical schema
+app = Flask(__name__)
+CORS(app)  # Allow Electron frontend to connect
 
-# ---------------- Settings ----------------
-SETTINGS_PATH = os.path.abspath("./settings.json")
+# Config
+DB_PATH = os.path.abspath("./data/watcher.db")
+INBOX_DIR = os.path.abspath("./data/inbox")
 
-def load_settings():
-    if not os.path.exists(SETTINGS_PATH):
-        raise FileNotFoundError(
-            f"[Watcher] ERROR: settings.json not found at {SETTINGS_PATH}"
-        )
-    with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-settings = load_settings()
-
-REDIS_URL = settings.get("redis_url", "redis://localhost:6379/0")
-QUEUE_NAME = settings.get("queue_name", "ocr_jobs")
-
-watch_config = settings.get("watch_folders", ["./data/input"])
-if isinstance(watch_config, str):
-    WATCH_FOLDERS = [os.path.abspath(watch_config)]
-elif isinstance(watch_config, list):
-    WATCH_FOLDERS = [os.path.abspath(p) for p in watch_config]
-else:
-    raise ValueError("[Watcher] ERROR: watch_folders must be a string or list of strings")
-
-# Always include inbox
-inbox_path = os.path.abspath("./data/inbox")
-if inbox_path not in WATCH_FOLDERS:
-    WATCH_FOLDERS.append(inbox_path)
-
-QUARANTINE_DIR = os.path.abspath(settings.get("quarantine_dir", "./data/quarantine"))
-DB_PATH = os.path.abspath(settings.get("db_path", "./data/watcher.db"))
-RESCAN_INTERVAL = int(settings.get("rescan_interval", 60))  # seconds
-
-print("[Watcher] Starting up...")
-print(f"[Watcher] Using Redis URL: {REDIS_URL}")
-print(f"[Watcher] Watching folders: {WATCH_FOLDERS}")
-
-# Redis connection
-try:
-    r = redis.from_url(REDIS_URL)
-    r.ping()
-    redis_ok = True
-    print("[Watcher] Connected to Redis successfully.")
-except Exception as e:
-    r = None
-    redis_ok = False
-    print(f"[Watcher] WARNING: Redis unavailable, running without queueing. ({e})")
-
-# Ensure dirs exist
-os.makedirs(QUARANTINE_DIR, exist_ok=True)
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-for folder in WATCH_FOLDERS:
-    os.makedirs(folder, exist_ok=True)
-
-# ---------------- Helpers ----------------
-def hash_file(path, algo="sha256", chunk_size=8192):
-    h = hashlib.new(algo)
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(chunk_size), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-def is_duplicate(path):
-    name = os.path.basename(path)
-    size = os.path.getsize(path)
-
+def get_db():
+    """Get database connection."""
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # Return rows as dicts
+    return conn
+
+def get_documents_from_location():
+    """Extract unique document folders from file locations."""
+    conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT sha256 FROM files WHERE name=? AND size=?", (name, size))
-    row = cur.fetchone()
-    conn.close()
-
-    if not row:
-        return False
-
-    new_hash = hash_file(path)
-    return new_hash == row[0]
-
-def record_file(path, h, status="queued"):
-    name = os.path.basename(path)
-    size = os.path.getsize(path)
-
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
+    
+    # Get all unique folders from location field
     cur.execute("""
-        INSERT INTO files (name, size, sha256, path, status)
-        VALUES (?, ?, ?, ?, ?)
-    """, (name, size, h, path, status))
-    conn.commit()
+        SELECT DISTINCT 
+            CASE 
+                WHEN location LIKE 'inbox/%' AND location != 'inbox/singles' 
+                    THEN SUBSTR(location, 7)  -- Strip 'inbox/' prefix
+                WHEN location LIKE 'completed/%' 
+                    THEN SUBSTR(location, 11)  -- Strip 'completed/' prefix
+                ELSE NULL
+            END as folder_name,
+            CASE 
+                WHEN location LIKE 'completed/%' THEN 'completed'
+                ELSE 'active'
+            END as status
+        FROM files 
+        WHERE location != 'inbox' 
+            AND location != 'inbox/singles'
+            AND location IS NOT NULL
+    """)
+    
+    docs = {}
+    for row in cur.fetchall():
+        if row['folder_name']:
+            folder = row['folder_name']
+            if folder not in docs:
+                docs[folder] = {'name': folder, 'status': row['status']}
+    
     conn.close()
+    return list(docs.values())
 
-def is_file_stable(path, wait=0.5):
-    """Return True if file size hasn't changed across two checks."""
-    try:
-        s1 = os.path.getsize(path)
-        time.sleep(wait)
-        s2 = os.path.getsize(path)
-        return s1 == s2
-    except FileNotFoundError:
-        return False
+@app.route('/api/health', methods=['GET'])
+def health():
+    """Health check endpoint."""
+    return jsonify({'status': 'ok', 'timestamp': datetime.now().isoformat()})
 
-# ---------------- Event Handler ----------------
-class Handler(FileSystemEventHandler):
-    def process_file(self, path):
-        if not os.path.isfile(path):
-            return
+@app.route('/api/stats', methods=['GET'])
+def get_stats():
+    """Get overall statistics."""
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # Count files by location/status
+    cur.execute("SELECT COUNT(*) as count FROM files WHERE location = 'inbox' AND status = 'queued'")
+    unprocessed = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM files WHERE status = 'ready'")
+    processing = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM files WHERE location LIKE 'inbox/%' AND location != 'inbox/singles'")
+    in_documents = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM files WHERE location = 'inbox/singles'")
+    singles = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) as count FROM files WHERE location LIKE 'completed/%'")
+    completed = cur.fetchone()['count']
+    
+    # Count unique document folders
+    documents = get_documents_from_location()
+    doc_count = len([d for d in documents if d['status'] == 'active'])
+    completed_doc_count = len([d for d in documents if d['status'] == 'completed'])
+    
+    conn.close()
+    
+    return jsonify({
+        'unprocessed': unprocessed,
+        'processing': processing,
+        'singles': singles,
+        'documents': doc_count,
+        'completed_documents': completed_doc_count,
+        'total_files': unprocessed + processing + in_documents + singles + completed
+    })
 
-        while not is_file_stable(path):
-            time.sleep(0.5)
+@app.route('/api/inbox', methods=['GET'])
+def get_inbox():
+    """Get files in inbox root (unprocessed)."""
+    conn = get_db()
+    cur = conn.cursor()
+    
+    cur.execute("""
+        SELECT id, name, size, sha256, path, location, status, 
+               created_at, page_count, file_size, word_count, 
+               lang, ocr_confidence
+        FROM files 
+        WHERE location = 'inbox'
+        ORDER BY created_at DESC
+    """)
+    
+    files = [dict(row) for row in cur.fetchall()]
+    conn.close()
+    
+    return jsonify({'files': files})
 
-        try:
-            print(f"[Watcher] Processing {path}")
+@app.route('/api/documents', methods=['GET'])
+def get_documents():
+    """Get list of document folders with file counts and metadata."""
+    conn = get_db()
+    cur = conn.cursor()
+    
+    documents = get_documents_from_location()
+    
+    # Enrich each document with file counts and metadata
+    for doc in documents:
+        if doc['status'] == 'completed':
+            location_pattern = f"completed/{doc['name']}"
+        else:
+            location_pattern = f"inbox/{doc['name']}"
+        
+        cur.execute("""
+            SELECT COUNT(*) as count,
+                   AVG(ocr_confidence) as avg_confidence,
+                   SUM(page_count) as total_pages
+            FROM files 
+            WHERE location = ?
+        """, (location_pattern,))
+        
+        stats = cur.fetchone()
+        doc['file_count'] = stats['count']
+        doc['avg_confidence'] = round(stats['avg_confidence'], 1) if stats['avg_confidence'] else 0
+        doc['total_pages'] = stats['total_pages'] or 0
+    
+    conn.close()
+    
+    return jsonify({'documents': documents})
 
-            if is_duplicate(path):
-                print(f"[Watcher] Duplicate detected: {path}")
-                shutil.move(path, os.path.join(QUARANTINE_DIR, os.path.basename(path)))
-                return
+@app.route('/api/documents/<path:folder_name>/files', methods=['GET'])
+def get_document_files(folder_name):
+    """Get all files in a specific document folder."""
+    # Determine if it's completed or active
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # Try both inbox and completed locations
+    cur.execute("""
+        SELECT id, name, size, sha256, path, location, status,
+               created_at, page_count, file_size, word_count,
+               lang, ocr_confidence, ocr_text, metadata
+        FROM files
+        WHERE location IN (?, ?)
+        ORDER BY name ASC
+    """, (f"inbox/{folder_name}", f"completed/{folder_name}"))
+    
+    files = [dict(row) for row in cur.fetchall()]
+    conn.close()
+    
+    if not files:
+        return jsonify({'error': 'Document not found'}), 404
+    
+    return jsonify({
+        'folder_name': folder_name,
+        'files': files
+    })
 
-            print(f"[Watcher] Hashing {path}")
-            h = hash_file(path)
+@app.route('/api/singles', methods=['GET'])
+def get_singles():
+    """Get files in the singles folder (unmatched)."""
+    conn = get_db()
+    cur = conn.cursor()
+    
+    cur.execute("""
+        SELECT id, name, size, sha256, path, location, status,
+               created_at, page_count, file_size, word_count,
+               lang, ocr_confidence
+        FROM files
+        WHERE location = 'inbox/singles'
+        ORDER BY created_at DESC
+    """)
+    
+    files = [dict(row) for row in cur.fetchall()]
+    conn.close()
+    
+    return jsonify({'files': files})
 
-            dest = os.path.abspath(path)  # stay in place (inbox or input folder)
+@app.route('/api/file/<int:file_id>', methods=['GET'])
+def get_file(file_id):
+    """Get detailed information about a specific file."""
+    conn = get_db()
+    cur = conn.cursor()
+    
+    cur.execute("""
+        SELECT *
+        FROM files
+        WHERE id = ?
+    """, (file_id,))
+    
+    file = cur.fetchone()
+    conn.close()
+    
+    if not file:
+        return jsonify({'error': 'File not found'}), 404
+    
+    return jsonify({'file': dict(file)})
 
-            print(f"[Watcher] Recording {dest} in DB")
-            record_file(dest, h)
+@app.route('/api/file/<int:file_id>/text', methods=['GET'])
+def get_file_text(file_id):
+    """Get OCR text for a specific file."""
+    conn = get_db()
+    cur = conn.cursor()
+    
+    cur.execute("SELECT id, name, ocr_text FROM files WHERE id = ?", (file_id,))
+    file = cur.fetchone()
+    conn.close()
+    
+    if not file:
+        return jsonify({'error': 'File not found'}), 404
+    
+    return jsonify({
+        'id': file['id'],
+        'name': file['name'],
+        'text': file['ocr_text']
+    })
 
-            if redis_ok and r:
-                print(f"[Watcher] Enqueuing {dest}")
-                r.lpush(QUEUE_NAME, dest)
+@app.route('/api/search', methods=['GET'])
+def search():
+    """Search files by text content or metadata."""
+    query = request.args.get('q', '').strip()
+    
+    if not query:
+        return jsonify({'error': 'Query parameter required'}), 400
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # Simple text search in OCR content and filename
+    cur.execute("""
+        SELECT id, name, path, location, status, page_count,
+               ocr_confidence, created_at,
+               snippet(files, 'ocr_text', '', '', '...', 10) as snippet
+        FROM files
+        WHERE ocr_text LIKE ? OR name LIKE ?
+        ORDER BY ocr_confidence DESC
+        LIMIT 50
+    """, (f'%{query}%', f'%{query}%'))
+    
+    results = [dict(row) for row in cur.fetchall()]
+    conn.close()
+    
+    return jsonify({
+        'query': query,
+        'results': results,
+        'count': len(results)
+    })
 
-            print(f"[Watcher] SUCCESS for {dest}")
-
-        except Exception as e:
-            print(f"[Watcher] ERROR on {path}: {type(e).__name__}: {e}")
-            try:
-                shutil.move(path, os.path.join(QUARANTINE_DIR, os.path.basename(path)))
-                print(f"[Watcher] Quarantined {path}")
-            except Exception as qe:
-                print(f"[Watcher] FAILED to quarantine {path}: {type(qe).__name__}: {qe}")
-
-    def on_created(self, event):
-        if not event.is_directory:
-            print(f"[Watcher] CREATED event: {event.src_path}")
-            self.process_file(event.src_path)
-
-    def on_moved(self, event):
-        if not event.is_directory:
-            dest = getattr(event, "dest_path", event.src_path)
-            print(f"[Watcher] MOVED event: {dest}")
-            self.process_file(dest)
-
-    def on_closed(self, event):
-        if not event.is_directory:
-            print(f"[Watcher] CLOSED event: {event.src_path}")
-            self.process_file(event.src_path)
-
-# ---------------- Rescan Worker ----------------
-def rescan_loop(handler, stop_evt):
-    while not stop_evt.is_set():
-        for folder in WATCH_FOLDERS:
-            for fname in os.listdir(folder):
-                fpath = os.path.join(folder, fname)
+@app.route('/api/quarantine', methods=['GET'])
+def get_quarantine():
+    """Get list of files in quarantine folders."""
+    import glob
+    
+    quarantine_dirs = [
+        os.path.abspath("./data/quarantine"),
+        os.path.abspath("./data/ocr_quarantine")
+    ]
+    
+    quarantine_files = []
+    
+    for qdir in quarantine_dirs:
+        if os.path.exists(qdir):
+            reason = "duplicate" if "quarantine" in os.path.basename(qdir) and "ocr" not in qdir else "processing_error"
+            for fpath in glob.glob(os.path.join(qdir, "*")):
                 if os.path.isfile(fpath):
-                    handler.process_file(fpath)
-        stop_evt.wait(RESCAN_INTERVAL)
+                    quarantine_files.append({
+                        'name': os.path.basename(fpath),
+                        'path': fpath,
+                        'size': os.path.getsize(fpath),
+                        'reason': reason,
+                        'modified': datetime.fromtimestamp(os.path.getmtime(fpath)).isoformat()
+                    })
+    
+    return jsonify({
+        'files': quarantine_files,
+        'count': len(quarantine_files)
+    })
 
-# ---------------- Main ----------------
-def main():
-    # Use the central DB initializer from init_db.py
-    init_db(DB_PATH)
-
-    observer = Observer()
-    handler = Handler()
-
-    for folder in WATCH_FOLDERS:
-        observer.schedule(handler, folder, recursive=False)
-        print(f"[Watcher] Watching {folder} ...")
-
-        # Startup scan
-        for fname in os.listdir(folder):
-            fpath = os.path.join(folder, fname)
-            if os.path.isfile(fpath):
-                handler.process_file(fpath)
-
-    observer.start()
-
-    stop_evt = threading.Event()
-    rescan_thread = threading.Thread(target=rescan_loop, args=(handler, stop_evt), daemon=True)
-    rescan_thread.start()
-
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        stop_evt.set()
-        observer.stop()
-    observer.join()
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    print("[API] Starting Flask server on http://localhost:5000")
+    app.run(host='127.0.0.1', port=5000, debug=True)

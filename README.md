@@ -10,7 +10,7 @@ It automatically turns raw images into sorted, searchable PDFs, and gives you an
 - Build connections between scattered documents into a story  
 
 ## Current Status
-**Watcher MVP**: watches folders, deduplicates files, moves/copies them into a processing queue, and tracks everything in SQLite + Redis.
+**Watcher MVP**: watches folders, deduplicates files, moves/copies them into a processing queue, and tracks everything in SQLite.
 **Worker MVP**: OCR and Metadata retrieved for each file and added to the DB for AI processing.
 
 ## Config

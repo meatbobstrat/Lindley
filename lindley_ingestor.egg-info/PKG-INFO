@@ -14,8 +14,8 @@ Requires-Dist: loguru==0.7.2
 
 OCR pipeline for Lindley C. Branson archive documents.
 
-This project ingests scanned images (JPG/PNG/TIFF) or image-only PDFs, 
-converts them into **searchable PDF/A** files, and organizes them 
+This project ingests scanned images (JPG/PNG/TIFF) or image-only PDFs,
+converts them into **searchable PDF/A** files, and organizes them
 into output folders. It uses:
 
 - **watcher**: monitors the input folder for new files, enqueues jobs
@@ -28,10 +28,10 @@ into output folders. It uses:
 
 ## Quickstart
 
-1. **Start Docker Desktop**  
+1. **Start Docker Desktop**
    Ensure Docker Desktop is running before continuing.
 
-2. **Clone the repo**  
+2. **Clone the repo**
    ```powershell
    git clone https://github.com/<your-username>/Lindley-Ingestor.git
    cd Lindley-Ingestor

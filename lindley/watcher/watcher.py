@@ -30,20 +30,20 @@ def get_documents_from_location():
 
     # Get all unique folders from location field
     cur.execute("""
-        SELECT DISTINCT 
-            CASE 
-                WHEN location LIKE 'inbox/%' AND location != 'inbox/singles' 
+        SELECT DISTINCT
+            CASE
+                WHEN location LIKE 'inbox/%' AND location != 'inbox/singles'
                     THEN SUBSTR(location, 7)  -- Strip 'inbox/' prefix
-                WHEN location LIKE 'completed/%' 
+                WHEN location LIKE 'completed/%'
                     THEN SUBSTR(location, 11)  -- Strip 'completed/' prefix
                 ELSE NULL
             END as folder_name,
-            CASE 
+            CASE
                 WHEN location LIKE 'completed/%' THEN 'completed'
                 ELSE 'active'
             END as status
-        FROM files 
-        WHERE location != 'inbox' 
+        FROM files
+        WHERE location != 'inbox'
             AND location != 'inbox/singles'
             AND location IS NOT NULL
     """)
@@ -117,10 +117,10 @@ def get_inbox():
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT id, name, size, sha256, path, location, status, 
-               created_at, page_count, file_size, word_count, 
+        SELECT id, name, size, sha256, path, location, status,
+               created_at, page_count, file_size, word_count,
                lang, ocr_confidence
-        FROM files 
+        FROM files
         WHERE location = 'inbox'
         ORDER BY created_at DESC
     """)
@@ -151,7 +151,7 @@ def get_documents():
             SELECT COUNT(*) as count,
                    AVG(ocr_confidence) as avg_confidence,
                    SUM(page_count) as total_pages
-            FROM files 
+            FROM files
             WHERE location = ?
         """,
             (location_pattern,),
@@ -409,6 +409,7 @@ def main():
 
     # Initialize database
     from init_db import init_db
+
     init_db(settings["db_path"])
 
     # Start observer
@@ -437,4 +438,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

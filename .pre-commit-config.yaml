@@ -16,7 +16,7 @@ repos:
     hooks:
       - id: eslint
         name: eslint
-        entry: bash -c 'cd lindley/Frontend && npm run lint'
+        entry: bash -c 'cd lindley/frontend && npm run lint'
         language: system
         files: \.(js|jsx|ts|tsx)$
         pass_filenames: false

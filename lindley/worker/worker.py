@@ -214,7 +214,7 @@ if __name__ == "__main__":
             conn = sqlite3.connect(DB_PATH)
             cur = conn.cursor()
             cur.execute("""
-                SELECT path FROM files 
+                SELECT path FROM files
                 WHERE status = 'queued'
                 ORDER BY created_at ASC
                 LIMIT 1

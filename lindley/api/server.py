@@ -29,8 +29,8 @@ def generate_test_data():
 
         cur.execute(
             """
-            INSERT INTO files (name, size, sha256, path, location, status, 
-                             page_count, file_size, word_count, lang, 
+            INSERT INTO files (name, size, sha256, path, location, status,
+                             page_count, file_size, word_count, lang,
                              ocr_confidence, created_at, ocr_text)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,

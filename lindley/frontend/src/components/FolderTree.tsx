@@ -36,8 +36,8 @@ export default function FolderTree({ folders, onSelectFolder, selectedFolderId }
           }}
           className={`
             flex items-center gap-2 px-3 py-2 cursor-pointer rounded transition-colors
-            ${isSelected 
-              ? 'bg-blue-600 text-white' 
+            ${isSelected
+              ? 'bg-blue-600 text-white'
               : 'text-gray-200 hover:bg-gray-700'
             }
           `}

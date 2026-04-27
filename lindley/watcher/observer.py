@@ -5,11 +5,9 @@ import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
-
 
 SUPPORTED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tiff", ".bmp", ".gif"}
 
@@ -168,9 +166,9 @@ class WatcherObserver:
         self.db_path = db_path
         self.inbox_dir = inbox_dir
         self.quarantine_dir = quarantine_dir
-        self.observers: Dict[str, Observer] = {}
+        self.observers: dict[str, Observer] = {}
 
-    def add_watch(self, folder_config: Dict) -> None:
+    def add_watch(self, folder_config: dict) -> None:
         """Add a folder to watch."""
         folder_id = folder_config.get("id")
         folder_path = folder_config.get("path")
@@ -196,7 +194,7 @@ class WatcherObserver:
         self.observers[folder_id] = observer
         print(f"[Observer] Watching {folder_path} (move={move_files})")
 
-    def scan_existing_files(self, folder_config: Dict) -> None:
+    def scan_existing_files(self, folder_config: dict) -> None:
         """Scan folder for existing files on startup."""
         folder_path = folder_config.get("path")
         move_files = folder_config.get("move_files", True)

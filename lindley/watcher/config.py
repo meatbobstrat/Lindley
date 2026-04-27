@@ -1,7 +1,6 @@
 import json
 import os
-from typing import Any, Dict
-
+from typing import Any
 
 SETTINGS_PATH = "./settings.json"
 DEFAULTS = {
@@ -19,15 +18,15 @@ def _ensure_absolute(path: str) -> str:
     return os.path.abspath(path)
 
 
-def load_settings() -> Dict[str, Any]:
+def load_settings() -> dict[str, Any]:
     """Load and normalize settings from settings.json."""
     if not os.path.exists(SETTINGS_PATH):
         return DEFAULTS.copy()
 
     try:
-        with open(SETTINGS_PATH, "r") as f:
+        with open(SETTINGS_PATH) as f:
             settings = json.load(f)
-    except (json.JSONDecodeError, IOError):
+    except (OSError, json.JSONDecodeError):
         print(f"[Config] Failed to load {SETTINGS_PATH}, using defaults")
         return DEFAULTS.copy()
 
@@ -58,7 +57,7 @@ def load_settings() -> Dict[str, Any]:
     return settings
 
 
-def save_settings(settings: Dict[str, Any]) -> None:
+def save_settings(settings: dict[str, Any]) -> None:
     """Persist settings to settings.json."""
     os.makedirs(os.path.dirname(SETTINGS_PATH) or ".", exist_ok=True)
     with open(SETTINGS_PATH, "w") as f:

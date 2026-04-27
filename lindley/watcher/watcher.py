@@ -5,6 +5,9 @@ from datetime import datetime
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+from lindley.watcher.config import load_settings, save_settings
+from lindley.watcher.observer import WatcherObserver
+
 app = Flask(__name__)
 CORS(app)  # Allow Electron frontend to connect
 
@@ -319,6 +322,119 @@ def get_quarantine():
     return jsonify({"files": quarantine_files, "count": len(quarantine_files)})
 
 
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
+    """Get current settings including watch folders."""
+    settings = load_settings()
+    return jsonify(settings)
+
+
+@app.route("/api/settings/watch-folders", methods=["POST"])
+def add_watch_folder():
+    """Add a new watch folder."""
+    data = request.get_json()
+    path = data.get("path", "").strip()
+    move_files = data.get("move_files", True)
+    name = data.get("name", os.path.basename(path))
+
+    if not path or not os.path.isdir(path):
+        return jsonify({"error": "Invalid folder path"}), 400
+
+    settings = load_settings()
+
+    # Check for duplicates
+    for folder in settings["watch_folders"]:
+        if os.path.abspath(folder["path"]) == os.path.abspath(path):
+            return jsonify({"error": "Folder already being watched"}), 409
+
+    new_folder = {
+        "id": f"folder-{len(settings['watch_folders'])}",
+        "path": path,
+        "move_files": move_files,
+        "enabled": True,
+        "name": name,
+    }
+
+    settings["watch_folders"].append(new_folder)
+    save_settings(settings)
+
+    # Add to live observer if it exists
+    if hasattr(app, "watcher_observer"):
+        app.watcher_observer.add_watch(new_folder)
+
+    return jsonify(new_folder), 201
+
+
+@app.route("/api/settings/watch-folders/<folder_id>", methods=["PUT"])
+def update_watch_folder(folder_id):
+    """Update a watch folder's settings."""
+    data = request.get_json()
+    settings = load_settings()
+
+    folder = None
+    for f in settings["watch_folders"]:
+        if f["id"] == folder_id:
+            folder = f
+            break
+
+    if not folder:
+        return jsonify({"error": "Folder not found"}), 404
+
+    if "move_files" in data:
+        folder["move_files"] = data["move_files"]
+    if "enabled" in data:
+        folder["enabled"] = data["enabled"]
+    if "name" in data:
+        folder["name"] = data["name"]
+
+    save_settings(settings)
+    return jsonify(folder), 200
+
+
+@app.route("/api/settings/watch-folders/<folder_id>", methods=["DELETE"])
+def delete_watch_folder(folder_id):
+    """Remove a watch folder."""
+    settings = load_settings()
+    settings["watch_folders"] = [f for f in settings["watch_folders"] if f["id"] != folder_id]
+    save_settings(settings)
+    return jsonify({"status": "deleted"}), 200
+
+
+def main():
+    """Main entry point for the watcher."""
+    print("[Watcher] Starting Lindley file watcher...")
+
+    settings = load_settings()
+    print(f"[Watcher] Loaded settings: {len(settings['watch_folders'])} folders configured")
+
+    # Initialize database
+    from init_db import init_db
+    init_db(settings["db_path"])
+
+    # Start observer
+    watcher_observer = WatcherObserver(
+        db_path=settings["db_path"],
+        inbox_dir=os.path.join(os.path.dirname(settings["db_path"]), "inbox"),
+        quarantine_dir=settings["quarantine_dir"],
+    )
+
+    # Add configured folders and scan for existing files
+    for folder in settings["watch_folders"]:
+        if folder.get("enabled", True):
+            watcher_observer.add_watch(folder)
+            watcher_observer.scan_existing_files(folder)
+
+    watcher_observer.start()
+    app.watcher_observer = watcher_observer  # Store for API access
+
+    # Start Flask API
+    print("[Watcher] Starting Flask API on http://127.0.0.1:5000")
+    try:
+        app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)
+    finally:
+        watcher_observer.stop()
+
+
 if __name__ == "__main__":
-    print("[API] Starting Flask server on http://localhost:5000")
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    main()
+

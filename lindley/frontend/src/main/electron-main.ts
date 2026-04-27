@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -11,6 +11,8 @@ const createWindow = () => {
     height: 800,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      nodeIntegration: false,
+      contextIsolation: true,
     },
   });
 
@@ -24,6 +26,14 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
+  // Handle directory selection IPC
+  ipcMain.handle('select-directory', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
+
   createWindow();
 
   app.on("activate", () => {

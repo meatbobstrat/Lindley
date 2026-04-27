@@ -2,12 +2,14 @@ import { useState } from 'react';
 import FolderTree from './FolderTree';
 import DocumentViewer from './DocumentViewer';
 import AIChat from './AIChat';
+import SettingsPanel from './SettingsPanel';
 import { mockFolders, mockDocument, mockChatMessages } from '../mockData';
 import type { Folder, ChatMessage } from '../mockData';
 
 export default function Layout() {
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(mockChatMessages);
+  const [activeView, setActiveView] = useState<'main' | 'settings'>('main');
 
   const handleSelectFolder = (folder: Folder) => {
     setSelectedFolder(folder);
@@ -42,6 +44,13 @@ export default function Layout() {
       <div className="bg-gray-950 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-white">📚 Lindley Archives</h1>
         <div className="flex gap-2">
+          <button
+            onClick={() => setActiveView(activeView === 'main' ? 'settings' : 'main')}
+            className="px-4 py-2 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+            title="Settings"
+          >
+            {activeView === 'settings' ? '📚 Back' : '⚙️ Settings'}
+          </button>
           <button className="w-8 h-8 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
             −
           </button>
@@ -54,38 +63,45 @@ export default function Layout() {
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - Folder Tree */}
-        <div className="w-64 flex-shrink-0 overflow-hidden">
-          <FolderTree
-            folders={mockFolders}
-            onSelectFolder={handleSelectFolder}
-            selectedFolderId={selectedFolder?.id}
-          />
-        </div>
+      {/* Main or Settings View */}
+      {activeView === 'settings' ? (
+        <SettingsPanel />
+      ) : (
+        <>
+          {/* Original main layout */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Sidebar - Folder Tree */}
+            <div className="w-64 flex-shrink-0 overflow-hidden">
+              <FolderTree
+                folders={mockFolders}
+                onSelectFolder={handleSelectFolder}
+                selectedFolderId={selectedFolder?.id}
+              />
+            </div>
 
-        {/* Main Content - Document Viewer and Chat */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Document Viewer */}
-          <div className="flex-1 overflow-hidden">
-            <DocumentViewer
-              document={mockDocument}
-              onPreviousPage={() => console.log('Previous page')}
-              onNextPage={() => console.log('Next page')}
-              onRotate={() => console.log('Rotate')}
-              onFlipHorizontal={() => console.log('Flip horizontal')}
-              onMove={() => console.log('Move')}
-              onDelete={() => console.log('Delete')}
-            />
-          </div>
+            {/* Main Content - Document Viewer and Chat */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Document Viewer */}
+              <div className="flex-1 overflow-hidden">
+                <DocumentViewer
+                  document={mockDocument}
+                  onPreviousPage={() => console.log('Previous page')}
+                  onNextPage={() => console.log('Next page')}
+                  onRotate={() => console.log('Rotate')}
+                  onFlipHorizontal={() => console.log('Flip horizontal')}
+                  onMove={() => console.log('Move')}
+                  onDelete={() => console.log('Delete')}
+                />
+              </div>
 
-          {/* AI Chat */}
-          <div className="h-56 flex-shrink-0 overflow-hidden">
-            <AIChat messages={chatMessages} onSendMessage={handleSendMessage} />
+              {/* AI Chat */}
+              <div className="h-56 flex-shrink-0 overflow-hidden">
+                <AIChat messages={chatMessages} onSendMessage={handleSendMessage} />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }

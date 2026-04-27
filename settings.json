@@ -1,9 +1,13 @@
 {
   "watch_folders": [
-    "./data/input",
-    "./data/inbox"
+    {
+      "id": "default-input",
+      "path": "./data/input",
+      "move_files": true,
+      "enabled": true,
+      "name": "Default Input"
+    }
   ],
-  "move_files": true,
   "processing_dir": "./data/tmp",
   "quarantine_dir": "./data/quarantine",
   "db_path": "./data/watcher.db"

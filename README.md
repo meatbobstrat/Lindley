@@ -1,3 +1,8 @@
+[![CI](https://github.com/meatbobstrat/Lindley/actions/workflows/ci.yml/badge.svg)](https://github.com/meatbobstrat/Lindley/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/meatbobstrat/Lindley)](https://github.com/meatbobstrat/Munin-Core/blob/main/LICENSE)
+![Python](https://img.shields.io/badge/python-3.12%20|%203.13-blue)
+
+
 # Lindley
 
 Lindley is your research partner for taming thousands of scanned pages — letters, deeds, books, manuscripts, and more.  

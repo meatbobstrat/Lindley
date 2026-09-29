@@ -1,0 +1,39 @@
+{
+  "watch_folders": ["./data/inbox"],
+  "processing_dir": "./data/processing",
+  "quarantine_dir": "./data/quarantine",
+  "library_dir": "./data/library",
+  "db_path": "./data/lindley.db",
+  "move_files": false,
+  "ocr": {
+    "engine": "hybrid",
+    "tesseract_path": null,
+    "languages": ["eng"],
+    "confidence_threshold": 70,
+    "vision_provider": "local"
+  },
+  "ai": {
+    "chat_provider": "local",
+    "embedding_provider": "local",
+    "providers": {
+      "local": {
+        "type": "openai_compat",
+        "base_url": "http://localhost:11434/v1",
+        "model": "llama3.1",
+        "api_key_env": null
+      },
+      "claude": {
+        "type": "anthropic",
+        "base_url": null,
+        "model": "claude-sonnet-5",
+        "api_key_env": "ANTHROPIC_API_KEY"
+      },
+      "openai": {
+        "type": "openai_compat",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4o",
+        "api_key_env": "OPENAI_API_KEY"
+      }
+    }
+  }
+}

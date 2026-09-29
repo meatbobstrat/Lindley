@@ -1,0 +1,83 @@
+/* Minimal placeholder styling; real design comes in the UI phase. */
+:root {
+  --bg: #faf7f2;
+  --panel: #f1ebe1;
+  --text: #2b2520;
+  --muted: #7a6f64;
+  --accent: #7a5c3e;
+  --ok: #3d7a4a;
+  --down: #a34a3a;
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1916;
+    --panel: #26221e;
+    --text: #ece5da;
+    --muted: #a59a8e;
+    --accent: #d2a878;
+    --ok: #7cc28b;
+    --down: #e08a78;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 200px;
+  padding: 1.25rem 1rem;
+  background: var(--panel);
+}
+
+.brand {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--accent);
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.sidebar nav a {
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.sidebar nav a.active {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.status { font-size: 0.8rem; color: var(--muted); }
+.status-ok { color: var(--ok); }
+.status-down { color: var(--down); }
+
+.content {
+  flex: 1;
+  padding: 2rem;
+}
+
+.muted { color: var(--muted); }

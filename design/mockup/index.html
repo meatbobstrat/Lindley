@@ -200,8 +200,11 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .meter b { display: inline-block; width: 54px; height: 5px; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; }
 .meter b { border: 1px solid var(--field); height: 7px; }
 .meter b::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v); background: var(--ink); }
-.banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
-.banner > div { flex: 1 1 260px; }
+.banner { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.banner > .ic, .banner > .lic { margin-top: 3px; }
+.b-body { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.b-text { flex: 0 1 auto; max-width: 75ch; }
+.b-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .banner.ok { background: var(--ok-soft); }
 .banner.ok > .ic { color: var(--ok); }
 .banner.warn { background: var(--warn-soft); }
@@ -245,12 +248,16 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .main.has-dock .grid, .main.has-dock .docs, .main.has-dock .results, .main.has-dock .empty, .main.has-dock .rv-done { padding-bottom: 96px; }
 .main.has-dock .side-tx, .main.has-dock .side-img { padding-bottom: 90px; }
 .main.has-dock .reader .strip { padding-bottom: 84px; }
-@container (max-width: 760px) {
-  .dock .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .dock .btn { padding: 7px; }
-  .dock-hint { display: none; }
-  .dock-prog b { width: 90px; }
-}
+.main.file-drop { outline: 3px dashed var(--accent); outline-offset: -6px; }
+.dock-wrap.free { right: auto; bottom: auto; }
+.dock-grip { flex: none; display: grid; place-items: center; width: 22px; align-self: stretch; margin-right: 2px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: grab; touch-action: none; }
+.dock-grip:hover { background: var(--panel); color: var(--ink); }
+.dock-grip .ic { width: 16px; height: 16px; stroke-width: 3.2; }
+.dock.dragging { cursor: grabbing; box-shadow: 0 4px 10px rgba(20, 30, 25, .18), 0 18px 40px rgba(20, 30, 25, .22); }
+/* When the dock would overflow, secondary buttons drop their text (keeping tooltips and accessible names). */
+.dock.compact .btn:not(.ai):not(.primary):not(.keep) .lbl, .dock.tiny .btn .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.dock.compact .btn:not(.ai):not(.primary):not(.keep), .dock.tiny .btn { padding: 7px; }
+.dock.tiny .dock-prog b { width: 80px; }
 
 .scroll { flex: 1; overflow: auto; min-height: 0; }
 
@@ -281,6 +288,8 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .conf .ic { width: 13px; height: 13px; }
 .conf.flag { color: var(--ink); background: var(--warn-soft); border-color: var(--warn); font-weight: 600; }
 .conf.flag .ic { color: var(--warn); }
+.conf[data-review] { cursor: pointer; }
+.conf[data-review]:hover { text-decoration: underline; }
 .conf.mine { color: var(--ink); }
 .conf.reading { animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .45; } }
@@ -332,6 +341,27 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .fld-in { width: 100%; padding: 8px 10px; border: 1px solid var(--field); border-radius: 6px; background: var(--raise); }
 .fld-hint { display: flex; align-items: center; gap: 6px; margin-top: -6px !important; font-size: 13px; }
 .fld-hint .lic { --lic-size: 16px; }
+.choices { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; }
+.choices legend { padding: 0; margin-bottom: 4px; }
+.choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--field); border-radius: 8px; font-size: 13.5px; cursor: pointer; }
+.choice:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.choice input { margin-top: 3px; accent-color: var(--accent); }
+.file-list { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 13px; }
+.setup { position: absolute; inset: 0; z-index: 55; overflow: auto; background: var(--bg); display: grid; place-items: start center; padding: 32px 16px; }
+.setup-card { width: min(640px, 100%); display: grid; gap: 18px; padding: 28px; border-radius: 14px; background: var(--raise); box-shadow: var(--shadow); }
+.setup-brand { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-size: 22px; font-weight: 600; }
+.setup-brand .lic { --lic-size: 34px; }
+.setup h2:focus { outline: none; }
+.setup h2 { margin: 0; font-family: var(--serif); font-size: 24px; text-wrap: balance; }
+.setup h3 { margin: 0 0 8px; font-size: 15px; }
+.setup p { margin: 0; color: var(--muted); }
+.setup section { display: grid; gap: 8px; }
+.setup-folders { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.setup-folders li { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.setup-folders li .mono { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.setup-add { display: flex; gap: 8px; flex-wrap: wrap; }
+.setup-add .fld-in { flex: 1 1 240px; width: auto; }
+.setup .actions { justify-content: flex-end; }
 .rv-where b { color: var(--ink); font-weight: 500; }
 .rv-acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .rv-done { display: grid; justify-items: center; gap: 10px; padding: 64px 20px; text-align: center; color: var(--muted); }
@@ -477,6 +507,7 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
   .grid { --thumb: 120px !important; padding-inline: 14px; gap: 10px; }
   .side { grid-template-columns: minmax(0, 1fr); }
   .dock-wrap { left: 8px; right: 8px; bottom: 8px; }
+  .dock-grip { display: none; }
   .side-img { max-height: 50vh; }
   .side-tx { border-left: 0; border-top: 1px solid var(--line); }
   .status .hide-narrow { display: none; }
@@ -537,7 +568,9 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
   <footer class="status" id="status"></footer>
   <div class="scrim" id="scrim" hidden></div>
   <div class="modal" id="modal" role="dialog" aria-modal="true" hidden></div>
+  <div class="setup" id="setup" role="dialog" aria-modal="true" aria-labelledby="setup-h" hidden></div>
 </div>
+<input type="file" id="file-in" multiple accept="image/*,.pdf,.tif,.tiff" hidden>
 <div class="menu" id="menu" role="menu" hidden></div>
 <div class="toast" id="toast" role="status" hidden></div>
 
@@ -579,6 +612,8 @@ const I = {
   back: 'M9 7L4 12l5 5M4 12h16',
   more: 'M6 9l6 6 6-6',
   pen: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
+  grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01',
+  upload: 'M12 16V4M7 9l5-5 5 5M5 20h14',
 };
 const lic = (cls = '') => `<svg class="lic ${cls}" aria-hidden="true"><use href="#lindley"/></svg>`;
 const icon = (n, cls = '') => n === 'lindley' ? lic(cls) : `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${I[n]}"/></svg>`;
@@ -791,6 +826,7 @@ const IMG = new Map();
 const imgKey = s => s.id + ':' + hash(s.text);
 function pageImg(id) {
   const s = D.scans[id];
+  if (s.src) return s.src;
   const k = imgKey(s);
   if (!IMG.has(k)) IMG.set(k, drawPage(s));
   return IMG.get(k);
@@ -1196,7 +1232,7 @@ function renderTree() {
 function renderStatus() {
   const reading = D.inbox.filter(id => D.scans[id].status === 'reading').length;
   $('#status').innerHTML = `
-    <span class="hide-narrow">${icon('eye')} Watching 2 folders: <span class="mono">D:\\Scans\\Attic box 4</span>,&nbsp;<span class="mono">D:\\Scans\\Courthouse</span></span>
+    <button class="hide-narrow" data-act="openSetup" title="${esc(SETUP.folders.join(', '))}">${icon('eye')} Watching ${plural(SETUP.folders.length, 'folder')} · ${SETUP.mode === 'copy' ? 'copying' : 'moving'} new scans</button>
     <span><i class="dot ${reading ? 'busy' : ''}"></i>${reading ? `Reading ${plural(reading, 'new scan')}` : 'All scans read'}</span>
     ${reviewQueue().length ? `<button data-nav="review">${icon('flag')} ${plural(reviewQueue().length, 'page')} to review</button>` : ''}
     <span class="hide-narrow">Sample data. Changes are not saved.</span>`;
@@ -1207,7 +1243,7 @@ function confChip(s) {
   const how = s.engine === 'vision' ? 'AI' : 'OCR';
   const long = `${s.engine === 'vision' ? 'Read by the AI vision model' : 'Read by Tesseract OCR'}, ${s.conf}% confident`;
   if (s.reviewed) return `<span class="conf mine" title="${long}. You checked the text.">${icon('check')}Checked</span>`;
-  if (needsReview(s)) return `<span class="conf flag" title="${long}. Lindley needs you to check this page.">${icon('flag')}Review · ${how} ${s.conf}%</span>`;
+  if (needsReview(s)) return `<span class="conf flag" data-review="${s.id}" title="${long}. Click to review this page.">${icon('flag')}Review · ${how} ${s.conf}%</span>`;
   return `<span class="conf" title="${long}">${how} ${s.conf}%</span>`;
 }
 function card(id, i, o) {
@@ -1220,7 +1256,7 @@ function card(id, i, o) {
     <button class="pg-main" data-pgsel aria-pressed="${sel}">
       <span class="pg-img"><img src="${pageImg(id)}" alt="" style="${rotStyle(s)}" draggable="false"></span>
       <span class="pg-check" data-check aria-hidden="true">${icon('check')}</span>
-      ${a ? `<span class="pg-flag">${icon('rotR')}Sideways?</span>` : ''}
+      ${a ? `<span class="pg-flag">${icon('rotR')}Sideways?</span>` : s.added ? `<span class="pg-flag">${icon('upload')}Added by you</span>` : ''}
       <span class="pg-f"><span class="pg-lbl ${o.numbered ? '' : 'mono'}">${label}</span>${confChip(s)}</span>
     </button>
     ${hintDoc ? `<button class="pg-hint" data-place="${id}:${hintDoc.id}" title="Lindley thinks this belongs in “${esc(hintDoc.name)}”">${lic()}<span>Add to “${esc(shortName(hintDoc.name))}”</span></button>` : ''}
@@ -1255,8 +1291,8 @@ function dock() {
       + icoBtn('up', 'Move earlier', 'up', !n) + icoBtn('down', 'Move later', 'down', !n) + tbBtn('more', 'More…', 'pageMore', !n);
   } else if (t === 'inbox') {
     name = 'Inbox actions';
-    inner = tbBtn('lindley', 'Ask Lindley', 'askInbox', false, 'ai') + SEP + selLabel(n) + rotBtns(n)
-      + tbBtn('newdoc', 'New document…', 'newDoc', !n) + tbBtn('move', 'Add to document…', 'moveMenu', !n) + tbBtn('aside', 'Set aside', 'aside', !n);
+    inner = tbBtn('lindley', 'Ask Lindley', 'askInbox', false, 'ai') + tbBtn('upload', 'Add scans…', 'addScans', false, 'keep') + SEP + selLabel(n) + rotBtns(n)
+      + tbBtn('newdoc', 'Group into document…', 'newDoc', !n) + tbBtn('move', 'Add to document…', 'moveMenu', !n) + tbBtn('aside', 'Set aside', 'aside', !n);
   } else if (t === 'aside') {
     inner = selLabel(n) + rotBtns(n) + tbBtn('inbox', 'Return to Inbox', 'inbox', !n) + tbBtn('move', 'Add to document…', 'moveMenu', !n);
   } else if (t === 'folder') {
@@ -1281,8 +1317,35 @@ function dock() {
       + tbBtn('newdoc', 'New document…', 'newDoc') + tbBtn('move', 'Add to document…', 'moveMenu')
       + (aside ? tbBtn('inbox', 'Return to Inbox', 'inbox') : tbBtn('aside', 'Set aside', 'aside')) + tbBtn('lindley', 'Ask Lindley', 'askScan', false, 'ai');
   }
-  return inner ? `<div class="dock-wrap"><div class="dock" role="toolbar" aria-label="${name}">${inner}</div></div>` : '';
+  if (!inner) return '';
+  const free = U.dockPos && !narrow();
+  const grip = `<button class="dock-grip" data-grip aria-label="Move toolbar. Arrow keys move it, Home puts it back." title="Drag to move the toolbar. Double-click to put it back.">${icon('grip')}</button>`;
+  return `<div class="dock-wrap${free ? ' free' : ''}" ${free ? `style="left:${U.dockPos.x}px;top:${U.dockPos.y}px"` : ''}><div class="dock" role="toolbar" aria-label="${name}">${grip}${inner}</div></div>`;
 }
+const narrow = () => matchMedia('(max-width: 860px)').matches;
+// Shorten labels only when the dock doesn't fit, and keep a moved dock inside the content area.
+function fitDock() {
+  const dk = $('.dock', main);
+  if (!dk) return;
+  dk.classList.remove('compact', 'tiny');
+  if (dk.scrollWidth > dk.clientWidth + 1) dk.classList.add('compact');
+  if (dk.scrollWidth > dk.clientWidth + 1) dk.classList.add('tiny');
+  const wrap = dk.parentElement;
+  if (wrap.classList.contains('free')) {
+    const m = main.getBoundingClientRect(), r = dk.getBoundingClientRect();
+    const x = Math.max(0, Math.min(U.dockPos.x, m.width - r.width)), y = Math.max(0, Math.min(U.dockPos.y, m.height - r.height));
+    wrap.style.left = x + 'px'; wrap.style.top = y + 'px';
+  }
+}
+function saveDockPos() { try { localStorage.setItem('lindley-dock', JSON.stringify(U.dockPos)); } catch (e) { /* position just won't be remembered */ } }
+function moveDockTo(x, y) {
+  const wrap = $('.dock-wrap', main), dk = $('.dock', main);
+  const m = main.getBoundingClientRect(), r = dk.getBoundingClientRect();
+  U.dockPos = { x: Math.round(Math.max(0, Math.min(x, m.width - r.width))), y: Math.round(Math.max(0, Math.min(y, m.height - r.height))) };
+  wrap.classList.add('free');
+  wrap.style.left = U.dockPos.x + 'px'; wrap.style.top = U.dockPos.y + 'px';
+}
+function resetDock() { U.dockPos = null; saveDockPos(); renderMain(); $('.dock-grip', main)?.focus(); toast('Toolbar is back at the bottom.'); }
 
 function renderMain() {
   const sc = $('.scroll', main)?.scrollTop || 0;
@@ -1295,8 +1358,10 @@ function renderMain() {
   main.classList.toggle('has-dock', !!dk);
   const s = $('.scroll', main);
   if (s) s.scrollTop = sc;
+  fitDock();
   if (act) ($(`.dock [data-act="${act}"]:not(:disabled)`, main) || $('.dock button:not(:disabled)', main))?.focus();
 }
+addEventListener('resize', fitDock);
 
 function viewInbox() {
   const hints = D.inbox.filter(id => D.scans[id].hint).length;
@@ -1305,7 +1370,7 @@ function viewInbox() {
     <div class="crumbs">Inbox</div>
     <div class="title-row"><h1 class="title">${plural(D.inbox.length, 'scan')} waiting</h1></div>
     <p class="sub">New scans land here. Lindley reads each one and groups pages into documents, but you don't have to wait: select scans and start a document yourself, or double-click one to read and correct it.</p>
-    ${hints ? `<div class="banner ai">${lic()}<div><b>Lindley found ${plural(hints, 'scan')} that probably belong to documents in progress.</b> Look for the suggestion under each page.</div><button class="btn" data-act="sortMatch">Show them first</button></div>` : ''}
+    ${hints ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Lindley found ${plural(hints, 'scan')} that probably belong to documents in progress.</b> Look for the suggestion under each page.</div><span class="b-acts"><button class="btn" data-act="sortMatch">Show them first</button></span></div></div>` : ''}
     <div class="viewbar"><label>Sort <select id="sort"><option value="new" ${U.sort === 'new' ? 'selected' : ''}>Newest scans first</option><option value="old" ${U.sort === 'old' ? 'selected' : ''}>Oldest scans first</option><option value="match" ${U.sort === 'match' ? 'selected' : ''}>Suggested matches first</option></select></label>${sizeCtl()}</div>
   </div>
   <div class="scroll">${grid(sortedInbox(), { hints: true, empty: 'The Inbox is empty. Every scan has a home.' })}</div>`;
@@ -1332,12 +1397,12 @@ function viewDoc() {
   const crumbs = f ? ['My folders', ...folderPath(f.id)] : [done ? 'Completed' : 'In progress'];
 
   let banners = '';
-  if (done) banners += `<div class="banner ok">${icon('checkc')}<div><b>Completed ${esc(d.exported || '')}.</b> Exported as a searchable PDF: <span class="mono">${esc(d.name)}.pdf</span></div></div>`;
+  if (done) banners += `<div class="banner ok">${icon('checkc')}<div class="b-body"><div class="b-text"><b>Completed ${esc(d.exported || '')}.</b> Exported as a searchable PDF: <span class="mono">${esc(d.name)}.pdf</span></div></div></div>`;
   else {
-    if (rv) banners += `<div class="banner review">${icon('flag')}<div><b>${plural(rv, 'page')} ${rv === 1 ? 'needs' : 'need'} your review.</b> Lindley isn't sure it read ${rv === 1 ? 'it' : 'them'} correctly.</div><button class="btn" data-act="reviewDoc">Review next</button></div>`;
-    if (d.ready) banners += `<div class="banner ok">${icon('checkc')}<div><b>Lindley thinks this document is complete.</b> ${esc(d.missing || '')} ${rv ? 'Review the flagged pages first, then export it.' : "Look it over, then export it when you're ready."}</div><button class="btn" data-act="export">Review and export</button><button class="btn ghost" data-act="notReady">Not yet</button></div>`;
-    if (d.note) banners += `<div class="banner warn">${icon('warn')}<div>${esc(d.note.text)}</div><button class="btn" data-act="fixOrder">${esc(d.note.fix)}</button><button class="btn ghost" data-act="dismissNote">Leave as is</button></div>`;
-    if (inboxMatches.length) banners += `<div class="banner ai">${lic()}<div>Lindley thinks ${plural(inboxMatches.length, 'scan')} in your Inbox might belong here.</div><button class="btn" data-act="addMatches">Add ${inboxMatches.length === 1 ? 'it' : 'them'}</button><button class="btn ghost" data-act="showMatches">Show me first</button></div>`;
+    if (rv) banners += `<div class="banner review">${icon('flag')}<div class="b-body"><div class="b-text"><b>${plural(rv, 'page')} ${rv === 1 ? 'needs' : 'need'} your review.</b> Lindley isn't sure it read ${rv === 1 ? 'it' : 'them'} correctly.</div><span class="b-acts"><button class="btn" data-act="reviewDoc">Review next</button></span></div></div>`;
+    if (d.ready) banners += `<div class="banner ok">${icon('checkc')}<div class="b-body"><div class="b-text"><b>Lindley thinks this document is complete.</b> ${esc(d.missing || '')} ${rv ? 'Review the flagged pages first, then export it.' : "Look it over, then export it when you're ready."}</div><span class="b-acts"><button class="btn" data-act="export">Review and export</button><button class="btn ghost" data-act="notReady">Not yet</button></span></div></div>`;
+    if (d.note) banners += `<div class="banner warn">${icon('warn')}<div class="b-body"><div class="b-text">${esc(d.note.text)}</div><span class="b-acts"><button class="btn" data-act="fixOrder">${esc(d.note.fix)}</button><button class="btn ghost" data-act="dismissNote">Leave as is</button></span></div></div>`;
+    if (inboxMatches.length) banners += `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text">Lindley thinks ${plural(inboxMatches.length, 'scan')} in your Inbox might belong here.</div><span class="b-acts"><button class="btn" data-act="addMatches">Add ${inboxMatches.length === 1 ? 'it' : 'them'}</button><button class="btn ghost" data-act="showMatches">Show me first</button></span></div></div>`;
   }
 
   let body = '';
@@ -1473,7 +1538,7 @@ function viewScan() {
     <div class="crumbs"><button class="crumb" data-nav="${aside ? 'aside' : 'inbox'}">${aside ? 'Set aside' : 'Inbox'}</button> › ${s.file}</div>
     <div class="title-row"><h1 class="title">${s.file}</h1></div>
     <p class="sub">This scan isn't in a document yet. Correct its text here if you like, then start a new document with it or add it to one you already have.</p>
-    ${hint ? `<div class="banner ai">${lic()}<div>Lindley thinks this belongs in “${esc(hint.name)}”.</div><button class="btn" data-place="${s.id}:${hint.id}">Add it there</button></div>` : ''}
+    ${hint ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text">Lindley thinks this belongs in “${esc(hint.name)}”.</div><span class="b-acts"><button class="btn" data-place="${s.id}:${hint.id}">Add it there</button></span></div></div>` : ''}
     <div style="height:6px"></div>
   </div>
   <div class="side" style="flex:1;min-height:0">
@@ -1637,6 +1702,113 @@ function folderOptions() {
   D.rootFolders.forEach(f => walk(f, 0));
   return out.join('');
 }
+let pendingFiles = [];
+function addScansDialog(files) {
+  files = [...files];
+  if (!files.length) return;
+  pendingFiles = files;
+  const n = files.length;
+  modalReturn = document.activeElement;
+  modal.setAttribute('aria-labelledby', 'modal-h');
+  modal.innerHTML = `<h2 id="modal-h">Add ${plural(n, 'scan')} to the Inbox</h2>
+    <ul class="file-list">${files.slice(0, 6).map(f => `<li class="mono">${esc(f.name)}</li>`).join('')}${n > 6 ? `<li>and ${n - 6} more</li>` : ''}</ul>
+    <fieldset class="choices"><legend class="fld">What should happen to the original ${n === 1 ? 'file' : 'files'}?</legend>
+      <label class="choice"><input type="radio" name="add-mode" value="copy" ${SETUP.mode === 'copy' ? 'checked' : ''}><span><b>Copy into Lindley</b> and leave the ${n === 1 ? 'original' : 'originals'} where ${n === 1 ? 'it is' : 'they are'}. Good for a thumb drive you'll keep using.</span></label>
+      <label class="choice"><input type="radio" name="add-mode" value="move" ${SETUP.mode === 'move' ? 'checked' : ''}><span><b>Move into Lindley.</b> The ${n === 1 ? 'original is' : 'originals are'} removed from where ${n === 1 ? 'it is' : 'they are'} now.</span></label>
+    </fieldset>
+    <p>Either way, Lindley never changes the scans themselves.</p>
+    <div class="actions"><button class="btn" data-act="modalClose">Cancel</button><button class="btn primary" data-act="modalAddScans">${icon('upload')} Add ${plural(n, 'scan')}</button></div>`;
+  modal.hidden = false; syncScrim();
+  $('[data-act="modalAddScans"]', modal).focus();
+}
+function addScans(files, mode) {
+  commit(`Added ${plural(files.length, 'scan')} to the Inbox. ${mode === 'copy' ? 'The originals were left where they were.' : 'The originals were moved into Lindley.'} (This mockup doesn't really copy or move files.)`, () => {
+    files.forEach((f, i) => {
+      const id = 'U' + Date.now().toString(36) + i;
+      const viewable = f.type.startsWith('image/') && !/\.tiff?$/i.test(f.name);
+      D.scans[id] = { id, file: f.name, kind: 'hand', text: 'Lindley is still reading this scan.', orient: 0, rot: 0, conf: 0, engine: 'vision', status: 'reading', reviewed: false, added: true,
+        scanned: new Date().toISOString().slice(0, 16), hint: null, src: viewable ? URL.createObjectURL(f) : null };
+      D.inbox.unshift(id);
+    });
+    U.sort = 'new';
+  });
+}
+
+/* First-run setup: which folders Lindley watches, and whether arriving scans are copied or moved. */
+const SETUP = { folders: ['D:\\Scans\\Attic box 4', 'D:\\Scans\\Courthouse'], mode: 'copy' };
+const setupEl = $('#setup');
+let setupDraft = null, setupFirst = false, setupReturn = null;
+function openSetup(first) {
+  setupFirst = first;
+  setupDraft = { folders: [...SETUP.folders], mode: SETUP.mode };
+  setupReturn = document.activeElement;
+  renderSetup();
+  setupEl.hidden = false;
+  $('h2', setupEl).focus();
+}
+function renderSetup() {
+  const f = setupDraft;
+  setupEl.innerHTML = `<div class="setup-card">
+    <div class="setup-brand">${lic()}<span>Lindley</span></div>
+    <h2 id="setup-h" tabindex="-1">${setupFirst ? 'Welcome. First, where do your scans come from?' : 'Scan folders'}</h2>
+    <p>Lindley watches the folders you choose. When a scan arrives it reads it and puts it in your Inbox. You can also add scans from anywhere, such as a thumb drive, with Add scans in the Inbox.</p>
+    <section aria-labelledby="su-1"><h3 id="su-1">1. Folders to watch</h3>
+      <ul class="setup-folders">${f.folders.map((x, i) => `<li>${icon('folder')}<span class="mono">${esc(x)}</span><button class="btn ghost" data-setup="rm:${i}" aria-label="Stop watching ${esc(x)}">Remove</button></li>`).join('') || '<li>No folders yet. Add at least one.</li>'}</ul>
+      <div class="setup-add"><label class="sr-only" for="setup-path">Folder path</label><input class="fld-in" id="setup-path" placeholder="Type a folder path, for example E:\\Scans"><button class="btn" data-setup="add">Add</button><button class="btn" data-setup="browse">${icon('folder')} Browse…</button></div>
+    </section>
+    <section aria-labelledby="su-2"><h3 id="su-2">2. When a scan arrives</h3>
+      <fieldset class="choices"><legend class="sr-only">When a scan arrives</legend>
+        <label class="choice"><input type="radio" name="setup-mode" value="copy" ${f.mode === 'copy' ? 'checked' : ''}><span><b>Copy it into Lindley</b> and leave my folder untouched. Recommended: your scan folder keeps every file.</span></label>
+        <label class="choice"><input type="radio" name="setup-mode" value="move" ${f.mode === 'move' ? 'checked' : ''}><span><b>Move it into Lindley</b> and empty my scan folder. Handy when the folder is only a drop-off spot for the scanner.</span></label>
+      </fieldset>
+    </section>
+    <section aria-labelledby="su-3"><h3 id="su-3">3. When Lindley needs your help</h3>
+      <p>Lindley flags any page it read with less than ${REVIEW_BELOW}% confidence so you can check it. You'll be able to change this in Settings.</p>
+    </section>
+    <div class="actions">${setupFirst ? '' : '<button class="btn" data-setup="cancel">Cancel</button>'}<button class="btn primary" data-setup="save">${setupFirst ? 'Start using Lindley' : 'Save'}</button></div>
+  </div>`;
+}
+async function setupAct(act) {
+  const f = setupDraft;
+  f.mode = $('input[name="setup-mode"]:checked', setupEl)?.value || f.mode;
+  if (act.startsWith('rm:')) { f.folders.splice(+act.slice(3), 1); renderSetup(); $('#setup-path', setupEl).focus(); return; }
+  if (act === 'add') {
+    const v = $('#setup-path', setupEl).value.trim();
+    if (v && !f.folders.includes(v)) f.folders.push(v);
+    renderSetup(); $('#setup-path', setupEl).focus(); return;
+  }
+  if (act === 'browse') {
+    // The real app uses the system folder dialog. Browsers only reveal the folder's name, not its full path.
+    try {
+      if (!window.showDirectoryPicker) throw new Error('unsupported');
+      const h = await showDirectoryPicker();
+      if (!f.folders.includes(h.name)) f.folders.push(h.name);
+      renderSetup();
+    } catch (e) {
+      if (e.name !== 'AbortError') { $('#setup-path', setupEl).focus(); toast('Type the folder path into the box. This browser can’t open a folder picker here.'); }
+    }
+    return;
+  }
+  if (act === 'cancel') { closeSetup(); return; }
+  if (act === 'save') {
+    if (!f.folders.length) { toast('Add at least one folder for Lindley to watch.'); $('#setup-path', setupEl).focus(); return; }
+    Object.assign(SETUP, { folders: f.folders, mode: f.mode });
+    try { localStorage.setItem('lindley-setup', JSON.stringify(SETUP)); } catch (e) { /* setup shows again next time */ }
+    closeSetup();
+    renderStatus();
+    toast(`Lindley is watching ${plural(SETUP.folders.length, 'folder')} and will ${SETUP.mode === 'copy' ? 'copy new scans, leaving your folders untouched' : 'move new scans into its library'}.`);
+  }
+}
+function closeSetup() { setupEl.hidden = true; setupReturn?.focus?.(); }
+
+function openReview(id) {
+  const l = locate(id);
+  if (!l) return;
+  go({ t: 'review', id: l.where === 'doc' ? l.doc.id : 'inbox' });
+  const i = listIds().indexOf(id);
+  if (i > 0) { U.cur = i; render(); }
+}
+
 function newDocDialog(ids) {
   if (!ids.length) return;
   const sugg = suggestDocName(ids);
@@ -1822,6 +1994,9 @@ document.addEventListener('click', e => {
   if (!menu.hidden && !t.closest('#menu')) closeMenu();
   const m = t.closest('[data-m]');
   if (m) { closeMenu(); menuFns[+m.dataset.m]?.(); return; }
+  const su = t.closest('[data-setup]');
+  if (su) { setupAct(su.dataset.setup); return; }
+  if (t.closest('[data-grip]')) return;
   const afn = t.closest('[data-afn]');
   if (afn) { AFN[+afn.dataset.afn]?.(); return; }
   const askB = t.closest('[data-ask]');
@@ -1842,6 +2017,8 @@ document.addEventListener('click', e => {
   if (view) { U.view = view.dataset.view; U.sel.clear(); clampCur(); render(); return; }
   const gotoB = t.closest('[data-goto]');
   if (gotoB) { U.cur = +gotoB.dataset.goto; render(); return; }
+  const rvc = t.closest('[data-review]');
+  if (rvc) { openReview(rvc.dataset.review); return; }
   const pgb = t.closest('[data-pgsel]');
   if (pgb) {
     const id = pgb.closest('.pg').dataset.pg;
@@ -1878,7 +2055,7 @@ document.addEventListener('click', e => {
   const ids = targets();
   const d = curDoc();
   // Menus from the dock open upward, so they stay next to the button.
-  const menuAt = items => { const r = a.getBoundingClientRect(); const up = !!a.closest('.dock'); openMenu(items, r.left, up ? r.top : r.bottom + 4, up); };
+  const menuAt = items => { const r = a.getBoundingClientRect(); const up = !!a.closest('.dock') && r.top > innerHeight / 2; openMenu(items, r.left, up ? r.top : r.bottom + 4, up); };
   const A = {
     rotL: () => rotate(ids, -90), rotR: () => rotate(ids, 90),
     up: () => shift(ids, -1), down: () => shift(ids, 1),
@@ -1887,6 +2064,9 @@ document.addEventListener('click', e => {
     modalNewDoc: () => { const sel = modal.dataset.ids.split(','); const name = $('#nd-name').value.trim(); const folder = $('#nd-folder').value || null; modal.hidden = true; syncScrim(); moveTo(sel, null, { name, folder }); },
     moveMenu: () => menuAt(moveItems(ids)),
     pageMore: () => menuAt(pageMenuItems(ids, true)),
+    addScans: () => $('#file-in').click(),
+    modalAddScans: () => { const mode = $('input[name="add-mode"]:checked', modal)?.value || 'copy'; const files = pendingFiles; modal.hidden = true; syncScrim(); if (U.nav.t !== 'inbox') go({ t: 'inbox' }); addScans(files, mode); },
+    openSetup: () => openSetup(false),
     backHome: () => go({ t: locate(U.nav.id)?.where === 'aside' ? 'aside' : 'inbox' }),
     startReview: () => go({ t: 'review', id: 'all' }),
     askReview: () => ask('Which pages need my review?'),
@@ -2034,6 +2214,34 @@ document.addEventListener('drop', e => {
 });
 document.addEventListener('dragend', () => { dragDoc = null; clearDocDrop(); });
 
+/* Dragging the dock by its grip */
+main.addEventListener('pointerdown', e => {
+  const g = e.target.closest('[data-grip]');
+  if (!g || narrow()) return;
+  e.preventDefault();
+  const m = main.getBoundingClientRect(), r = $('.dock', main).getBoundingClientRect();
+  const ox = e.clientX - r.left, oy = e.clientY - r.top;
+  g.setPointerCapture(e.pointerId);
+  $('.dock', main).classList.add('dragging');
+  const mv = ev => moveDockTo(ev.clientX - m.left - ox, ev.clientY - m.top - oy);
+  const up = () => { g.removeEventListener('pointermove', mv); g.removeEventListener('pointerup', up); $('.dock', main)?.classList.remove('dragging'); if (U.dockPos) saveDockPos(); };
+  g.addEventListener('pointermove', mv); g.addEventListener('pointerup', up);
+});
+main.addEventListener('dblclick', e => { if (e.target.closest('[data-grip]')) resetDock(); });
+
+/* Scans dropped in from the computer go to the Inbox */
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+document.addEventListener('dragover', e => { if (!hasFiles(e)) return; e.preventDefault(); main.classList.add('file-drop'); });
+document.addEventListener('dragleave', e => { if (hasFiles(e) && !e.relatedTarget) main.classList.remove('file-drop'); });
+document.addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  main.classList.remove('file-drop');
+  if (U.nav.t !== 'inbox') go({ t: 'inbox' });
+  addScansDialog(e.dataTransfer.files);
+});
+$('#file-in').addEventListener('change', e => { addScansDialog(e.target.files); e.target.value = ''; });
+
 /* Keyboard shortcuts */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeMenu(true); if (!modal.hidden) closeModal(); app.classList.remove('show-tree', 'show-ai'); syncScrim(); }
@@ -2043,6 +2251,27 @@ document.addEventListener('keydown', e => {
     const i = items.indexOf(document.activeElement);
     const j = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
     items[j]?.focus();
+    return;
+  }
+  // The grip moves the dock with the arrow keys; Home puts it back.
+  if (e.target.matches?.('[data-grip]') && /^(Arrow(Up|Down|Left|Right)|Home)$/.test(e.key)) {
+    e.preventDefault();
+    if (e.key === 'Home') { resetDock(); return; }
+    const m = main.getBoundingClientRect(), r = $('.dock', main).getBoundingClientRect();
+    const step = e.shiftKey ? 96 : 24;
+    const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0, dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+    moveDockTo(r.left - m.left + dx, r.top - m.top + dy);
+    saveDockPos();
+    return;
+  }
+  if (!setupEl.hidden) {
+    if (e.key === 'Escape' && !setupFirst) { closeSetup(); return; }
+    if (e.key === 'Enter' && e.target.id === 'setup-path') { e.preventDefault(); setupAct('add'); return; }
+    if (e.key === 'Tab') {
+      const f = $$('button, input', setupEl).filter(x => !x.disabled && x.type !== 'radio' || x.checked);
+      if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+    }
     return;
   }
   // Arrow keys move along the dock, as in any toolbar.
@@ -2056,7 +2285,7 @@ document.addEventListener('keydown', e => {
   if (e.target.id === 'nd-name' && e.key === 'Enter') { e.preventDefault(); $('[data-act="modalNewDoc"]', modal)?.click(); return; }
   // Keep Tab inside the open dialog.
   if (!modal.hidden && e.key === 'Tab') {
-    const f = $$('button:not(:disabled), input, select', modal);
+    const f = $$('button:not(:disabled), input, select', modal).filter(x => x.type !== 'radio' || x.checked);
     if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
     else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
   }
@@ -2123,6 +2352,7 @@ setInterval(() => {
   if (!id) return;
   const s = D.scans[id];
   s.status = 'read';
+  if (s.added) s.text = 'In the real app, this is the text Lindley read from your scan. Compare it with the image, correct anything that is wrong, then confirm it.';
   s.conf = s.engine === 'vision' ? 80 + Math.floor(Math.random() * 18) : 90 + Math.floor(Math.random() * 9);
   renderTree(); renderStatus();
   if (U.nav.t === 'inbox') renderMain();
@@ -2131,7 +2361,11 @@ setInterval(() => {
 /* ================= Boot ================= */
 function boot() {
   D = buildData();
-  U = { nav: { t: 'doc', id: 'd1' }, view: 'grid', sel: new Set(), anchor: null, cur: 0, zoom: 1, closed: {}, ai: 'dock', aiPos: { x: 0, y: 70 }, q: '', sort: 'new', thumb: 150 };
+  U = { nav: { t: 'doc', id: 'd1' }, view: 'grid', sel: new Set(), anchor: null, cur: 0, zoom: 1, closed: {}, ai: 'dock', aiPos: { x: 0, y: 70 }, q: '', sort: 'new', thumb: 150, dockPos: null };
+  // Per-viewer conveniences: where the dock was left, and whether setup has been done.
+  let saved = null;
+  try { U.dockPos = JSON.parse(localStorage.getItem('lindley-dock') || 'null'); saved = JSON.parse(localStorage.getItem('lindley-setup') || 'null'); } catch (e) { /* start fresh */ }
+  if (saved?.folders) Object.assign(SETUP, saved);
   $('#tree-toggle').innerHTML = icon('menu');
   document.documentElement.lang = 'en';
   $('#ai-toggle').innerHTML = lic();
@@ -2142,6 +2376,7 @@ function boot() {
   syncThemeBtn();
   syncAi();
   render();
+  if (!saved) openSetup(true);
   pushMsg('ai', '<p>Hello, I\'m Lindley. I can tell you about the document you have open, check whether pages are missing, or find every page that mentions a name.</p><p>When I\'m not sure I read a page correctly, I flag it for your review instead of guessing quietly. Pages like that are marked Review.</p>');
 }
 const fontsReady = Promise.all(['19px "Homemade Apple"', '18px "IM Fell English"', '16px "Special Elite"', '14px "IBM Plex Mono"'].map(f => document.fonts.load(f).catch(() => null)));

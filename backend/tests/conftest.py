@@ -20,6 +20,6 @@ def settings(tmp_path: Path) -> Settings:
 
 @pytest.fixture
 def client(settings: Settings, tmp_path: Path):
-    app = create_app(settings, settings_path=tmp_path / "settings.json")
+    app = create_app(settings, settings_path=tmp_path / "settings.json", watch=False)
     with TestClient(app) as c:
         yield c

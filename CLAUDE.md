@@ -8,7 +8,11 @@
   - `providers/`: the AI abstraction (`ChatProvider`, `VisionProvider`, `EmbeddingProvider`),
     built by `registry.build_provider`. Adapters: `anthropic`, `openai_compat`
     (OpenAI/Ollama/LM Studio/vLLM) and `fake` (for tests)
-  - `watcher/`, `worker/` (pipeline plus `ocr/` engines), `search/`: stubs for now
+  - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
+    `pipeline.py` (step records, Tesseract/vision reading), `ocr/` engines
+  - `watcher/`: watchdog folder watcher, started by the app lifespan (`create_app(watch=False)` in tests)
+  - `assembler/`: Inbox pages → documents; `search/`: stub for now
+  - `scripts/intake.py` reads real scans end to end; tests stub Tesseract (not installed in CI)
 - `frontend/`: Vite, React and TypeScript. The dev server proxies `/api` to `127.0.0.1:8765`
 - `scripts/dev.ps1`: runs both dev servers
 

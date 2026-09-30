@@ -21,7 +21,7 @@ from lindley.config import load_settings
 from lindley.db.database import connect, init_db
 from lindley.providers.base import ProviderError
 from lindley.providers.registry import get_provider
-from lindley.worker.intake import import_file, is_supported
+from lindley.worker.intake import ingest, is_supported
 from lindley.worker.pipeline import Pipeline
 
 REVIEW_BELOW = 90  # the review threshold the Settings screen will own
@@ -76,28 +76,24 @@ def main() -> int:
     )
     counts = {"new": 0, "duplicate": 0, "failed": 0, "read": 0}
     for f in files:
-        r = import_file(conn, settings, f)
+        r = ingest(conn, settings, pipe, f)
         counts[r.status] += 1
         line = f"  {f.name}: {r.status}"
         if r.error:
             line += f" ({r.error})"
-        scan = (
-            r.scan_id
-            and conn.execute("SELECT status FROM scans WHERE id = ?", (r.scan_id,)).fetchone()
-        )
-        if scan and r.pages and scan["status"] != "read":
-            state = pipe.process_scan(conn, r.scan_id)
-            counts["read" if state == "read" else "failed"] += 1
-            conf = conn.execute(
-                "SELECT AVG(t.confidence) FROM transcriptions t JOIN pages p ON p.id = t.page_id"
-                " WHERE p.scan_id = ? AND t.is_current = 1",
+        if r.reading:
+            counts["read" if r.reading == "read" else "failed"] += 1
+            scan = conn.execute(
+                "SELECT s.error, AVG(t.confidence) AS conf FROM scans s"
+                " LEFT JOIN pages p ON p.scan_id = s.id"
+                " LEFT JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
+                " WHERE s.id = ?",
                 (r.scan_id,),
-            ).fetchone()[0]
-            line += f", {r.pages} page{'s' if r.pages != 1 else ''} {state}"
-            line += f" ({conf:.0f}%)" if conf is not None else ""
-            if state == "failed":
-                err = conn.execute("SELECT error FROM scans WHERE id = ?", (r.scan_id,)).fetchone()
-                line += f": {err[0]}"
+            ).fetchone()
+            line += f", {r.pages} page{'s' if r.pages != 1 else ''} {r.reading}"
+            line += f" ({scan['conf']:.0f}%)" if scan["conf"] is not None else ""
+            if r.reading == "failed":
+                line += f": {scan['error']}"
         print(line)
 
     low = conn.execute(

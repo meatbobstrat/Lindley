@@ -15,12 +15,15 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from PIL import ExifTags, Image
 
 from lindley.config import Settings
 from lindley.worker.pipeline import Step, StepStatus, now, record_step, run_step
+
+if TYPE_CHECKING:
+    from lindley.worker.pipeline import Pipeline
 
 SUPPORTED_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp", ".pdf"})
 PDF_DPI = 300
@@ -36,6 +39,7 @@ class ImportResult:
     scan_id: int | None = None
     pages: int = 0
     error: str | None = None
+    reading: str | None = None  # after ingest: 'read' or 'failed'; None if nothing to read
 
 
 def is_supported(path: Path) -> bool:
@@ -124,6 +128,22 @@ def import_file(
     if settings.move_files:
         path.unlink()
     return ImportResult(path, "new", scan_id, pages)
+
+
+def ingest(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    pipeline: Pipeline,
+    path: Path,
+    origin: Literal["watched", "added"] = "added",
+) -> ImportResult:
+    """Import a file, then read any of its pages not read yet (a scan that failed is retried)."""
+    r = import_file(conn, settings, path, origin)
+    if r.scan_id and r.pages:
+        status = conn.execute("SELECT status FROM scans WHERE id = ?", (r.scan_id,)).fetchone()[0]
+        if status != "read":
+            r.reading = pipeline.process_scan(conn, r.scan_id)
+    return r
 
 
 def _library_copy(settings: Settings, path: Path, sha: str) -> Path:

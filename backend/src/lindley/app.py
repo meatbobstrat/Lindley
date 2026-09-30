@@ -14,6 +14,7 @@ from lindley.api import chat, documents, health, search
 from lindley.api import settings as settings_api
 from lindley.config import Settings, load_settings
 from lindley.db.database import init_db
+from lindley.watcher.watcher import FolderWatcher
 
 # Built frontend (frontend/dist), served in production so the app is a single process.
 FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
@@ -21,14 +22,24 @@ FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
-def create_app(settings: Settings | None = None, settings_path: Path | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, settings_path: Path | None = None, watch: bool = True
+) -> FastAPI:
+    """`watch=False` leaves the folder watcher off (tests, or serving without intake)."""
     settings = settings or load_settings(settings_path)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_db(settings.db_path)
-        # TODO(watcher/worker phase): start the folder watcher and worker here.
-        yield
+        watcher = FolderWatcher(settings) if watch else None
+        if watcher:
+            watcher.start()
+        app.state.watcher = watcher
+        try:
+            yield
+        finally:
+            if watcher:
+                watcher.stop()
 
     app = FastAPI(title="Lindley", version=__version__, lifespan=lifespan)
     app.state.settings = settings

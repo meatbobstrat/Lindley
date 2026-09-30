@@ -27,7 +27,9 @@ Lindley is in early development and isn't usable end to end yet.
 | UI design | Clickable mockup, close to MVP ([design/mockup](design/mockup/index.html)) |
 | Database | Schema v2 designed and tested ([design/database.md](design/database.md)) |
 | Assembler (Inbox pages → documents) | Built and tested on synthetic batches |
-| Folder watcher, intake, OCR | Stubs; next up |
+| Intake (hash, EXIF, split) and Tesseract reading | Built; try it on your scans with `scripts/intake.py` |
+| Vision model reading (handwriting) | Wired into intake; the AI adapters are still stubs |
+| Folder watcher | Next up |
 | Searchable PDF export, search, AI chat | Not started |
 | Real UI (React) | Scaffold only; to be built from the mockup |
 
@@ -101,16 +103,17 @@ Open it in a browser; it uses sample data and saves nothing. It covers:
 | `backend/src/lindley/db/` | SQLite schema (with full-text search), migrations, document completeness |
 | `backend/src/lindley/assembler/` | Clues, evidence, grouping, AI refinement, test bench |
 | `backend/src/lindley/providers/` | Pluggable AI providers: Anthropic, OpenAI-compatible (OpenAI, Ollama, LM Studio, vLLM), and a fake one for tests |
-| `backend/src/lindley/watcher/`, `worker/`, `search/` | Stubs for the next phase |
+| `backend/src/lindley/worker/` | Intake (hash, EXIF, split) and reading (Tesseract, vision model) |
+| `backend/src/lindley/watcher/`, `search/` | Stubs for the next phase |
 | `frontend/` | React, TypeScript and Vite |
 | `design/` | UI mockup and database design |
 | `scripts/dev.ps1` | Runs both dev servers |
 
 ## Setup (Windows)
 
-Prerequisites: Python 3.13 and Node 22+. Reading scans will also need
-[Tesseract](https://github.com/UB-Mannheim/tesseract/wiki) and Ghostscript. Nothing that
-exists so far needs them.
+Prerequisites: Python 3.13 and Node 22+. Reading scans needs
+[Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
+(`winget install UB-Mannheim.TesseractOCR`). Searchable PDF export will also need Ghostscript.
 
 ```powershell
 # backend
@@ -146,6 +149,22 @@ python scripts\bench_assembler.py --ai settings   # include the chat AI from you
 
 The rules were written knowing what the bench generates, so its scores are a ceiling, not a
 forecast for real scans.
+
+### Read your own scans
+
+`scripts/intake.py` does what the folder watcher will: it imports scan files, reads every
+page, and runs the assembler. Point it at a settings file whose `db_path`, `library_dir` and
+`quarantine_dir` are in a scratch folder outside the repo:
+
+```powershell
+cd backend
+python scripts\intake.py D:\scans --settings D:\scratch\settings.json
+python scripts\intake.py D:\scans --settings D:\scratch\settings.json --no-ai   # rules and Tesseract only
+```
+
+Folders are searched recursively in natural name order (`scan_2` before `scan_10`). It's safe
+to run again: files already read are skipped, and failed ones are tried again. Originals are
+never changed, and with `move_files` they're removed only once their copy is checked.
 
 ## Config
 
@@ -200,8 +219,10 @@ folders.
 - [x] UI design (clickable mockup)
 - [x] Database design
 - [x] Assembler: grouping Inbox pages into documents
-- [ ] Watcher and intake (hashing, EXIF, splitting PDFs and TIFFs, image checks)
-- [ ] Reading: Tesseract plus a vision model for handwriting
+- [x] Intake: hashing, EXIF, splitting PDFs and TIFFs, Tesseract reading
+- [ ] Folder watcher
+- [ ] Image checks: blank pages, rotation, handwriting or print
+- [ ] Vision model reading for handwriting (intake is ready; the AI adapters aren't)
 - [ ] API and the real React UI, built from the mockup
 - [ ] Searchable PDF export
 - [ ] Search and Ask Lindley (chat with your documents)

@@ -86,12 +86,12 @@ class TesseractEngine:
     def version(self) -> str:
         """For transcriptions.engine_model, e.g. 'tesseract v5.4.0 eng'."""
         if not self.exe:
-            raise TesseractNotFound(self._missing())
+            raise TesseractNotFound(self.missing_help())
         return f"{_version(self.exe)} {'+'.join(self.settings.languages)}"
 
     def recognize(self, image_path: Path) -> list[PageResult]:
         if not self.exe:
-            raise TesseractNotFound(self._missing())
+            raise TesseractNotFound(self.missing_help())
         run = subprocess.run(
             [str(self.exe), str(image_path), "stdout", "-l", "+".join(self.settings.languages)]
             + ["tsv"],
@@ -109,7 +109,7 @@ class TesseractEngine:
     def make_searchable_pdf(self, source: Path, output: Path) -> None:
         raise NotImplementedError
 
-    def _missing(self) -> str:
+    def missing_help(self) -> str:
         where = self.settings.tesseract_path or "PATH or " + str(WINDOWS_DEFAULT)
         return (
             f"Tesseract wasn't found ({where}). Install it "

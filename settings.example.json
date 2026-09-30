@@ -12,6 +12,12 @@
     "confidence_threshold": 70,
     "vision_provider": "local"
   },
+  "assembler": {
+    "group_at": 75,
+    "hint_at": 45,
+    "ai_band": [35, 75],
+    "use_ai": true
+  },
   "ai": {
     "chat_provider": "local",
     "embedding_provider": "local",

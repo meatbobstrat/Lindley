@@ -1,6 +1,6 @@
-"""Job pipeline: queued -> ocr -> pdf -> indexed, or -> quarantined on failure.
+"""Intake pipeline: each scan runs a series of steps, each recorded in the intake_steps table.
 
-Stub: implemented in the worker phase.
+Stub: implemented in the worker phase. See design/database.md for what each step extracts.
 """
 
 from __future__ import annotations
@@ -10,25 +10,36 @@ from enum import StrEnum
 from lindley.config import Settings
 
 
-class JobStatus(StrEnum):
+class Step(StrEnum):
+    """Intake steps, in order. Matches the CHECK list on intake_steps.step."""
+
+    HASH = "hash"      # sha256; a known hash is a duplicate file
+    EXIF = "exif"      # scanner, scan time, file times
+    SPLIT = "split"    # one page image per page of a PDF or TIFF
+    IMAGE = "image"    # size, dpi, perceptual hash, paper colour, blank score, rotation, script
+    OCR = "ocr"        # Tesseract reading of printed pages
+    VISION = "vision"  # vision model for handwriting and low-confidence pages
+    FACTS = "facts"    # dates, names, places, letterheads, page markers, first and last lines
+    EMBED = "embed"    # text embedding for similarity
+    MATCH = "match"    # page_links evidence, then suggestions
+
+
+class StepStatus(StrEnum):
     QUEUED = "queued"
-    OCR = "ocr"
-    PDF = "pdf"
-    INDEXED = "indexed"
-    QUARANTINED = "quarantined"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    SKIPPED = "skipped"
 
 
 class Pipeline:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    def process_job(self, job_id: int) -> JobStatus:
-        # TODO(worker phase):
-        # 1. OCR each page with Tesseract (worker.ocr.tesseract).
-        # 2. Hybrid routing: when settings.ocr.engine == "hybrid" and a page's confidence is
-        #    below settings.ocr.confidence_threshold, re-transcribe it with the vision
-        #    provider (worker.ocr.vision) and keep the better result.
-        # 3. Write the searchable PDF into settings.library_dir.
-        # 4. Store pages in the DB (the FTS index updates via triggers).
-        # 5. On any failure, move the source to settings.quarantine_dir and record the error.
+    def process_scan(self, scan_id: int) -> StepStatus:
+        # TODO(worker phase): run each Step in order for the scan and its pages, writing an
+        # intake_steps row per step. Hybrid reading: when settings.ocr.engine == "hybrid" and
+        # Tesseract's confidence is below settings.ocr.confidence_threshold, run VISION and make
+        # the better reading current. On failure, record the error on the step and the scan,
+        # move the source to settings.quarantine_dir, and never alter the original file.
         raise NotImplementedError

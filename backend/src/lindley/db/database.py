@@ -1,10 +1,19 @@
-"""SQLite connection helpers and schema initialisation."""
+"""SQLite connection helpers, schema initialisation and migrations."""
 
 from __future__ import annotations
 
 import sqlite3
 from importlib.resources import files
 from pathlib import Path
+
+SCHEMA_VERSION = 1
+
+# Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}.
+# schema.sql always describes the latest version, for new databases.
+MIGRATIONS: dict[int, str] = {}
+
+# Tables from the pre-release placeholder schema (user_version 0). They never held real data.
+_PLACEHOLDER_TABLES = ("pages_fts", "jobs", "pages", "documents")
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
@@ -15,11 +24,42 @@ def connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _tables(conn: sqlite3.Connection) -> set[str]:
+    return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+
+
+def _drop_placeholder(conn: sqlite3.Connection) -> None:
+    """Remove the empty placeholder tables so the real schema can be created."""
+    existing = _tables(conn)
+    for table in ("jobs", "pages", "documents"):
+        if table in existing and conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone():
+            raise RuntimeError(
+                f"The database has data in the old '{table}' table. "
+                "Move it aside and start Lindley again to create a new one."
+            )
+    for table in _PLACEHOLDER_TABLES:
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
 def init_db(db_path: Path) -> None:
-    """Create the database file and apply schema.sql (safe to call repeatedly)."""
+    """Create or upgrade the database to SCHEMA_VERSION (safe to call repeatedly)."""
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     schema = files("lindley.db").joinpath("schema.sql").read_text(encoding="utf-8")
-    with connect(db_path) as conn:
-        conn.executescript(schema)
-    conn.close()
+    conn = connect(db_path)
+    try:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version > SCHEMA_VERSION:
+            raise RuntimeError(
+                f"The database is from a newer Lindley (schema {version}); "
+                f"this version understands up to {SCHEMA_VERSION}."
+            )
+        if version == 0 and "jobs" in _tables(conn):
+            _drop_placeholder(conn)
+        for target in range(max(version, 1) + 1, SCHEMA_VERSION + 1):
+            conn.executescript(MIGRATIONS[target])
+        conn.executescript(schema)  # idempotent: creates a new database, fills in anything missing
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        conn.commit()
+    finally:
+        conn.close()

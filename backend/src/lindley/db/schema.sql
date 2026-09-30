@@ -1,4 +1,4 @@
--- Lindley schema, version 1 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
+-- Lindley schema, version 2 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
 -- Applied idempotently at startup by lindley.db.database.init_db.
 -- Design notes: design/database.md.
 --
@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS documents (
     doc_date            TEXT,                       -- partial ISO 8601: 1892, 1892-03, 1892-03-04
     date_source         TEXT CHECK (date_source IN ('lindley', 'user')),
     grouping_confidence REAL,                       -- 0-100: do these pages belong together
+    reasons             TEXT,                       -- JSON list: why Lindley grouped these pages
     summary             TEXT,
     created_at          TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at          TEXT NOT NULL DEFAULT (datetime('now'))

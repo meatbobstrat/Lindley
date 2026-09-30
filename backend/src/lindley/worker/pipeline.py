@@ -21,7 +21,7 @@ class Step(StrEnum):
     VISION = "vision"  # vision model for handwriting and low-confidence pages
     FACTS = "facts"    # dates, names, places, letterheads, page markers, first and last lines
     EMBED = "embed"    # text embedding for similarity
-    MATCH = "match"    # page_links evidence, then suggestions
+    MATCH = "match"    # lindley.assembler.assemble: evidence, Lindley documents, hints
 
 
 class StepStatus(StrEnum):
@@ -42,4 +42,6 @@ class Pipeline:
         # Tesseract's confidence is below settings.ocr.confidence_threshold, run VISION and make
         # the better reading current. On failure, record the error on the step and the scan,
         # move the source to settings.quarantine_dir, and never alter the original file.
+        # MATCH is not per scan: once new scans have settled (no new file for ~20 s), call
+        # lindley.assembler.assemble(conn, settings.assembler, chat) once for the whole Inbox.
         raise NotImplementedError

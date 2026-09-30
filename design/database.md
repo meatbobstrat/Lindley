@@ -1,6 +1,6 @@
 # Lindley database design
 
-Schema version 1. The source of truth is [backend/src/lindley/db/schema.sql](../backend/src/lindley/db/schema.sql).
+Schema version 2. The source of truth is [backend/src/lindley/db/schema.sql](../backend/src/lindley/db/schema.sql).
 This document explains why the schema is shaped the way it is.
 
 ## Goals
@@ -93,6 +93,60 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
 - **Evidence is stored before any decision is made.** Every signal is stored in `page_links` separately, with a score and a readable `evidence` note, for example: "Page 2 ends mid-sentence ('…the auction in'); page 3 begins 'May, and Father…'".
 - **The matcher combines the signals into one suggestion.** Its `reasons` are the plain-language list shown in the UI, for example "Same handwriting as page 2", "Mentions Mary and the auction in May".
 - **Lindley's own groupings are ordinary rows.** When Lindley groups pages on its own (the italic, suggested names in the mockup), it creates a document with `origin = 'lindley'` and `name_source = 'lindley'`. Everything stays visible and can be undone through `history`.
+
+## The assembler: from Inbox pages to documents
+
+`lindley.assembler.assemble(conn, settings.assembler, chat)` runs once new scans have settled. It's safe to run as often as you like; a second run with nothing new changes nothing.
+
+1. **Clues** (`clues.py`, rules only). A number standing alone at the top or bottom of a page is a page number ("- 2 -", "Page 2 of 3", "ii"; with word positions, the top or bottom 12% of the page). The rules also find:
+   - greetings ("Dear Sister,"), letterheads and headings, which start a document;
+   - closings and signatures ("Your loving son / John"), "Paid" and "Notary Public", which end one;
+   - sentences cut off at the bottom of a page and picked up at the top of the next;
+   - dates in old spellings, people, places, amounts, and file sequence numbers (`scan_0042`);
+   - whether a page looks like a letter, receipt, deed, diary, stray note or blank.
+
+   All of these are saved as `facts` with `source = 'rule'`.
+2. **Evidence** (`evidence.py`). Each pair of neighbouring pages gets a same-document score from 0 to 1:
+   - Scanned one after another: 0.62 to start with.
+   - A greeting on the second page, or a signature on the first: minus 0.45 or 0.4.
+   - Different kinds of page: minus 0.35.
+   - Page numbers running n → n+1: at least 0.95.
+   - A sentence carried over the break: plus 0.3.
+   - Shared names or the same letterhead add a little more.
+
+   Each signal is saved in `page_links` with a readable note.
+3. **Grouping** (`segment.py`). Pages are put in scan order and cut wherever the score falls below 0.5.
+   - **Order within a group:** page numbers first, then greeting first and signature last, then scan order.
+   - **Rejoining parts scanned apart:** a group that lacks its end is joined to a group that lacks its start when one clearly continues the other. This catches two pages fed through the scanner swapped.
+   - **Confidence:** each group gets one (0–100), based on how sure the breaks inside and around it are. It drops when the group has no clear start or end (a page may be missing), except for diaries.
+4. **AI** (`ai.py`, only when a chat AI is set in Settings). The AI is asked only about breaks scoring 35–75 and groups whose order isn't settled. It gets page text and clues, never images.
+   - Its reply must use every page given exactly once, and no others. Anything else is rejected and the rules' answer stands.
+   - It also suggests names where the rules could only guess.
+5. **Saving** (`apply.py`), in one transaction:
+
+   | Situation | What Lindley does |
+   |---|---|
+   | The group clearly continues an open document that Lindley made and no one has touched | Adds the pages to it (`history`: `add_pages`) |
+   | The same, but a person has named, changed or worked on the document | Suggests it (`add_to_document`); the page stays in the Inbox |
+   | The group is confident (at or above `group_at`, default 75) | Creates a Lindley document with an italic name, its type, date, confidence and `reasons` (`history`: `group_pages`) |
+   | A likely match (at or above `hint_at`, default 45) | Suggests it (`add_to_document`); the page stays in the Inbox |
+   | A blank page or stray note | Suggests Set aside; never moves it |
+   | A completed document | Never touches it |
+   | A suggestion a person dismissed | Never makes it again |
+
+**Test bench.** `lindley.assembler.bench` makes seeded batches of believable pages with known right answers:
+- letters of 1–4 pages, some with page numbers and some broken mid-sentence;
+- receipts, a 3-page deed, diary pages, notes and blanks;
+- two pages swapped, and a last page that arrives in a later drop.
+
+`scripts/bench_assembler.py` scores the assembler on them, and `scripts/demo_assembler.py` shows the Inbox shrinking round by round. Results at version 1, over 30 batches:
+
+| | Pair F1 | Documents made | Wrong | Rebuilt exactly | Left in Inbox |
+|---|---|---|---|---|---|
+| Rules only | 0.94 | 240 | 0 | 96% | 4.5% |
+| Rules + stand-in AI that is always right | 0.97 | 249 | 0 | 96% | 0.3% |
+
+The rules were written knowing what the bench generates, so these numbers are a ceiling, not a forecast. Real scans carry OCR errors, odd layouts and messier scanning order. The bench's job is to catch regressions and to measure a real model (`--ai settings`) once OCR is running.
 
 ## Completeness
 

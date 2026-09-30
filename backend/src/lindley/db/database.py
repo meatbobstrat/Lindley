@@ -6,11 +6,13 @@ import sqlite3
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}.
 # schema.sql always describes the latest version, for new databases.
-MIGRATIONS: dict[int, str] = {}
+MIGRATIONS: dict[int, str] = {
+    2: "ALTER TABLE documents ADD COLUMN reasons TEXT;",
+}
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.
 _PLACEHOLDER_TABLES = ("pages_fts", "jobs", "pages", "documents")
@@ -56,7 +58,8 @@ def init_db(db_path: Path) -> None:
             )
         if version == 0 and "jobs" in _tables(conn):
             _drop_placeholder(conn)
-        for target in range(max(version, 1) + 1, SCHEMA_VERSION + 1):
+        # A new database is built from schema.sql; an existing one is upgraded step by step.
+        for target in range(version + 1 if version else SCHEMA_VERSION + 1, SCHEMA_VERSION + 1):
             conn.executescript(MIGRATIONS[target])
         conn.executescript(schema)  # idempotent: creates a new database, fills in anything missing
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

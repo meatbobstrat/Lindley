@@ -48,6 +48,18 @@ class AiSettings(BaseModel):
     providers: dict[str, ProviderConfig] = Field(default_factory=_default_providers)
 
 
+class AssemblerSettings(BaseModel):
+    """How confident Lindley must be (0-100) before it groups Inbox pages into documents."""
+
+    # At or above this, confident groups become Lindley documents; pages leave the Inbox.
+    group_at: int = Field(default=75, ge=0, le=100)
+    # At or above this, a page stays in the Inbox with an "Add to ...?" hint.
+    hint_at: int = Field(default=45, ge=0, le=100)
+    # Breaks between pages scored inside this band are checked with the chat AI, if one is set.
+    ai_band: tuple[int, int] = (35, 75)
+    use_ai: bool = True
+
+
 class Settings(BaseModel):
     watch_folders: list[Path] = Field(default_factory=lambda: [Path("data/inbox")])
     processing_dir: Path = Path("data/processing")
@@ -57,6 +69,7 @@ class Settings(BaseModel):
     move_files: bool = False
     ocr: OcrSettings = Field(default_factory=OcrSettings)
     ai: AiSettings = Field(default_factory=AiSettings)
+    assembler: AssemblerSettings = Field(default_factory=AssemblerSettings)
 
 
 def default_settings_path() -> Path:

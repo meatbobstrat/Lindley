@@ -11,6 +11,7 @@ class PageResult:
     text: str
     confidence: float | None  # 0-100
     engine: str
+    words: list[dict] | None = None  # [{"text", "conf", "bbox": [x, y, w, h]}], when known
 
 
 class OcrEngine(Protocol):

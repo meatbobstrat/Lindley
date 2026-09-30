@@ -69,7 +69,7 @@ button { cursor: pointer; }
 .mono { font-family: var(--mono); font-size: 12px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 /* The Lindley mark: one shape that always means "this gets you Lindley, the AI". */
-.lic { width: 20px; height: 20px; flex: none; color: var(--ai); }
+.lic { width: var(--lic-size, 20px); height: var(--lic-size, 20px); flex: none; color: var(--ai); }
 
 /* ---------- App frame ---------- */
 .app {
@@ -93,7 +93,7 @@ button { cursor: pointer; }
   background: var(--surface);
 }
 .brand { display: flex; align-items: center; gap: 8px; font-family: var(--serif); font-weight: 600; font-size: 19px; letter-spacing: .01em; min-width: 0; }
-.brand .lic { width: 28px; height: 28px; }
+.brand .lic { --lic-size: 28px; }
 .search { flex: 1; max-width: 520px; position: relative; }
 .search input {
   width: 100%; padding: 7px 10px 7px 34px;
@@ -112,12 +112,12 @@ button { cursor: pointer; }
   background: var(--panel);
   border-right: 1px solid var(--line);
   overflow: auto;
-  padding: 10px 8px 16px;
-  display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 8px 16px;
+  display: flex; flex-direction: column; gap: 1px;
 }
 .t-item {
   display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 6px 8px 6px calc(8px + var(--d, 0) * 16px);
+  padding: 5px 8px 5px calc(8px + var(--d, 0) * 14px);
   border: 1px solid transparent; border-radius: 6px; background: none; text-align: left;
 }
 .t-item:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
@@ -126,6 +126,12 @@ button { cursor: pointer; }
 .t-item.is-drop { border-color: var(--accent); border-style: dashed; background: var(--accent-soft); }
 .t-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .t-item.is-temp .t-name { font-style: italic; }
+.t-item.t2 { align-items: flex-start; padding-block: 4px; }
+.t-item.t2 > .ic { margin-top: 1px; }
+.t-txt { flex: 1; min-width: 0; display: grid; }
+.t2 .t-name { font-size: 13.5px; line-height: 1.35; }
+.t-meta { display: flex; flex-wrap: wrap; align-items: center; column-gap: 5px; font-size: 12px; line-height: 1.45; color: var(--muted); font-weight: 400; }
+.t-dot { color: var(--muted); }
 .count { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
 .count.strong { font-weight: 600; color: var(--ink); background: var(--raise); border: 1px solid var(--line); padding: 0 7px; border-radius: 999px; }
 .t-inbox { font-weight: 600; padding-block: 8px; }
@@ -151,10 +157,10 @@ button { cursor: pointer; }
 .legend { margin-top: auto; padding: 12px 8px 0; font-size: 12px; color: var(--muted); display: grid; gap: 5px; }
 .legend span { display: flex; align-items: center; gap: 6px; }
 .legend .ic { width: 15px; height: 15px; color: var(--ink); }
-.legend .lic { width: 16px; height: 16px; }
+.legend .lic { --lic-size: 16px; }
 
 /* ---------- Main ---------- */
-.main { grid-row: 2; grid-column: 2; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.main { position: relative; container-type: inline-size; grid-row: 2; grid-column: 2; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .head { padding: 14px 20px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
 .crumbs { font-size: 12px; color: var(--muted); letter-spacing: .02em; }
 .title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -180,15 +186,16 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .btn.ai { border-color: var(--ai); color: var(--ink); background: var(--ai-soft); font-weight: 500; }
 .btn.ai:hover:not(:disabled) { color: var(--ink); }
 .btn.ask { padding: 6px 14px 6px 10px; font-size: 15px; }
-.btn.ask .lic { width: 22px; height: 22px; }
+.btn.ask .lic { --lic-size: 22px; }
 .btn.ghost { border-color: transparent; background: none; }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn .ic { width: 16px; height: 16px; }
-.btn .lic { width: 18px; height: 18px; }
+.btn .lic { --lic-size: 18px; }
 .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
 .chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); white-space: nowrap; }
 .chip.ai { background: var(--ai-soft); border-color: transparent; color: var(--ink); }
-.chip .ic, .chip .lic { width: 14px; height: 14px; }
+.chip .ic { width: 14px; height: 14px; }
+.chip .lic { --lic-size: 14px; }
 .meter { display: inline-flex; align-items: center; gap: 6px; }
 .meter b { display: inline-block; width: 54px; height: 5px; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; }
 .meter b { border: 1px solid var(--field); height: 7px; }
@@ -208,15 +215,42 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .tab:hover { color: var(--ink); }
 .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 500; }
 
-.tb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 6px 14px; border-bottom: 1px solid var(--line); background: var(--surface); }
-.tb .btn { padding: 5px 9px; border-color: transparent; background: none; font-size: 13px; }
-.tb .btn:hover:not(:disabled) { background: var(--panel); border-color: var(--line); color: var(--ink); }
-.tb .btn.ai { color: var(--ai); }
-.tb .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
-.tb-sel { font-size: 12px; color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; min-width: 9ch; }
-.tb select, .tb input[type="range"] { font-size: 13px; }
-.tb select { padding: 4px 6px; border: 1px solid var(--field); border-radius: 6px; background: var(--raise); }
-.tb label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.viewbar { display: flex; align-items: center; justify-content: flex-end; gap: 14px; flex-wrap: wrap; padding: 0 0 8px; font-size: 12px; color: var(--muted); }
+.viewbar label { display: inline-flex; align-items: center; gap: 6px; }
+.viewbar select { padding: 3px 6px; border: 1px solid var(--field); border-radius: 6px; background: var(--raise); font-size: 13px; }
+.viewbar .btn { padding: 3px 10px; font-size: 13px; }
+.tabrow { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.tabrow .viewbar { padding-bottom: 6px; }
+.crumb { border: 0; background: none; padding: 0; color: var(--ink); text-decoration: underline; font-size: 12px; }
+
+/* The action dock floats centered over the content, close to where you are looking. */
+.dock-wrap { position: absolute; left: 12px; right: 12px; bottom: 14px; z-index: 20; display: flex; justify-content: center; pointer-events: none; }
+.dock {
+  pointer-events: auto; display: flex; align-items: center; gap: 2px; max-width: 100%; overflow-x: auto;
+  padding: 6px; border: 1px solid var(--field); border-radius: 14px; background: var(--raise); box-shadow: var(--shadow);
+}
+.dock .btn { flex: none; padding: 7px 11px; border-color: transparent; background: none; font-size: 14px; }
+.dock .btn:hover:not(:disabled) { background: var(--panel); border-color: var(--line); color: var(--ink); }
+.dock .btn.ico { padding: 7px; }
+.dock .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.dock .btn.primary:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); filter: brightness(1.08); }
+.dock .btn.ai { background: var(--ai-soft); border-color: var(--ai); }
+.btn.next { flex-direction: row-reverse; }
+.dock .sep { flex: none; width: 1px; align-self: stretch; margin: 4px 6px; background: var(--line); }
+.dock-sel { flex: none; padding: 0 6px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.dock-prog { flex: none; display: grid; justify-items: center; gap: 4px; padding: 0 14px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.dock-prog b { width: 160px; height: 7px; border-radius: 4px; border: 1px solid var(--field); position: relative; overflow: hidden; }
+.dock-prog b::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v); background: var(--ink); }
+.dock-hint { flex: none; padding: 0 8px; font-size: 12px; color: var(--muted); }
+.main.has-dock .grid, .main.has-dock .docs, .main.has-dock .results, .main.has-dock .empty, .main.has-dock .rv-done { padding-bottom: 96px; }
+.main.has-dock .side-tx, .main.has-dock .side-img { padding-bottom: 90px; }
+.main.has-dock .reader .strip { padding-bottom: 84px; }
+@container (max-width: 760px) {
+  .dock .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .dock .btn { padding: 7px; }
+  .dock-hint { display: none; }
+  .dock-prog b { width: 90px; }
+}
 
 .scroll { flex: 1; overflow: auto; min-height: 0; }
 
@@ -258,7 +292,7 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
   background: var(--ai-soft); color: var(--ink); font-size: 12px; text-align: left;
 }
 .pg-hint span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pg-hint .lic { width: 16px; height: 16px; }
+.pg-hint .lic { --lic-size: 16px; }
 .empty { padding: 48px 20px; text-align: center; color: var(--muted); }
 
 /* Reader */
@@ -293,6 +327,11 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .rv-state.flag > .ic { color: var(--warn); }
 .rv-state.mine { background: var(--panel); }
 .rv-where { font-size: 13px; color: var(--muted); }
+.rv-strip { border-top: 0; padding: 2px 0 10px; }
+.fld { font-size: 13px; font-weight: 600; margin-bottom: -8px; }
+.fld-in { width: 100%; padding: 8px 10px; border: 1px solid var(--field); border-radius: 6px; background: var(--raise); }
+.fld-hint { display: flex; align-items: center; gap: 6px; margin-top: -6px !important; font-size: 13px; }
+.fld-hint .lic { --lic-size: 16px; }
 .rv-where b { color: var(--ink); font-weight: 500; }
 .rv-acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .rv-done { display: grid; justify-items: center; gap: 10px; padding: 64px 20px; text-align: center; color: var(--muted); }
@@ -345,7 +384,7 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .ai-h { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); }
 .ai-pane.is-float .ai-h { cursor: move; background: var(--panel); }
 .ai-h strong { flex: 1; font-family: var(--serif); font-size: 17px; }
-.ai-h .lic { width: 26px; height: 26px; }
+.ai-h .lic { --lic-size: 26px; }
 .ai-h .icon-btn { width: 28px; height: 28px; }
 .ai-ctx { padding: 6px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--surface); }
 .ai-ctx b { color: var(--ink); font-weight: 500; }
@@ -374,7 +413,7 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
   display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 12px;
   border: 0; border-left: 1px solid var(--line); background: var(--raise); color: var(--ink);
 }
-.ai-rail .lic { width: 28px; height: 28px; }
+.ai-rail .lic { --lic-size: 28px; }
 .ai-rail span { writing-mode: vertical-rl; font-family: var(--serif); font-size: 14px; font-weight: 600; letter-spacing: .03em; }
 
 /* ---------- Overlays ---------- */
@@ -387,12 +426,12 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--accent-soft); }
 .menu button[data-depth] { padding-left: calc(10px + var(--d) * 16px); }
 .menu button:disabled { opacity: .45; cursor: default; }
-.menu .lic { width: 18px; height: 18px; }
+.menu .lic { --lic-size: 18px; }
 .menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; width: auto; }
 .menu .mh { padding: 4px 10px 2px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .menu .ic { width: 16px; height: 16px; }
 .toast {
-  position: fixed; z-index: 70; left: 50%; bottom: 40px; transform: translateX(-50%);
+  position: fixed; z-index: 70; left: 50%; bottom: 128px; transform: translateX(-50%);
   display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px);
   padding: 9px 10px 9px 14px; border-radius: 8px; background: var(--ink); color: var(--surface); box-shadow: var(--shadow); font-size: 13px;
 }
@@ -413,7 +452,6 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 @media (max-width: 1100px) {
   .app { grid-template-columns: 240px minmax(0, 1fr) auto; }
   .ai-pane:not(.is-float) { width: 300px; }
-  .tb .lbl { display: none; }
 }
 @media (max-width: 860px) {
   body { padding-block: 8px; }
@@ -438,6 +476,7 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
   .head { padding-inline: 14px; }
   .grid { --thumb: 120px !important; padding-inline: 14px; gap: 10px; }
   .side { grid-template-columns: minmax(0, 1fr); }
+  .dock-wrap { left: 8px; right: 8px; bottom: 8px; }
   .side-img { max-height: 50vh; }
   .side-tx { border-left: 0; border-top: 1px solid var(--line); }
   .status .hide-narrow { display: none; }
@@ -538,6 +577,8 @@ const I = {
   eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z',
   newdoc: 'M6 3h9l4 4v14H6zM12 10v7M8.5 13.5h7',
   back: 'M9 7L4 12l5 5M4 12h16',
+  more: 'M6 9l6 6 6-6',
+  pen: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
 };
 const lic = (cls = '') => `<svg class="lic ${cls}" aria-hidden="true"><use href="#lindley"/></svg>`;
 const icon = (n, cls = '') => n === 'lindley' ? lic(cls) : `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${I[n]}"/></svg>`;
@@ -636,7 +677,7 @@ function buildData() {
   const mk = (kind, text, o = {}) => {
     const id = 'S' + String(++n).padStart(4, '0');
     // Pages with words the reader wasn't sure of ({word}) come back with low confidence.
-    const conf = o.conf ?? (text.includes('{') ? 58 + Math.floor(r() * 18) : kind === 'hand' ? 82 + Math.floor(r() * 15) : kind === 'print' || kind === 'typed' ? 88 + Math.floor(r() * 11) : 95);
+    const conf = o.conf ?? (text.includes('{') ? 58 + Math.floor(r() * 18) : kind === 'hand' ? 86 + Math.floor(r() * 13) : kind === 'print' || kind === 'typed' ? 88 + Math.floor(r() * 11) : 95);
     scans[id] = {
       id, file: `SCAN_${String(n).padStart(4, '0')}.tif`, kind, text,
       orient: o.orient || 0, rot: 0, conf,
@@ -701,13 +742,13 @@ function buildData() {
   doc('c1', {
     name: 'Marriage certificate, Branson and Hale, 1874', temp: false, status: 'complete', conf: 97, type: 'Certificate', date: '12 June 1874',
     people: 'John W. Branson, Eliza M. Hale', place: 'Greene County, Ohio', tags: ['Family records'],
-    pages: TEXT.cert.map(t => mk('print', t)), exported: '12 Sep 2026',
+    pages: TEXT.cert.map(t => mk('print', t, { conf: 97 })), exported: '12 Sep 2026',
     summary: 'The marriage certificate of John W. Branson and Eliza M. Hale, married 12 June 1874 at her father\'s house by Rev. A. D. Whitcomb.',
   });
   doc('c2', {
     name: 'Letter to Lindley, June 1901', temp: false, status: 'complete', conf: 93, type: 'Letter', date: '2 June 1901',
     people: 'Mary A. Branson, Lindley C. Branson', place: 'Cincinnati, Ohio', tags: ['Branson letters'],
-    pages: TEXT.aunt.map(t => mk('hand', t)), exported: '18 Sep 2026',
+    pages: TEXT.aunt.map(t => mk('hand', t, { conf: 94 })), exported: '18 Sep 2026',
     summary: 'Mary A. Branson congratulates her nephew Lindley on finishing his school term first in his class and sends him his grandfather\'s copy of Emerson\'s Essays.',
   });
 
@@ -874,10 +915,12 @@ const rotStyle = s => { const a = angle(s); return `--r:${a}deg;--s:${a % 180 ? 
 const docsBy = st => Object.values(D.docs).filter(d => d.status === st);
 const curDoc = () => U.nav.t === 'doc' ? D.docs[U.nav.id] : null;
 // Pages read with less than this confidence are flagged for a person to check.
-const REVIEW_BELOW = 80;
+// Fixed for now; it will become a user setting when the Settings screen is designed.
+const REVIEW_BELOW = 90;
 const needsReview = s => s.status === 'read' && !s.reviewed && s.conf < REVIEW_BELOW;
 const docReview = d => d.status === 'progress' ? d.pages.filter(id => needsReview(D.scans[id])).length : 0;
 function reviewQueue(docId) {
+  if (docId === 'inbox') return D.inbox.filter(id => needsReview(D.scans[id]));
   if (docId) return D.docs[docId] ? D.docs[docId].pages.filter(id => docReview(D.docs[docId]) && needsReview(D.scans[id])) : [];
   const ids = [];
   docsBy('progress').forEach(d => d.pages.forEach(id => { if (needsReview(D.scans[id])) ids.push(id); }));
@@ -885,7 +928,8 @@ function reviewQueue(docId) {
   return ids;
 }
 function curScan() {
-  if (U.nav.t === 'review') return listIds()[U.cur];
+  if (U.nav.t === 'scan') return U.nav.id;
+  if (U.nav.t === 'review') return U.nav.id ? listIds()[U.cur] : null;
   const d = curDoc();
   return d && (U.view === 'reader' || U.view === 'side') ? d.pages[U.cur] : null;
 }
@@ -912,7 +956,8 @@ function folderSummary(st) {
 }
 function folderPath(fid) { const out = []; for (let f = D.folders[fid]; f; f = D.folders[f.parent]) out.unshift(f.name); return out; }
 function listIds() {
-  if (U.nav.t === 'review') return reviewQueue(U.nav.id);
+  // Review with no scope is the list of documents; 'all', 'inbox' or a document id is the page-by-page review.
+  if (U.nav.t === 'review') return U.nav.id ? reviewQueue(U.nav.id === 'all' ? null : U.nav.id) : [];
   if (U.nav.t === 'inbox') return D.inbox;
   if (U.nav.t === 'aside') return D.aside;
   const d = curDoc();
@@ -952,6 +997,7 @@ function dropEmptyDocs(touched) {
   return removed;
 }
 function targets() {
+  if (U.nav.t === 'scan') return [U.nav.id];
   const list = listIds();
   if (U.nav.t === 'review' || (U.nav.t === 'doc' && (U.view === 'reader' || U.view === 'side'))) return list[U.cur] ? [list[U.cur]] : [];
   return list.filter(id => U.sel.has(id));
@@ -995,21 +1041,22 @@ function shift(ids, dir) {
     if (U.view === 'reader' || U.view === 'side') U.cur = arr.indexOf(ids[0]);
   });
 }
-function moveTo(ids, docId) {
+function moveTo(ids, docId, opts = {}) {
   if (!ids.length) return;
   let target = D.docs[docId];
-  const label = target ? `Moved ${plural(ids.length, 'page')} to “${shortName(target.name)}”.` : `Started a new document with ${plural(ids.length, 'page')}.`;
+  const label = target ? `Moved ${plural(ids.length, 'page')} to “${shortName(target.name)}”.` : `Started “${shortName(opts.name || 'Untitled document')}” with ${plural(ids.length, 'page')}.`;
   commit(label, () => {
     if (!target) {
       const id = 'd' + D.nextDoc++;
-      D.docs[id] = { id, name: `Untitled document ${D.nextDoc - 6}`, temp: true, status: 'progress', conf: 50, pages: [], type: '', date: '', people: '', place: '', tags: [], notes: '', ready: false, dismissed: [], note: null, why: ['You grouped these pages yourself'], suggest: {}, summary: 'You started this document by hand. Lindley will suggest a name and date once it has read the pages together.' };
+      D.docs[id] = { id, name: opts.name || `Untitled document ${D.nextDoc - 6}`, temp: !opts.name, status: 'progress', conf: 50, pages: [], type: '', date: '', people: '', place: '', tags: [], notes: '', ready: false, dismissed: [], note: null, why: ['You grouped these pages yourself'], suggest: {}, summary: 'You started this document by hand. Lindley will suggest a name and date once it has read the pages together.' };
       target = D.docs[id];
+      if (opts.folder) D.folders[opts.folder].docs.push(id);
     }
     const touched = ids.map(id => detach(id)).filter(l => l && l.doc).map(l => l.doc);
     ids.forEach(id => { target.pages.push(id); D.scans[id].hint = null; });
     U.sel.clear();
     const removed = dropEmptyDocs(touched);
-    if (!D.docs[docId]) U.nav = { t: 'doc', id: target.id }, U.view = 'grid';
+    if (!D.docs[docId] || U.nav.t === 'scan') { U.nav = { t: 'doc', id: target.id }; U.view = 'grid'; }
     clampCur();
     return removed.length ? `The empty document “${shortName(removed[0])}” was removed.` : '';
   });
@@ -1104,27 +1151,24 @@ function renderTree() {
   const on = (t, id) => U.nav.t === t && (!id || U.nav.id === id);
   const cls = (t, id) => on(t, id) ? ' is-active' : '';
   const cur = (t, id) => on(t, id) ? ' aria-current="page"' : '';
+  // Second line of a row: status in words, with icons that never carry meaning alone.
+  const meta = parts => `<span class="t-meta">${parts.filter(Boolean).join('<span class="t-dot" aria-hidden="true">·</span>')}</span>`;
+  const flag = n => n ? `<span class="t-flag">${icon('flag')}${n} to review</span>` : '';
   const docItem = (d, depth = 0) => {
     const done = d.status === 'complete';
-    const rv = docReview(d);
-    const state = done ? 'Completed' : d.ready ? 'Ready to export' : 'In progress';
-    const said = `${state}${rv ? `, ${plural(rv, 'page')} to review` : ''}${d.temp ? ', name suggested by Lindley' : ''}, ${plural(d.pages.length, 'page')}`;
     return `
-    <button class="t-item${cls('doc', d.id)} ${d.temp ? 'is-temp' : ''}"${cur('doc', d.id)} data-nav="doc:${d.id}" draggable="true" data-dragdoc="${d.id}" ${done ? '' : `data-drop="doc:${d.id}"`} style="--d:${depth}" title="${esc(d.name)}. ${said}">
+    <button class="t-item t2${cls('doc', d.id)} ${d.temp ? 'is-temp' : ''}"${cur('doc', d.id)} data-nav="doc:${d.id}" draggable="true" data-dragdoc="${d.id}" ${done ? '' : `data-drop="doc:${d.id}"`} style="--d:${depth}" title="${esc(d.name)}${d.temp ? ' (name suggested by Lindley)' : ''}">
       ${icon(done ? 'checkc' : 'doc')}
-      <span class="t-name">${esc(d.name)}<span class="sr-only">. ${said}</span></span>
-      ${d.ready && !done ? '<span class="t-ready" aria-hidden="true">Ready</span>' : ''}
-      ${rv ? `<span class="t-flag" aria-hidden="true">${icon('flag')}${rv}</span>` : ''}
+      <span class="t-txt"><span class="t-name">${esc(d.name)}${d.temp ? '<span class="sr-only"> (name suggested by Lindley)</span>' : ''}</span>
+        ${meta([flag(docReview(d)), d.ready && !done ? '<span class="t-ready">Ready</span>' : '', done ? `<span>Completed ${esc(d.exported || '')}</span>` : '', `<span>${plural(d.pages.length, 'page')}</span>`])}</span>
     </button>`;
   };
   const folderItem = (fid, depth = 0) => {
     const f = D.folders[fid];
     const st = folderStats(fid);
-    const sum = folderSummary(st);
-    return `<button class="t-item${cls('folder', fid)}"${cur('folder', fid)} data-nav="folder:${fid}" data-folderdrop="${fid}" style="--d:${depth}" title="${esc(f.name)}. ${esc(sum)}">${icon('folder')}<span class="t-name">${esc(f.name)}<span class="sr-only">. ${esc(sum)}</span></span>
-        ${st.review ? `<span class="t-flag" aria-hidden="true">${icon('flag')}${st.review}</span>` : ''}
-        ${f.children.length ? `<span class="f-meta" aria-hidden="true">${icon('subf')}${f.children.length}</span>` : ''}
-        <span class="count" aria-hidden="true">${st.docs}</span></button>`
+    return `<button class="t-item t2${cls('folder', fid)}"${cur('folder', fid)} data-nav="folder:${fid}" data-folderdrop="${fid}" style="--d:${depth}" title="${esc(f.name)}. ${esc(folderSummary(st))}">${icon('folder')}
+        <span class="t-txt"><span class="t-name">${esc(f.name)}</span>
+        ${meta([flag(st.review), f.children.length ? `<span>${plural(f.children.length, 'subfolder')}</span>` : '', `<span>${plural(st.docs, 'document')}</span>`])}</span></button>`
       + f.children.map(c => folderItem(c, depth + 1)).join('')
       + f.docs.filter(id => D.docs[id]).map(id => docItem(D.docs[id], depth + 1)).join('');
   };
@@ -1137,7 +1181,7 @@ function renderTree() {
   const rv = reviewQueue().length;
   tree.innerHTML = `
     <button class="t-item t-inbox${cls('inbox')}"${cur('inbox')} data-nav="inbox" data-drop="inbox">${icon('inbox')}<span class="t-name">Inbox</span><span class="count strong"><span class="sr-only">, </span>${D.inbox.length}<span class="sr-only"> scans</span></span></button>
-    <button class="t-item t-review${cls('review') && !U.nav.id ? ' is-active' : ''}"${on('review') && !U.nav.id ? ' aria-current="page"' : ''} data-nav="review">${icon(rv ? 'flag' : 'checkc')}<span class="t-name">Needs your review</span><span class="count strong"><span class="sr-only">, </span>${rv}<span class="sr-only"> pages</span></span></button>
+    <button class="t-item t-review${cls('review')}"${cur('review')} data-nav="review">${icon(rv ? 'flag' : 'checkc')}<span class="t-name">Needs your review</span><span class="count strong"><span class="sr-only">, </span>${rv}<span class="sr-only"> pages</span></span></button>
     ${section('progress', 'In progress', prog.length, prog.map(d => docItem(d)).join('') || '<p class="count" style="padding:4px 12px">Nothing in progress</p>', 'data-unfile')}
     ${section('complete', 'Completed', done.length, done.map(d => docItem(d)).join('') || '<p class="count" style="padding:4px 12px">Nothing here</p>', 'data-unfile')}
     <button class="t-item${cls('aside')}"${cur('aside')} data-nav="aside" data-drop="aside" style="margin-top:10px">${icon('aside')}<span class="t-name">Set aside</span><span class="count"><span class="sr-only">, </span>${D.aside.length}<span class="sr-only"> scans</span></span></button>
@@ -1145,9 +1189,7 @@ function renderTree() {
     <div class="legend">
       <span>${icon('flag')} Pages that need your review</span>
       <span>${icon('checkc')} Completed and exported</span>
-      <span>${icon('subf')} Subfolders inside a folder</span>
       <span><i>Italic names</i> were suggested by Lindley</span>
-      <span>Each document lives in one place. Drag it onto a folder, or use Move to folder.</span>
     </div>`;
 }
 
@@ -1191,65 +1233,91 @@ function grid(ids, o = {}) {
 function tbBtn(ic, label, act, dis, cls = '') {
   return `<button class="btn ${cls}" data-act="${act}" ${dis ? 'disabled' : ''} title="${label}">${icon(ic)}<span class="lbl">${label}</span></button>`;
 }
+function icoBtn(ic, label, act, dis) {
+  return `<button class="btn ico" data-act="${act}" ${dis ? 'disabled' : ''} title="${label}" aria-label="${label}">${icon(ic)}</button>`;
+}
 function sizeCtl() {
   return `<label class="desktop-only">Size <input id="thumb" type="range" min="110" max="260" step="10" value="${U.thumb}" aria-label="Thumbnail size"></label>`;
+}
+const SEP = '<span class="sep" aria-hidden="true"></span>';
+const selLabel = (n, one) => `<span class="dock-sel">${one || (n ? `${n} selected` : 'None selected')}</span>`;
+const rotBtns = n => icoBtn('rotL', 'Rotate left', 'rotL', !n) + icoBtn('rotR', 'Rotate right', 'rotR', !n);
+// One floating toolbar per view holds every action for what you're looking at.
+function dock() {
+  const t = U.nav.t, n = targets().length, d = curDoc();
+  let name = 'Actions', inner = '';
+  if (t === 'doc') {
+    name = 'Document actions';
+    const one = (U.view === 'reader' || U.view === 'side') && d.pages.length ? `Page ${U.cur + 1}` : '';
+    inner = tbBtn('lindley', 'Ask Lindley', 'askDoc', false, 'ai') + tbBtn('folder', 'Move to folder…', 'folderMenu');
+    if (d.status === 'complete') inner += tbBtn('back', 'Reopen for changes', 'reopen');
+    else inner += tbBtn('pdf', 'Export PDF', 'export', false, 'primary') + SEP + selLabel(n, one) + rotBtns(n)
+      + icoBtn('up', 'Move earlier', 'up', !n) + icoBtn('down', 'Move later', 'down', !n) + tbBtn('more', 'More…', 'pageMore', !n);
+  } else if (t === 'inbox') {
+    name = 'Inbox actions';
+    inner = tbBtn('lindley', 'Ask Lindley', 'askInbox', false, 'ai') + SEP + selLabel(n) + rotBtns(n)
+      + tbBtn('newdoc', 'New document…', 'newDoc', !n) + tbBtn('move', 'Add to document…', 'moveMenu', !n) + tbBtn('aside', 'Set aside', 'aside', !n);
+  } else if (t === 'aside') {
+    inner = selLabel(n) + rotBtns(n) + tbBtn('inbox', 'Return to Inbox', 'inbox', !n) + tbBtn('move', 'Add to document…', 'moveMenu', !n);
+  } else if (t === 'folder') {
+    inner = tbBtn('plus', 'New subfolder', 'newSubfolder') + tbBtn('lindley', 'Ask Lindley', 'askFolder', false, 'ai');
+  } else if (t === 'search') {
+    inner = tbBtn('lindley', 'Ask Lindley about these', 'askSearch', false, 'ai');
+  } else if (t === 'review' && !U.nav.id) {
+    const q = reviewQueue().length;
+    inner = (q ? tbBtn('flag', `Start reviewing all ${q}`, 'startReview', false, 'primary') : '') + tbBtn('lindley', 'Ask Lindley', 'askReview', false, 'ai');
+  } else if (t === 'review') {
+    const q = listIds().length;
+    if (!q) return '';
+    name = 'Move between pages to review';
+    // The review's main actions sit in the dock, next to the page-to-page navigation.
+    inner = tbBtn('prev', 'Previous', 'prev', U.cur === 0) + SEP
+      + tbBtn('check', 'The text is correct', 'confirmTx', false, 'primary') + tbBtn('pen', 'Save my correction', 'saveTx') + SEP
+      + `<span class="dock-prog"><span>Page ${U.cur + 1} of ${q} to review</span><b style="--v:${Math.round((U.cur + 1) / q * 100)}%" aria-hidden="true"></b></span>`
+      + tbBtn('chev', 'Next', 'next', U.cur >= q - 1, 'next');
+  } else if (t === 'scan') {
+    const aside = locate(U.nav.id)?.where === 'aside';
+    inner = tbBtn('back', aside ? 'Back to Set aside' : 'Back to Inbox', 'backHome') + SEP + rotBtns(1)
+      + tbBtn('newdoc', 'New document…', 'newDoc') + tbBtn('move', 'Add to document…', 'moveMenu')
+      + (aside ? tbBtn('inbox', 'Return to Inbox', 'inbox') : tbBtn('aside', 'Set aside', 'aside')) + tbBtn('lindley', 'Ask Lindley', 'askScan', false, 'ai');
+  }
+  return inner ? `<div class="dock-wrap"><div class="dock" role="toolbar" aria-label="${name}">${inner}</div></div>` : '';
 }
 
 function renderMain() {
   const sc = $('.scroll', main)?.scrollTop || 0;
-  const t = U.nav.t;
-  if (t === 'inbox') main.innerHTML = viewInbox();
-  else if (t === 'aside') main.innerHTML = viewAside();
-  else if (t === 'doc') main.innerHTML = viewDoc();
-  else if (t === 'folder') main.innerHTML = viewFolder();
-  else if (t === 'search') main.innerHTML = viewSearch();
-  else if (t === 'review') main.innerHTML = viewReview();
+  // Keep keyboard focus on the dock button that was used, since the view re-renders.
+  const fa = document.activeElement;
+  const act = fa?.closest?.('.dock') ? fa.dataset.act : null;
+  const views = { inbox: viewInbox, aside: viewAside, doc: viewDoc, folder: viewFolder, search: viewSearch, scan: viewScan, review: () => U.nav.id ? viewReview() : viewReviewList() };
+  const dk = dock();
+  main.innerHTML = views[U.nav.t]() + dk;
+  main.classList.toggle('has-dock', !!dk);
   const s = $('.scroll', main);
   if (s) s.scrollTop = sc;
+  if (act) ($(`.dock [data-act="${act}"]:not(:disabled)`, main) || $('.dock button:not(:disabled)', main))?.focus();
 }
 
 function viewInbox() {
-  const n = targets().length;
   const hints = D.inbox.filter(id => D.scans[id].hint).length;
   return `
   <div class="head">
     <div class="crumbs">Inbox</div>
-    <div class="title-row"><h1 class="title">${plural(D.inbox.length, 'scan')} waiting</h1>
-      <div class="actions"><button class="btn ai ask" data-act="askInbox">${lic()} Ask Lindley which it can place</button></div></div>
-    <p class="sub">New scans land here. Lindley reads each one and groups pages into documents. Anything it can't place yet stays here for you.</p>
+    <div class="title-row"><h1 class="title">${plural(D.inbox.length, 'scan')} waiting</h1></div>
+    <p class="sub">New scans land here. Lindley reads each one and groups pages into documents, but you don't have to wait: select scans and start a document yourself, or double-click one to read and correct it.</p>
     ${hints ? `<div class="banner ai">${lic()}<div><b>Lindley found ${plural(hints, 'scan')} that probably belong to documents in progress.</b> Look for the suggestion under each page.</div><button class="btn" data-act="sortMatch">Show them first</button></div>` : ''}
-    <div style="height:6px"></div>
-  </div>
-  <div class="tb">
-    <span class="tb-sel">${n ? `${n} selected` : 'None selected'}</span>
-    ${tbBtn('rotL', 'Rotate left', 'rotL', !n)}${tbBtn('rotR', 'Rotate right', 'rotR', !n)}
-    <span class="sep"></span>
-    ${tbBtn('newdoc', 'Start new document', 'newDoc', !n)}
-    ${tbBtn('move', 'Add to document…', 'moveMenu', !n)}
-    ${tbBtn('aside', 'Set aside', 'aside', !n)}
-    <span class="spacer"></span>
-    <label>Sort <select id="sort"><option value="new" ${U.sort === 'new' ? 'selected' : ''}>Newest scans first</option><option value="old" ${U.sort === 'old' ? 'selected' : ''}>Oldest scans first</option><option value="match" ${U.sort === 'match' ? 'selected' : ''}>Suggested matches first</option></select></label>
-    ${sizeCtl()}
+    <div class="viewbar"><label>Sort <select id="sort"><option value="new" ${U.sort === 'new' ? 'selected' : ''}>Newest scans first</option><option value="old" ${U.sort === 'old' ? 'selected' : ''}>Oldest scans first</option><option value="match" ${U.sort === 'match' ? 'selected' : ''}>Suggested matches first</option></select></label>${sizeCtl()}</div>
   </div>
   <div class="scroll">${grid(sortedInbox(), { hints: true, empty: 'The Inbox is empty. Every scan has a home.' })}</div>`;
 }
 
 function viewAside() {
-  const n = targets().length;
   return `
   <div class="head">
     <div class="crumbs">Set aside</div>
     <div class="title-row"><h1 class="title">Set aside</h1></div>
     <p class="sub">Receipts, blank pages, sticky notes and other scans that aren't part of a document. Nothing here is deleted. Return a scan to the Inbox if it was set aside by mistake.</p>
-    <div style="height:6px"></div>
-  </div>
-  <div class="tb">
-    <span class="tb-sel">${n ? `${n} selected` : 'None selected'}</span>
-    ${tbBtn('rotL', 'Rotate left', 'rotL', !n)}${tbBtn('rotR', 'Rotate right', 'rotR', !n)}
-    <span class="sep"></span>
-    ${tbBtn('inbox', 'Return to Inbox', 'inbox', !n)}
-    ${tbBtn('move', 'Add to document…', 'moveMenu', !n)}
-    <span class="spacer"></span>${sizeCtl()}
+    <div class="viewbar">${sizeCtl()}</div>
   </div>
   <div class="scroll">${grid(D.aside, { empty: 'Nothing has been set aside.' })}</div>`;
 }
@@ -1261,15 +1329,13 @@ function viewDoc() {
   const inboxMatches = D.inbox.filter(id => D.scans[id].hint === d.id);
   const rv = docReview(d);
   const tabs = [['grid', 'Pages'], ['reader', 'Reader'], ['side', 'Scan and text']];
-  const n = targets().length;
-  const onePage = U.view === 'reader' || U.view === 'side';
   const crumbs = f ? ['My folders', ...folderPath(f.id)] : [done ? 'Completed' : 'In progress'];
 
   let banners = '';
-  if (done) banners += `<div class="banner ok">${icon('checkc')}<div><b>Completed ${esc(d.exported || '')}.</b> Exported as a searchable PDF: <span class="mono">${esc(d.name)}.pdf</span></div><button class="btn" data-act="reopen">Reopen for changes</button></div>`;
+  if (done) banners += `<div class="banner ok">${icon('checkc')}<div><b>Completed ${esc(d.exported || '')}.</b> Exported as a searchable PDF: <span class="mono">${esc(d.name)}.pdf</span></div></div>`;
   else {
     if (rv) banners += `<div class="banner review">${icon('flag')}<div><b>${plural(rv, 'page')} ${rv === 1 ? 'needs' : 'need'} your review.</b> Lindley isn't sure it read ${rv === 1 ? 'it' : 'them'} correctly.</div><button class="btn" data-act="reviewDoc">Review next</button></div>`;
-    if (d.ready) banners += `<div class="banner ok">${icon('checkc')}<div><b>Lindley thinks this document is complete.</b> ${esc(d.missing || '')} ${rv ? 'Review the flagged page first, then export it.' : "Look it over, then export it when you're ready."}</div><button class="btn" data-act="export">Review and export</button><button class="btn ghost" data-act="notReady">Not yet</button></div>`;
+    if (d.ready) banners += `<div class="banner ok">${icon('checkc')}<div><b>Lindley thinks this document is complete.</b> ${esc(d.missing || '')} ${rv ? 'Review the flagged pages first, then export it.' : "Look it over, then export it when you're ready."}</div><button class="btn" data-act="export">Review and export</button><button class="btn ghost" data-act="notReady">Not yet</button></div>`;
     if (d.note) banners += `<div class="banner warn">${icon('warn')}<div>${esc(d.note.text)}</div><button class="btn" data-act="fixOrder">${esc(d.note.fix)}</button><button class="btn ghost" data-act="dismissNote">Leave as is</button></div>`;
     if (inboxMatches.length) banners += `<div class="banner ai">${lic()}<div>Lindley thinks ${plural(inboxMatches.length, 'scan')} in your Inbox might belong here.</div><button class="btn" data-act="addMatches">Add ${inboxMatches.length === 1 ? 'it' : 'them'}</button><button class="btn ghost" data-act="showMatches">Show me first</button></div>`;
   }
@@ -1285,11 +1351,6 @@ function viewDoc() {
     <div class="title-row">
       <h1 class="sr-only">${esc(d.name)}</h1>
       <input id="doc-title" class="title-in ${d.temp ? 'is-temp' : ''}" value="${esc(d.name)}" aria-label="Document name" ${done ? 'readonly' : ''}>
-      <div class="actions">
-        <button class="btn ai ask" data-act="askDoc">${lic()} Ask Lindley</button>
-        <button class="btn" data-act="folderMenu" aria-haspopup="menu">${icon('folder')} Move to folder…</button>
-        ${done ? '' : `<button class="btn primary" data-act="export">${icon('pdf')} Finish and export PDF</button>`}
-      </div>
     </div>
     <div class="meta">
       ${d.temp ? `<span class="chip ai">${lic()} Name suggested by Lindley. Click it to rename.</span>` : ''}
@@ -1299,19 +1360,11 @@ function viewDoc() {
       ${done ? '' : `<span class="meter" title="How sure Lindley is that these pages belong together">Grouping confidence <b style="--v:${d.conf}%" aria-hidden="true"></b> ${d.conf}%</span>`}
     </div>
     ${banners}
-    <div class="tabs" role="tablist" aria-label="Views">${tabs.map(([k, l]) => `<button class="tab" role="tab" data-view="${k}" aria-selected="${U.view === k}" tabindex="${U.view === k ? 0 : -1}">${l}</button>`).join('')}</div>
+    <div class="tabrow">
+      <div class="tabs" role="tablist" aria-label="Views">${tabs.map(([k, l]) => `<button class="tab" role="tab" data-view="${k}" aria-selected="${U.view === k}" tabindex="${U.view === k ? 0 : -1}">${l}</button>`).join('')}</div>
+      ${U.view === 'grid' && !done ? `<div class="viewbar"><button class="btn ghost" data-act="selAll">${U.sel.size === d.pages.length ? 'Clear selection' : 'Select all'}</button>${sizeCtl()}</div>` : ''}
+    </div>
   </div>
-  ${done ? '' : `<div class="tb">
-    <span class="tb-sel">${onePage ? `Page ${U.cur + 1}` : n ? `${n} selected` : 'None selected'}</span>
-    ${tbBtn('rotL', 'Rotate left', 'rotL', !n)}${tbBtn('rotR', 'Rotate right', 'rotR', !n)}
-    <span class="sep"></span>
-    ${tbBtn('up', 'Earlier', 'up', !n)}${tbBtn('down', 'Later', 'down', !n)}
-    <span class="sep"></span>
-    ${tbBtn('move', 'Move to…', 'moveMenu', !n)}
-    ${tbBtn('inbox', 'Return to Inbox', 'inbox', !n)}
-    ${tbBtn('aside', 'Set aside', 'aside', !n)}
-    ${U.view === 'grid' ? `<span class="spacer"></span><button class="btn" data-act="selAll">${U.sel.size === d.pages.length ? 'Clear selection' : 'Select all'}</button>${sizeCtl()}` : ''}
-  </div>`}
   ${body}`;
 }
 
@@ -1348,7 +1401,7 @@ function txPanel(s, o) {
     ${state}
     <div class="tx" id="tx" ${o.readonly ? '' : 'contenteditable="true" role="textbox" aria-multiline="true"'} spellcheck="false" aria-label="Transcription of ${esc(o.label)}">${body}</div>
     ${unsure ? `<p class="note">Words Lindley wasn't sure of are highlighted and underlined with dots.</p>` : ''}
-    ${o.readonly ? '' : `<div class="rv-acts">${flag
+    ${o.readonly || o.noActs ? '' : `<div class="rv-acts">${flag
       ? `<button class="btn primary" data-act="confirmTx">${icon('check')} The text is correct</button><button class="btn" data-act="saveTx">Save my correction</button>`
       : '<button class="btn" data-act="saveTx">Save transcription</button>'}${o.extra || ''}</div>`}`;
 }
@@ -1362,20 +1415,44 @@ function viewSide(d, done) {
       extra: more ? '<button class="btn ghost" data-act="nextReview">Next page to review</button>' : '' })}</div>
   </div>`;
 }
+function reviewGroups() {
+  const g = docsBy('progress').map(d => ({ id: d.id, d, ids: reviewQueue(d.id) })).filter(x => x.ids.length);
+  const ib = reviewQueue('inbox');
+  if (ib.length) g.push({ id: 'inbox', ids: ib });
+  return g;
+}
+function viewReviewList() {
+  const total = reviewQueue().length;
+  const cards = reviewGroups().map(x => {
+    const name = x.d ? x.d.name : 'Inbox';
+    const f = x.d && folderOf(x.d.id);
+    const where = !x.d ? 'Scans not in a document yet' : f ? 'In ' + folderPath(f.id).join(' › ') : 'In progress';
+    return `<button class="dcard" data-nav="review:${x.id}"><span class="pg-img"><img src="${pageImg(x.ids[0])}" alt="" style="${rotStyle(D.scans[x.ids[0]])}"></span><span><b style="${x.d?.temp ? 'font-style:italic' : ''}">${esc(name)}</b><small>${icon('flag')} ${plural(x.ids.length, 'page')} to review</small><small>${esc(where)}</small></span></button>`;
+  }).join('');
+  return `
+  <div class="head">
+    <div class="crumbs">Needs your review</div>
+    <div class="title-row"><h1 class="title">${total ? `${plural(total, 'page')} ${total === 1 ? 'needs' : 'need'} your review` : 'All caught up'}</h1></div>
+    <p class="sub">Lindley flags any page it read with less than ${REVIEW_BELOW}% confidence, so a person can check it before it's trusted for search and chat. Pick a document to start with, or review everything in order.</p>
+    <div style="height:6px"></div>
+  </div>
+  <div class="scroll">${total ? `<div class="docs">${cards}</div>`
+    : `<div class="rv-done">${icon('checkc')}<h2>Nothing left to review</h2><p>Every page Lindley has read is either confident or checked by you.</p><button class="btn primary" data-nav="inbox">Go to the Inbox</button></div>`}</div>`;
+}
+const scopeName = id => id === 'all' ? 'All pages' : id === 'inbox' ? 'Inbox' : D.docs[id]?.name || '';
 function viewReview() {
-  const scope = U.nav.id && D.docs[U.nav.id];
+  const scope = U.nav.id;
   const q = listIds();
   const head = `
   <div class="head">
-    <div class="crumbs">Needs your review${scope ? ` › ${esc(scope.name)}` : ''}</div>
-    <div class="title-row"><h1 class="title">${q.length ? `${plural(q.length, 'page')} ${q.length === 1 ? 'needs' : 'need'} your review` : 'All caught up'}</h1>
-      ${scope ? '<div class="actions"><button class="btn ghost" data-nav="review">See every page to review</button></div>' : ''}</div>
-    <p class="sub">Lindley flags any page it read with less than ${REVIEW_BELOW}% confidence. Compare the text with the scan, fix anything that's wrong, then confirm it. Checked pages are trusted for search and chat.</p>
-    <div style="height:6px"></div>
+    <div class="crumbs"><button class="crumb" data-nav="review">Needs your review</button> › ${esc(scopeName(scope))}</div>
+    <div class="title-row"><h1 class="title">${q.length ? `${plural(q.length, 'page')} to review` : 'All caught up'}${scope !== 'all' ? ` in ${esc(shortName(scopeName(scope)))}` : ''}</h1></div>
+    <p class="sub">Lindley read ${q.length === 1 ? 'this page' : 'these pages'} with less than ${REVIEW_BELOW}% confidence. Compare the text with the scan, fix anything that's wrong, then confirm it. The ← and → keys move between pages.</p>
+    ${q.length > 1 ? `<div class="strip rv-strip" role="group" aria-label="Pages to review">${q.map((id, i) => `<button data-goto="${i}" aria-current="${i === U.cur}" aria-label="Page to review ${i + 1}"><span class="pg-img"><img src="${pageImg(id)}" alt="" style="${rotStyle(D.scans[id])}"></span><span>${i + 1}</span></button>`).join('')}</div>` : '<div style="height:6px"></div>'}
   </div>`;
   if (!q.length) {
-    const back = scope ? `<button class="btn primary" data-nav="doc:${scope.id}">Back to “${esc(shortName(scope.name))}”</button>` : '<button class="btn primary" data-nav="inbox">Go to the Inbox</button>';
-    return head + `<div class="scroll"><div class="rv-done">${icon('checkc')}<h2>Nothing left to review</h2><p>Every page Lindley has read is either confident or checked by you.</p>${back}</div></div>`;
+    const open = D.docs[scope] ? `<button class="btn" data-nav="doc:${scope}">Open “${esc(shortName(D.docs[scope].name))}”</button>` : '';
+    return head + `<div class="scroll"><div class="rv-done">${icon('checkc')}<h2>Nothing left to review here</h2><p>Every page is either confident or checked by you.</p><div class="actions"><button class="btn primary" data-nav="review">Back to Needs your review</button>${open}</div></div></div>`;
   }
   const id = q[U.cur];
   const s = D.scans[id];
@@ -1383,8 +1460,25 @@ function viewReview() {
   const where = `<div class="rv-where">${l.where === 'doc' ? `In <b>${esc(l.doc.name)}</b>, page ${l.doc.pages.indexOf(id) + 1}` : `In the <b>Inbox</b>, <span class="mono">${s.file}</span>`} <button class="btn ghost" data-open="${id}">Open it there</button></div>`;
   return head + `<div class="side" style="flex:1;min-height:0">
     <div class="side-img"><img class="rot" src="${pageImg(id)}" alt="Scan of the page to review" style="${rotStyle(s)}"></div>
-    <div class="side-tx">${txPanel(s, { pager: pager(q.length, 'Page to review'), where, label: 'the page to review',
-      extra: q.length > 1 ? '<button class="btn ghost" data-act="skipReview">Skip for now</button>' : '' })}</div>
+    <div class="side-tx">${txPanel(s, { pager: '', where, label: 'the page to review', noActs: true })}</div>
+  </div>`;
+}
+// One Inbox or Set aside scan, opened to read and correct before it joins a document.
+function viewScan() {
+  const s = D.scans[U.nav.id];
+  const aside = locate(s.id)?.where === 'aside';
+  const hint = s.hint && D.docs[s.hint];
+  return `
+  <div class="head">
+    <div class="crumbs"><button class="crumb" data-nav="${aside ? 'aside' : 'inbox'}">${aside ? 'Set aside' : 'Inbox'}</button> › ${s.file}</div>
+    <div class="title-row"><h1 class="title">${s.file}</h1></div>
+    <p class="sub">This scan isn't in a document yet. Correct its text here if you like, then start a new document with it or add it to one you already have.</p>
+    ${hint ? `<div class="banner ai">${lic()}<div>Lindley thinks this belongs in “${esc(hint.name)}”.</div><button class="btn" data-place="${s.id}:${hint.id}">Add it there</button></div>` : ''}
+    <div style="height:6px"></div>
+  </div>
+  <div class="side" style="flex:1;min-height:0">
+    <div class="side-img"><img class="rot" src="${pageImg(s.id)}" alt="Scan ${s.file}" style="${rotStyle(s)}"></div>
+    <div class="side-tx">${txPanel(s, { pager: '', label: s.file })}</div>
   </div>`;
 }
 function docStatus(d) {
@@ -1399,8 +1493,7 @@ function viewFolder() {
   return `
   <div class="head">
     <div class="crumbs">${['My folders', ...folderPath(f.parent)].map(esc).join(' › ')}</div>
-    <div class="title-row"><h1 class="sr-only">${esc(f.name)}</h1><input id="folder-title" class="title-in" value="${esc(f.name)}" aria-label="Folder name">
-      <div class="actions"><button class="btn" data-act="newSubfolder">${icon('plus')} New subfolder</button></div></div>
+    <div class="title-row"><h1 class="sr-only">${esc(f.name)}</h1><input id="folder-title" class="title-in" value="${esc(f.name)}" aria-label="Folder name"></div>
     <p class="sub">${esc(folderSummary(folderStats(f.id)))}. Each document lives in one place, so moving one here takes it out of In progress or Completed.</p>
     <div style="height:6px"></div>
   </div>
@@ -1434,8 +1527,7 @@ function viewSearch() {
   return `
   <div class="head">
     <div class="crumbs">Search</div>
-    <div class="title-row"><h1 class="title">${plural(res.length, 'page')} mention “${esc(U.q)}”</h1>
-    <div class="actions"><button class="btn ai ask" data-act="askSearch">${lic()} Ask Lindley about these</button></div></div>
+    <div class="title-row"><h1 class="title">${plural(res.length, 'page')} mention “${esc(U.q)}”</h1></div>
     <p class="sub">Searches the text of every page, including handwriting read by the AI vision model and pages still in the Inbox.</p>
     <div style="height:6px"></div>
   </div>
@@ -1457,18 +1549,14 @@ function openScan(id) {
   const l = locate(id);
   if (!l) return;
   if (l.where === 'doc') go({ t: 'doc', id: l.doc.id }, { view: 'side', cur: l.doc.pages.indexOf(id) });
-  else {
-    go({ t: l.where });
-    U.sel.add(id); render();
-    $(`[data-pg="${id}"]`)?.scrollIntoView({ block: 'center' });
-  }
+  else go({ t: 'scan', id });
 }
 
 /* ================= Menus, modal, toast ================= */
 const menu = $('#menu');
 let menuFns = [];
 let menuReturn = null;
-function openMenu(items, x, y) {
+function openMenu(items, x, y, up) {
   menuReturn = document.activeElement;
   menuFns = [];
   menu.innerHTML = items.map(it => {
@@ -1480,7 +1568,7 @@ function openMenu(items, x, y) {
   menu.hidden = false;
   const r = menu.getBoundingClientRect();
   menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + 'px';
-  menu.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px';
+  menu.style.top = Math.max(8, Math.min(up ? y - r.height - 6 : y, innerHeight - r.height - 8)) + 'px';
   menu.querySelector('button:not(:disabled)')?.focus();
 }
 function closeMenu(refocus) { if (menu.hidden) return; menu.hidden = true; if (refocus) menuReturn?.focus?.(); }
@@ -1497,16 +1585,19 @@ function moveItems(ids) {
   const here = curDoc()?.id;
   const docs = docsBy('progress').filter(d => d.id !== here);
   return [{ head: U.nav.t === 'doc' ? 'Move to document' : 'Add to document' },
-    ...docs.map(d => ({ label: d.name, icon: 'doc', fn: () => moveTo(ids, d.id) })),
-    '-', { label: 'New document', icon: 'newdoc', fn: () => moveTo(ids, null) }];
+    ...docs.map(d => { const f = folderOf(d.id); return { label: d.name + (f ? ` (in ${f.name})` : ''), icon: 'doc', fn: () => moveTo(ids, d.id) }; }),
+    '-', { label: 'New document…', icon: 'newdoc', fn: () => newDocDialog(ids) }];
 }
-function pageMenuItems(ids) {
+function pageMenuItems(ids, noBasics) {
   const w = U.nav.t;
-  const items = [
-    { label: 'Rotate left', icon: 'rotL', fn: () => rotate(ids, -90) },
-    { label: 'Rotate right', icon: 'rotR', fn: () => rotate(ids, 90) }];
-  if (w === 'doc') items.push('-', { label: 'Move earlier', icon: 'up', fn: () => shift(ids, -1) }, { label: 'Move later', icon: 'down', fn: () => shift(ids, 1) });
-  items.push('-', ...moveItems(ids).slice(1), '-');
+  const items = [];
+  if (ids.length === 1 && (w === 'inbox' || w === 'aside')) items.push({ label: 'Open to read and correct', icon: 'eye', fn: () => go({ t: 'scan', id: ids[0] }) }, '-');
+  if (!noBasics) {
+    items.push({ label: 'Rotate left', icon: 'rotL', fn: () => rotate(ids, -90) }, { label: 'Rotate right', icon: 'rotR', fn: () => rotate(ids, 90) });
+    if (w === 'doc') items.push('-', { label: 'Move earlier', icon: 'up', fn: () => shift(ids, -1) }, { label: 'Move later', icon: 'down', fn: () => shift(ids, 1) });
+    items.push('-');
+  }
+  items.push(...moveItems(ids).slice(1), '-');
   if (w !== 'inbox') items.push({ label: 'Return to Inbox', icon: 'inbox', fn: () => toInbox(ids) });
   if (w !== 'aside') items.push({ label: 'Set aside', icon: 'aside', fn: () => setAside(ids) });
   items.push('-', { label: 'Ask Lindley about ' + (ids.length === 1 ? 'this page' : 'these pages'), icon: 'lindley', fn: () => askAbout(ids) });
@@ -1530,6 +1621,39 @@ function confirmExport(id) {
   $(rv ? '[data-act="modalReview"]' : '[data-act="modalExport"]', modal).focus();
 }
 function closeModal() { modal.hidden = true; syncScrim(); modalReturn?.focus?.(); }
+// A first guess at a name from the first page, which the person can change.
+function suggestDocName(ids) {
+  const t = D.scans[ids[0]].text.replace(/[{}]/g, '');
+  const first = t.split('\n')[0].trim();
+  if (/[A-Z]{3}/.test(first) && first === first.toUpperCase()) return first.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  const m = t.match(/\b(Jan|Feb|March|April|May|June|July|Aug|Sept|Oct|Nov|Dec)[a-z.]*\s+\d{1,2}(?:st|nd|rd|th)?,?\s+(1[89]\d\d)/);
+  if (!m) return '';
+  const month = { Jan: 'January', Feb: 'February', Aug: 'August', Sept: 'September', Oct: 'October', Nov: 'November', Dec: 'December' }[m[1]] || m[1];
+  return `${/^(Dear|Friend|My dear)/m.test(t) ? 'Letter' : 'Document'}, ${month} ${m[2]}`;
+}
+function folderOptions() {
+  const out = [];
+  const walk = (fid, depth) => { const f = D.folders[fid]; out.push(`<option value="${fid}">${'   '.repeat(depth)}${esc(f.name)}</option>`); f.children.forEach(c => walk(c, depth + 1)); };
+  D.rootFolders.forEach(f => walk(f, 0));
+  return out.join('');
+}
+function newDocDialog(ids) {
+  if (!ids.length) return;
+  const sugg = suggestDocName(ids);
+  modalReturn = document.activeElement;
+  modal.setAttribute('aria-labelledby', 'modal-h');
+  modal.dataset.ids = ids.join(',');
+  modal.innerHTML = `<h2 id="modal-h">Start a new document</h2>
+    <p>${ids.length === 1 ? 'The selected scan moves' : `The ${ids.length} selected scans move`} into it, in the order shown. You can change the order afterwards.</p>
+    <label class="fld" for="nd-name">Name</label>
+    <input class="fld-in" id="nd-name" value="${esc(sugg)}" placeholder="For example: Letters from Will, 1890" ${sugg ? 'aria-describedby="nd-hint"' : ''}>
+    ${sugg ? `<p class="fld-hint" id="nd-hint">${lic()} Lindley suggested this from the first page. Change it to anything you like.</p>` : ''}
+    <label class="fld" for="nd-folder">Put it in</label>
+    <select class="fld-in" id="nd-folder"><option value="">In progress (no folder)</option>${folderOptions()}</select>
+    <div class="actions"><button class="btn" data-act="modalClose">Cancel</button><button class="btn primary" data-act="modalNewDoc">Create document</button></div>`;
+  modal.hidden = false; syncScrim();
+  const inp = $('#nd-name'); inp.focus(); inp.select();
+}
 function syncScrim() { scrim.hidden = modal.hidden && !app.classList.contains('show-tree') && !app.classList.contains('show-ai'); }
 
 const toastEl = $('#toast');
@@ -1555,6 +1679,7 @@ function aiContextLabel() {
   if (U.nav.t === 'aside') return 'Set aside';
   if (U.nav.t === 'folder') return D.folders[U.nav.id].name;
   if (U.nav.t === 'search') return `Search for “${U.q}”`;
+  if (U.nav.t === 'scan') return `${locate(U.nav.id)?.where === 'aside' ? 'Set aside' : 'Inbox'}, ${D.scans[U.nav.id].file}`;
   if (U.nav.t === 'review') { const id = curScan(); const l = id && locate(id); return !l ? 'Pages to review' : l.where === 'doc' ? `${l.doc.name}, page ${l.doc.pages.indexOf(id) + 1}` : `Inbox, ${D.scans[id].file}`; }
   return 'Your archive';
 }
@@ -1639,6 +1764,10 @@ function answer(q) {
     pushMsg('ai', `<p>This page reads:</p><p><q>${esc(t.length > 320 ? t.slice(0, 320) + '…' : t)}</q></p>${needsReview(s) ? '<p>I wasn\'t sure of the highlighted words, so please check them against the scan.</p>' : ''}`);
     return;
   }
+  if (U.nav.t === 'folder' && /folder/.test(ql)) {
+    pushMsg('ai', `<p>${esc(D.folders[U.nav.id].name)} holds ${esc(folderSummary(folderStats(U.nav.id)))}.</p><p>Open any document and I can summarize it or check it for missing pages.</p>`);
+    return;
+  }
   if (!d) {
     pushMsg('ai', '<p>Open a document and I can summarize it, check for missing pages, or explain its date. From anywhere, I can find every page that mentions a person or place.</p>');
     return;
@@ -1687,6 +1816,7 @@ function syncAi() {
 }
 
 /* ================= Events ================= */
+let lastClick = {};
 document.addEventListener('click', e => {
   const t = e.target;
   if (!menu.hidden && !t.closest('#menu')) closeMenu();
@@ -1717,6 +1847,15 @@ document.addEventListener('click', e => {
     const id = pgb.closest('.pg').dataset.pg;
     // Keyboard activation (Enter or Space) adds to the selection, like Ctrl-click.
     const kb = e.detail === 0;
+    // Each click re-renders the grid, so the browser never sees a double-click; detect it here.
+    const now = Date.now();
+    if (!kb && lastClick.id === id && now - lastClick.t < 450) {
+      lastClick = {};
+      if (U.nav.t === 'inbox' || U.nav.t === 'aside') go({ t: 'scan', id });
+      else if (U.nav.t === 'doc') { U.cur = curDoc().pages.indexOf(id); U.view = 'reader'; U.sel.clear(); render(); }
+      return;
+    }
+    lastClick = { id, t: now };
     const list = U.nav.t === 'inbox' ? sortedInbox() : listIds();
     if (e.shiftKey && U.anchor && list.includes(U.anchor)) {
       const [a, b] = [list.indexOf(U.anchor), list.indexOf(id)].sort((x, y) => x - y);
@@ -1738,19 +1877,27 @@ document.addEventListener('click', e => {
   if (!a || a.disabled) return;
   const ids = targets();
   const d = curDoc();
+  // Menus from the dock open upward, so they stay next to the button.
+  const menuAt = items => { const r = a.getBoundingClientRect(); const up = !!a.closest('.dock'); openMenu(items, r.left, up ? r.top : r.bottom + 4, up); };
   const A = {
     rotL: () => rotate(ids, -90), rotR: () => rotate(ids, 90),
     up: () => shift(ids, -1), down: () => shift(ids, 1),
     inbox: () => toInbox(ids), aside: () => setAside(ids),
-    newDoc: () => moveTo(ids, null),
-    moveMenu: () => { const r = a.getBoundingClientRect(); openMenu(moveItems(ids), r.left, r.bottom + 4); },
+    newDoc: () => newDocDialog(ids),
+    modalNewDoc: () => { const sel = modal.dataset.ids.split(','); const name = $('#nd-name').value.trim(); const folder = $('#nd-folder').value || null; modal.hidden = true; syncScrim(); moveTo(sel, null, { name, folder }); },
+    moveMenu: () => menuAt(moveItems(ids)),
+    pageMore: () => menuAt(pageMenuItems(ids, true)),
+    backHome: () => go({ t: locate(U.nav.id)?.where === 'aside' ? 'aside' : 'inbox' }),
+    startReview: () => go({ t: 'review', id: 'all' }),
+    askReview: () => ask('Which pages need my review?'),
+    askFolder: () => ask('What is in this folder?'),
+    askScan: () => ask('What does this page say?'),
     askDoc: () => { const sel = listIds().filter(id => U.sel.has(id)); if (sel.length) askAbout(sel); else ask('What is this document about?'); },
-    folderMenu: () => { const r = a.getBoundingClientRect(); openMenu(folderMenuItems(d.id), r.left, r.bottom + 4); },
+    folderMenu: () => menuAt(folderMenuItems(d.id)),
     newSubfolder: () => newFolder(U.nav.id),
     reviewDoc: () => go({ t: 'review', id: d.id }),
     modalReview: () => { const id = a.closest('.modal').querySelector('[data-act="modalExport"]').dataset.id; modal.hidden = true; syncScrim(); go({ t: 'review', id }); },
     confirmTx: () => { const id = curScan(); if (id) confirmPage(id); },
-    skipReview: () => { U.cur = (U.cur + 1) % listIds().length; render(); },
     nextReview: () => { const q = reviewQueue(d.id); const i = d.pages.indexOf(q.find(x => x !== d.pages[U.cur])); if (i >= 0) { U.cur = i; render(); } },
     askInbox: () => ask('Which inbox scans can you place?'),
     askSearch: () => ask(`Find every page mentioning ${U.q}`),
@@ -1777,11 +1924,6 @@ document.addEventListener('click', e => {
   A[a.dataset.act]?.();
 });
 
-main.addEventListener('dblclick', e => {
-  const pg = e.target.closest('.pg');
-  if (!pg || U.nav.t !== 'doc') return;
-  U.cur = curDoc().pages.indexOf(pg.dataset.pg); U.view = 'reader'; U.sel.clear(); render();
-});
 main.addEventListener('contextmenu', e => {
   const pg = e.target.closest('.pg');
   if (!pg || curDoc()?.status === 'complete') return;
@@ -1903,15 +2045,24 @@ document.addEventListener('keydown', e => {
     items[j]?.focus();
     return;
   }
+  // Arrow keys move along the dock, as in any toolbar.
+  if (e.target.closest?.('.dock') && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    e.preventDefault();
+    const items = $$('.dock button:not(:disabled)', main);
+    const i = items.indexOf(e.target.closest('button'));
+    items[(i + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length]?.focus();
+    return;
+  }
+  if (e.target.id === 'nd-name' && e.key === 'Enter') { e.preventDefault(); $('[data-act="modalNewDoc"]', modal)?.click(); return; }
   // Keep Tab inside the open dialog.
   if (!modal.hidden && e.key === 'Tab') {
-    const f = $$('button:not(:disabled)', modal);
+    const f = $$('button:not(:disabled), input, select', modal);
     if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
     else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
   }
   const typing = e.target.closest('input, textarea, select, [contenteditable="true"]');
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); undo(); }
-  if (!typing && !e.target.matches('.tab') && curScan()) {
+  if (!typing && !e.target.matches('.tab') && (U.nav.t === 'doc' || U.nav.t === 'review') && curScan()) {
     if (e.key === 'ArrowRight' || e.key === 'PageDown') { U.cur = Math.min(listIds().length - 1, U.cur + 1); render(); }
     if (e.key === 'ArrowLeft' || e.key === 'PageUp') { U.cur = Math.max(0, U.cur - 1); render(); }
   }
@@ -1972,7 +2123,7 @@ setInterval(() => {
   if (!id) return;
   const s = D.scans[id];
   s.status = 'read';
-  s.conf = s.engine === 'vision' ? 70 + Math.floor(Math.random() * 20) : 90 + Math.floor(Math.random() * 9);
+  s.conf = s.engine === 'vision' ? 80 + Math.floor(Math.random() * 18) : 90 + Math.floor(Math.random() * 9);
   renderTree(); renderStatus();
   if (U.nav.t === 'inbox') renderMain();
 }, 6000);
@@ -1991,7 +2142,7 @@ function boot() {
   syncThemeBtn();
   syncAi();
   render();
-  pushMsg('ai', '<p>Hello, I\'m Lindley. I can tell you about the document you have open, check whether pages are missing, or find every page that mentions a name.</p><p>When I\'m not sure I read a page correctly, I flag it for your review instead of guessing quietly. This letter has one page like that.</p>');
+  pushMsg('ai', '<p>Hello, I\'m Lindley. I can tell you about the document you have open, check whether pages are missing, or find every page that mentions a name.</p><p>When I\'m not sure I read a page correctly, I flag it for your review instead of guessing quietly. Pages like that are marked Review.</p>');
 }
 const fontsReady = Promise.all(['19px "Homemade Apple"', '18px "IM Fell English"', '16px "Special Elite"', '14px "IBM Plex Mono"'].map(f => document.fonts.load(f).catch(() => null)));
 Promise.race([fontsReady, new Promise(r => setTimeout(r, 3000))]).then(boot);

@@ -13,12 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from lindley.config import Settings
-
-SUPPORTED_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp", ".pdf"})
-
-
-def is_supported(path: Path) -> bool:
-    return path.suffix.lower() in SUPPORTED_SUFFIXES
+from lindley.worker.intake import SUPPORTED_SUFFIXES, is_supported  # noqa: F401
 
 
 class FolderWatcher:

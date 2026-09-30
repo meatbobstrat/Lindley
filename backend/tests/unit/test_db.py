@@ -56,8 +56,19 @@ def test_init_db_is_idempotent_and_versioned(tmp_path):
     assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     c.close()
-    assert {"scans", "pages", "transcriptions", "facts", "page_links", "documents",
-            "folders", "suggestions", "exports", "intake_steps", "history"} <= tables
+    assert {
+        "scans",
+        "pages",
+        "transcriptions",
+        "facts",
+        "page_links",
+        "documents",
+        "folders",
+        "suggestions",
+        "exports",
+        "intake_steps",
+        "history",
+    } <= tables
 
 
 def test_empty_placeholder_schema_is_replaced(tmp_path):
@@ -184,8 +195,16 @@ def test_document_progress(conn):
 
     prog = document_progress(conn, doc, review_below=90)
     state = {c.key: c.done for c in prog.checks}
-    assert state == {"has_pages": True, "read": False, "reviewed": False, "named": False,
-                     "dated": False, "typed": False, "ordered": True, "exported": False}
+    assert state == {
+        "has_pages": True,
+        "read": False,
+        "reviewed": False,
+        "named": False,
+        "dated": False,
+        "typed": False,
+        "ordered": True,
+        "exported": False,
+    }
     assert prog.done == 2 and prog.total == 8 and not prog.ready
 
     # Raising the threshold flags more pages.

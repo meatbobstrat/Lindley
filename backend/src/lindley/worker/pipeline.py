@@ -13,15 +13,15 @@ from lindley.config import Settings
 class Step(StrEnum):
     """Intake steps, in order. Matches the CHECK list on intake_steps.step."""
 
-    HASH = "hash"      # sha256; a known hash is a duplicate file
-    EXIF = "exif"      # scanner, scan time, file times
-    SPLIT = "split"    # one page image per page of a PDF or TIFF
-    IMAGE = "image"    # size, dpi, perceptual hash, paper colour, blank score, rotation, script
-    OCR = "ocr"        # Tesseract reading of printed pages
+    HASH = "hash"  # sha256; a known hash is a duplicate file
+    EXIF = "exif"  # scanner, scan time, file times
+    SPLIT = "split"  # one page image per page of a PDF or TIFF
+    IMAGE = "image"  # size, dpi, perceptual hash, paper colour, blank score, rotation, script
+    OCR = "ocr"  # Tesseract reading of printed pages
     VISION = "vision"  # vision model for handwriting and low-confidence pages
-    FACTS = "facts"    # dates, names, places, letterheads, page markers, first and last lines
-    EMBED = "embed"    # text embedding for similarity
-    MATCH = "match"    # lindley.assembler.assemble: evidence, Lindley documents, hints
+    FACTS = "facts"  # dates, names, places, letterheads, page markers, first and last lines
+    EMBED = "embed"  # text embedding for similarity
+    MATCH = "match"  # lindley.assembler.assemble: evidence, Lindley documents, hints
 
 
 class StepStatus(StrEnum):

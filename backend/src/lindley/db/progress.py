@@ -77,15 +77,27 @@ def document_progress(conn: sqlite3.Connection, doc_id: int, review_below: float
     p = Progress(doc_id)
     p.checks = [
         Check("has_pages", "Has pages", bool(pages), _plural(len(pages), "page")),
-        Check("read", "Every page read", bool(pages) and not unread,
-              f"{_plural(unread, 'page')} still being read" if unread else ""),
-        Check("reviewed", "Nothing waiting for your review", not to_review,
-              f"{_plural(to_review, 'page')} to review" if to_review else ""),
+        Check(
+            "read",
+            "Every page read",
+            bool(pages) and not unread,
+            f"{_plural(unread, 'page')} still being read" if unread else "",
+        ),
+        Check(
+            "reviewed",
+            "Nothing waiting for your review",
+            not to_review,
+            f"{_plural(to_review, 'page')} to review" if to_review else "",
+        ),
         Check("named", "Named or name accepted by you", doc["name_source"] == "user"),
         Check("dated", "Date known", bool(doc["doc_date"]), doc["doc_date"] or ""),
         Check("typed", "Type known", bool(doc["doc_type"]), doc["doc_type"] or ""),
-        Check("ordered", "Page order settled", not reorder_open,
-              "Lindley suggests a different order" if reorder_open else ""),
+        Check(
+            "ordered",
+            "Page order settled",
+            not reorder_open,
+            "Lindley suggests a different order" if reorder_open else "",
+        ),
         Check("exported", "Exported as a PDF", exported is not None, exported or ""),
     ]
     return p

@@ -363,6 +363,85 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .setup-add .fld-in { flex: 1 1 240px; width: auto; }
 .setup .actions { justify-content: flex-end; }
 .rv-where b { color: var(--ink); font-weight: 500; }
+.banner.danger { background: var(--warn-soft); border: 2px solid var(--warn); font-size: 14px; }
+.banner.danger > .ic { color: var(--warn); width: 22px; height: 22px; margin-top: 1px; }
+
+/* Settings */
+.set { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+.set-nav { display: flex; flex-direction: column; gap: 2px; padding: 16px 10px; border-right: 1px solid var(--line); overflow: auto; }
+.set-nav button { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 6px 10px; border: 1px solid transparent; border-radius: 6px; background: none; text-align: left; }
+.set-nav button:hover { background: var(--panel); }
+.set-nav button.is-active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); font-weight: 500; }
+.set-nav button.is-active .ic { color: var(--accent); }
+.set-pick { display: none; gap: 6px; max-width: 360px; padding-bottom: 8px; }
+.set-pick .fld { margin: 0; }
+.set-body { padding: 18px 24px 28px; }
+.main.has-dock .set-body { padding-bottom: 96px; }
+.set-sec { max-width: 740px; display: grid; gap: 12px; }
+.set-sec h2 { margin: 0; font-family: var(--serif); font-size: 21px; }
+.set-sec h3 { margin: 16px 0 0; font-size: 15px; }
+.set-sec p { margin: 0; }
+.set-p { color: var(--muted); max-width: 70ch; }
+.set-sec .fld, .conn-ed .fld { margin: 0 0 -6px; }
+.fld-note { margin: 0; font-size: 13px; color: var(--muted); }
+.set-add { justify-self: start; }
+@container (max-width: 700px) {
+  .set { grid-template-columns: minmax(0, 1fr); }
+  .set-nav { display: none; }
+  .set-pick { display: grid; }
+  .set-body { padding-inline: 14px; }
+}
+/* Privacy: always said in words, with an icon, never by color alone. */
+.ptag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--field); font-size: 12px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.ptag .ic { width: 14px; height: 14px; }
+.ptag.cloud, .ptag.server { background: var(--warn-soft); border-color: var(--warn); font-weight: 600; }
+.ptag.cloud .ic, .ptag.server .ic { color: var(--warn); }
+.ptag.priv { background: var(--ok-soft); border-color: var(--ok); }
+.ptag.priv .ic { color: var(--ok); }
+.ptag.none { color: var(--muted); }
+.pwarn { display: grid; gap: 10px; padding: 14px 16px; border: 2px solid var(--warn); border-radius: 10px; background: var(--warn-soft); color: var(--ink); }
+.pwarn h4 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.pwarn h4 .ic { width: 24px; height: 24px; color: var(--warn); stroke-width: 2; }
+.pwarn ul { margin: 0; padding-left: 20px; display: grid; gap: 5px; font-size: 13.5px; }
+.ack { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--warn); border-radius: 8px; background: var(--raise); font-weight: 600; cursor: pointer; }
+.ack input { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--accent); }
+.conns { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.conn { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 12px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--raise); }
+.conn-main { flex: 1 1 280px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.conn-main b { font-size: 15px; }
+.conn-where, .conn-uses { flex-basis: 100%; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.conn-acts { display: flex; gap: 6px; }
+.conn-ed { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); }
+.conn-ed > h3 { margin: 0; }
+.choices.two { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.choice b .ic { width: 15px; height: 15px; vertical-align: -2px; margin-right: 2px; }
+.keyrow { display: flex; gap: 8px; }
+.keyrow .fld-in { flex: 1; width: auto; min-width: 0; }
+.actions.conn-acts { align-items: center; }
+.test-res { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.test-res .ic { width: 16px; height: 16px; }
+.tasks { display: grid; gap: 14px; }
+.task { display: grid; gap: 6px; justify-items: start; }
+.task .fld { margin: 0; }
+.task .fld-in { max-width: 440px; }
+.thr-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.thr-row input[type="range"] { flex: 1 1 200px; max-width: 360px; accent-color: var(--accent); }
+.thr-row .fld-in { width: 84px; }
+.langs { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.langs label { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 12px 4px 8px; border: 1px solid var(--field); border-radius: 999px; cursor: pointer; }
+.langs label:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
+.langs input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.kv { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13.5px; }
+.kv > .ic { color: var(--ok); }
+.kv-list { margin: 0; padding-left: 18px; display: grid; gap: 3px; font-size: 13.5px; }
+.safe { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.safe li { display: flex; gap: 8px; align-items: flex-start; }
+.safe .ic { color: var(--ok); margin-top: 1px; }
+.ai-priv { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--field); background: none; color: var(--ink); font-size: 12px; white-space: nowrap; }
+.ai-priv .ic { width: 14px; height: 14px; }
+.ai-priv.cloud { background: var(--warn-soft); border-color: var(--warn); font-weight: 600; }
+.ai-priv.cloud .ic { color: var(--warn); }
+.ai-priv.priv .ic { color: var(--ok); }
 .rv-acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .rv-done { display: grid; justify-items: center; gap: 10px; padding: 64px 20px; text-align: center; color: var(--muted); }
 .rv-done > .ic { width: 40px; height: 40px; color: var(--ink); }
@@ -416,7 +495,7 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .ai-h strong { flex: 1; font-family: var(--serif); font-size: 17px; }
 .ai-h .lic { --lic-size: 26px; }
 .ai-h .icon-btn { width: 28px; height: 28px; }
-.ai-ctx { padding: 6px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--surface); }
+.ai-ctx { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; padding: 6px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--surface); }
 .ai-ctx b { color: var(--ink); font-weight: 500; }
 .ai-log { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .msg { max-width: 92%; padding: 8px 11px; border-radius: 10px; font-size: 13.5px; }
@@ -542,6 +621,7 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
     </form>
     <div class="spacer"></div>
     <span class="sample">Sample archive</span>
+    <button class="icon-btn" id="set-btn" data-nav="settings:ai" aria-label="Settings" title="Settings"></button>
     <button class="icon-btn" id="theme-btn" aria-label="Switch light or dark theme" title="Switch light or dark theme"></button>
     <button class="icon-btn mobile-only" id="ai-toggle" aria-label="Ask Lindley"></button>
   </header>
@@ -556,7 +636,7 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
       <button class="icon-btn popout-btn" id="ai-pop" title="Pop out into a floating window" aria-label="Pop out"></button>
       <button class="icon-btn" id="ai-close" title="Hide" aria-label="Hide Ask Lindley"></button>
     </div>
-    <div class="ai-ctx" id="ai-ctx"></div>
+    <div class="ai-ctx"><span id="ai-ctx"></span><button class="ai-priv" id="ai-priv" data-nav="settings:ai"></button></div>
     <div class="ai-log" id="ai-log" aria-live="polite"></div>
     <div class="ai-sugg" id="ai-sugg"></div>
     <form class="ai-form" id="ai-form">
@@ -614,6 +694,9 @@ const I = {
   pen: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
   grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01',
   upload: 'M12 16V4M7 9l5-5 5 5M5 20h14',
+  lock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3M12 14.5v2',
+  cloud: 'M7 18.5h10.5a4 4 0 0 0 .4-8 6 6 0 0 0-11.6-1A4.8 4.8 0 0 0 7 18.5z',
+  gear: 'M10.3 3h3.4l.5 2.4 1.7 1 2.3-.8 1.7 2.9-1.8 1.6v2l1.8 1.6-1.7 2.9-2.3-.8-1.7 1-.5 2.4h-3.4l-.5-2.4-1.7-1-2.3.8-1.7-2.9L5.6 13v-2L3.8 9.4l1.7-2.9 2.3.8 1.7-1zM12 9.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z',
 };
 const lic = (cls = '') => `<svg class="lic ${cls}" aria-hidden="true"><use href="#lindley"/></svg>`;
 const icon = (n, cls = '') => n === 'lindley' ? lic(cls) : `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${I[n]}"/></svg>`;
@@ -950,9 +1033,8 @@ const rotStyle = s => { const a = angle(s); return `--r:${a}deg;--s:${a % 180 ? 
 /* ================= Model helpers ================= */
 const docsBy = st => Object.values(D.docs).filter(d => d.status === st);
 const curDoc = () => U.nav.t === 'doc' ? D.docs[U.nav.id] : null;
-// Pages read with less than this confidence are flagged for a person to check.
-// Fixed for now; it will become a user setting when the Settings screen is designed.
-const REVIEW_BELOW = 90;
+// Pages read with less than this confidence are flagged for a person to check. Set in Settings › Reading and review.
+let REVIEW_BELOW = 90;
 const needsReview = s => s.status === 'read' && !s.reviewed && s.conf < REVIEW_BELOW;
 const docReview = d => d.status === 'progress' ? d.pages.filter(id => needsReview(D.scans[id])).length : 0;
 function reviewQueue(docId) {
@@ -1226,13 +1308,15 @@ function renderTree() {
       <span>${icon('flag')} Pages that need your review</span>
       <span>${icon('checkc')} Completed and exported</span>
       <span><i>Italic names</i> were suggested by Lindley</span>
-    </div>`;
+    </div>
+    <button class="t-item${cls('settings')}"${cur('settings')} data-nav="settings:ai" style="margin-top:8px">${icon('gear')}<span class="t-name">Settings</span></button>`;
 }
 
 function renderStatus() {
   const reading = D.inbox.filter(id => D.scans[id].status === 'reading').length;
   $('#status').innerHTML = `
-    <button class="hide-narrow" data-act="openSetup" title="${esc(SETUP.folders.join(', '))}">${icon('eye')} Watching ${plural(SETUP.folders.length, 'folder')} · ${SETUP.mode === 'copy' ? 'copying' : 'moving'} new scans</button>
+    <button data-nav="settings:ai" title="Where Lindley's AI runs. Click to change.">${aiStatus()}</button>
+    <button class="hide-narrow" data-nav="settings:scans" title="${esc(SETUP.folders.join(', '))}">${icon('eye')} Watching ${plural(SETUP.folders.length, 'folder')} · ${SETUP.mode === 'copy' ? 'copying' : 'moving'} new scans</button>
     <span><i class="dot ${reading ? 'busy' : ''}"></i>${reading ? `Reading ${plural(reading, 'new scan')}` : 'All scans read'}</span>
     ${reviewQueue().length ? `<button data-nav="review">${icon('flag')} ${plural(reviewQueue().length, 'page')} to review</button>` : ''}
     <span class="hide-narrow">Sample data. Changes are not saved.</span>`;
@@ -1311,6 +1395,10 @@ function dock() {
       + tbBtn('check', 'The text is correct', 'confirmTx', false, 'primary') + tbBtn('pen', 'Save my correction', 'saveTx') + SEP
       + `<span class="dock-prog"><span>Page ${U.cur + 1} of ${q} to review</span><b style="--v:${Math.round((U.cur + 1) / q * 100)}%" aria-hidden="true"></b></span>`
       + tbBtn('chev', 'Next', 'next', U.cur >= q - 1, 'next');
+  } else if (t === 'settings') {
+    const n = changedKeys().length;
+    name = 'Settings actions';
+    inner = `<span class="dock-sel">${n ? plural(n, 'unsaved change') : 'No unsaved changes'}</span>` + tbBtn('back', 'Discard changes', 'discardSettings', !n) + tbBtn('check', 'Save changes', 'saveSettings', !n, 'primary');
   } else if (t === 'scan') {
     const aside = locate(U.nav.id)?.where === 'aside';
     inner = tbBtn('back', aside ? 'Back to Set aside' : 'Back to Inbox', 'backHome') + SEP + rotBtns(1)
@@ -1345,6 +1433,7 @@ function moveDockTo(x, y) {
   wrap.classList.add('free');
   wrap.style.left = U.dockPos.x + 'px'; wrap.style.top = U.dockPos.y + 'px';
 }
+function refreshDock() { const w = $('.dock-wrap', main); if (!w) return; w.outerHTML = dock(); fitDock(); }
 function resetDock() { U.dockPos = null; saveDockPos(); renderMain(); $('.dock-grip', main)?.focus(); toast('Toolbar is back at the bottom.'); }
 
 function renderMain() {
@@ -1352,7 +1441,7 @@ function renderMain() {
   // Keep keyboard focus on the dock button that was used, since the view re-renders.
   const fa = document.activeElement;
   const act = fa?.closest?.('.dock') ? fa.dataset.act : null;
-  const views = { inbox: viewInbox, aside: viewAside, doc: viewDoc, folder: viewFolder, search: viewSearch, scan: viewScan, review: () => U.nav.id ? viewReview() : viewReviewList() };
+  const views = { inbox: viewInbox, aside: viewAside, doc: viewDoc, folder: viewFolder, search: viewSearch, scan: viewScan, settings: viewSettings, review: () => U.nav.id ? viewReview() : viewReviewList() };
   const dk = dock();
   main.innerHTML = views[U.nav.t]() + dk;
   main.classList.toggle('has-dock', !!dk);
@@ -1603,6 +1692,10 @@ function viewSearch() {
 
 /* ================= Navigation ================= */
 function go(nav, extra = {}) {
+  // Leaving Settings with changes that haven't been saved asks first.
+  if (U.nav.t === 'settings' && nav.t !== 'settings' && (changedKeys().length || U.cedit)) { leaveSettingsDialog(nav, extra); return; }
+  if (nav.t === 'settings' && U.nav.t !== 'settings') { U.sdraft = clone(SETUP); U.cedit = null; U.sx = { path: '' }; }
+  if (nav.t !== 'settings') { U.sdraft = null; U.cedit = null; }
   U.nav = nav; U.sel.clear(); U.cur = 0; closeMenu();
   if (nav.t === 'doc' && !['grid', 'reader', 'side'].includes(U.view)) U.view = 'grid';
   Object.assign(U, extra);
@@ -1706,6 +1799,7 @@ let pendingFiles = [];
 function addScansDialog(files) {
   files = [...files];
   if (!files.length) return;
+  if (SETUP.addMode !== 'ask') { if (U.nav.t !== 'inbox') go({ t: 'inbox' }); addScans(files, SETUP.addMode); return; }
   pendingFiles = files;
   const n = files.length;
   modalReturn = document.activeElement;
@@ -1734,13 +1828,366 @@ function addScans(files, mode) {
   });
 }
 
-/* First-run setup: which folders Lindley watches, and whether arriving scans are copied or moved. */
-const SETUP = { folders: ['D:\\Scans\\Attic box 4', 'D:\\Scans\\Courthouse'], mode: 'copy' };
+/* Settings, shared by first-run setup and the Settings screen. The real app keeps them in settings.json,
+   except API keys, which go in Windows Credential Manager and never into a file. */
+const SETUP = {
+  folders: ['D:\\Scans\\Attic box 4', 'D:\\Scans\\Courthouse'], mode: 'copy', addMode: 'ask',
+  threshold: 90, langs: ['eng'], library: 'D:\\Lindley library', theme: 'system',
+  conns: [{ id: 'c1', kind: 'local', vendor: 'local', name: 'Ollama on this computer', url: 'http://localhost:11434/v1', model: 'llama3.2-vision', key4: '' }],
+  use: { vision: 'c1', chat: 'c1', embed: 'c1' },
+};
+const SET_KEYS = Object.keys(SETUP);
+const clone = o => JSON.parse(JSON.stringify(o));
+function saveSettings() { try { localStorage.setItem('lindley-settings', JSON.stringify(SETUP)); } catch (e) { /* settings last until the page is closed */ } }
+function applyTheme(t) { if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; syncThemeBtn(); }
+function applySettings() { REVIEW_BELOW = SETUP.threshold; applyTheme(SETUP.theme); syncPrivacy(); }
+const changedKeys = () => U.sdraft ? SET_KEYS.filter(k => JSON.stringify(U.sdraft[k]) !== JSON.stringify(SETUP[k])) : [];
+
+const VENDORS = {
+  anthropic: { label: 'Anthropic (Claude)', company: 'Anthropic', short: 'Claude', model: 'claude-sonnet-5', embed: false },
+  openai: { label: 'OpenAI', company: 'OpenAI', short: 'OpenAI', model: 'gpt-4o', embed: true },
+  other: { label: 'Another cloud service', company: '', short: 'Cloud AI', model: '', embed: true },
+};
+// The three jobs Lindley gives an AI, matching vision_provider, chat_provider and embedding_provider in settings.json.
+const TASKS = [
+  ['vision', 'Reading handwriting and hard pages', 'page images', 'Nothing connected: handwriting and hard pages wait for your review instead.', 'reading handwriting'],
+  ['chat', 'Answering your questions in Ask Lindley', 'your questions and the text of your pages', 'Nothing connected: Ask Lindley is turned off.', 'answering your questions'],
+  ['embed', 'Finding related pages', 'the text of your pages', 'Nothing connected: related pages are found by matching words only.', 'finding related pages'],
+];
+const LANGS = [['eng', 'English'], ['deu', 'German'], ['fra', 'French'], ['spa', 'Spanish'], ['nld', 'Dutch'], ['lat', 'Latin']];
+const connById = (st, id) => st.conns.find(c => c.id === id);
+function hostOf(u) { try { return new URL(u).hostname; } catch (e) { return ''; } }
+function companyOf(c) { return c.vendor === 'other' ? (hostOf(c.url) || 'that company') : VENDORS[c.vendor]?.company || ''; }
+// Where a connection sends your pages: this computer, your own network, a server somewhere else, or a cloud company.
+function reach(c) {
+  if (c.kind === 'cloud') return 'cloud';
+  const h = hostOf(c.url);
+  if (!h || h === 'localhost' || h === '[::1]' || /^127\./.test(h)) return 'this';
+  if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h) || /\.(local|lan|home|internal)$/.test(h) || !h.includes('.')) return 'network';
+  return 'server';
+}
+function privTag(c) {
+  const r = reach(c);
+  if (r === 'cloud') return `<span class="ptag cloud">${icon('cloud')}Not private · sent to ${esc(companyOf(c))}</span>`;
+  if (r === 'server') return `<span class="ptag server">${icon('warn')}Your server · check you control it</span>`;
+  return `<span class="ptag priv">${icon('lock')}Private · ${r === 'this' ? 'this computer' : 'your network'}</span>`;
+}
+const cloudInUse = (st = SETUP) => [...new Set(TASKS.map(([k]) => connById(st, st.use[k])).filter(c => c?.kind === 'cloud').map(companyOf))];
+const anyAi = (st = SETUP) => TASKS.some(([k]) => connById(st, st.use[k]));
+function aiStatus() {
+  const cloud = cloudInUse();
+  if (cloud.length) return `${icon('cloud')} AI: sent to ${esc(cloud.join(' and '))} · not private`;
+  return anyAi() ? `${icon('lock')} AI: private, on your own computers` : `${icon('warn')} AI: not connected`;
+}
+// The Ask Lindley header always says where questions go.
+function syncPrivacy() {
+  const cloud = cloudInUse(), b = $('#ai-priv');
+  b.className = 'ai-priv ' + (cloud.length ? 'cloud' : anyAi() ? 'priv' : 'off');
+  b.innerHTML = cloud.length ? `${icon('cloud')}<span>Cloud: ${esc(cloud.join(', '))}</span>` : anyAi() ? `${icon('lock')}<span>Private</span>` : `${icon('warn')}<span>No AI</span>`;
+  b.title = cloud.length ? `Your pages and questions are sent to ${cloud.join(' and ')}. They are not private. Click to change.` : anyAi() ? "Lindley's AI runs on computers you control. Click for AI settings." : 'No AI is connected. Click to connect one.';
+  const chat = connById(SETUP, SETUP.use.chat);
+  $('#ai-input').placeholder = !chat ? 'Connect an AI in Settings to ask questions' : chat.kind === 'cloud' ? `Ask about your documents (sent to ${companyOf(chat)})` : 'Ask about your documents';
+}
+
+/* A connection being added or changed, in setup ("su") or Settings ("st") */
+function newEdit(kind = 'local', vendor = 'anthropic') {
+  if (kind === 'local') return { kind, vendor: 'local', name: 'Ollama on this computer', url: 'http://localhost:11434/v1', model: 'llama3.2-vision', key: '', key4: '', ack: true, show: false, tested: null, id: null };
+  const v = VENDORS[vendor];
+  return { kind, vendor, name: v.short, url: vendor === 'other' ? 'https://' : '', model: v.model, key: '', key4: '', ack: false, show: false, tested: null, id: null };
+}
+const editReady = e => e.kind !== 'cloud' || (e.ack && !!(e.key.trim() || e.key4));
+function connFromEdit(e) {
+  const key = e.key.trim();
+  return { id: e.id || 'c' + Date.now().toString(36), kind: e.kind, vendor: e.vendor, name: e.name.trim() || (e.kind === 'cloud' ? VENDORS[e.vendor].short : 'AI on this computer'),
+    url: e.url.trim(), model: e.model.trim(), key4: key ? key.slice(-4) : e.key4 || '' };
+}
+function fakeTest(e) {
+  if (e.kind === 'cloud') {
+    const k = e.key.trim();
+    if (!k && e.key4) return { ok: true, msg: `Connected to ${companyOf(e)} with your saved key.` };
+    if (k.length < 12) return { ok: false, msg: `${companyOf(e)} refused that key. Check that you copied all of it.` };
+    return { ok: true, msg: `Connected. ${companyOf(e)}'s ${e.model || 'model'} answered.` };
+  }
+  if (!hostOf(e.url)) return { ok: false, msg: "That address doesn't look right. It should start with http://" };
+  return { ok: true, msg: `Found ${e.model || 'a model'} at ${hostOf(e.url)}.` };
+}
+function urlCaution(e) {
+  return reach(e) === 'server' ? `<div class="rv-state flag" role="note">${icon('warn')}<div><b>This address isn't on your own network.</b> Your pages will travel over the internet to ${esc(hostOf(e.url))}. Use it only if you or your organization run that server.</div></div>` : '';
+}
+function cloudWarning(ctx, e) {
+  const co = esc(companyOf(e));
+  return `<div class="pwarn" role="note" aria-labelledby="${ctx}-wh">
+    <h4 id="${ctx}-wh">${icon('warn')}<span>Warning: your scans will not be private</span></h4>
+    <ul>
+      <li>Every page you ask this AI to read, and every question you ask about your documents, is sent over the internet to ${co}'s computers.</li>
+      <li>Once it's sent, you can't take it back. ${co}'s own policies, not Lindley's, decide how long it's kept and who can see it.</li>
+      <li>Don't use a cloud AI for scans with private information: medical, legal or financial records, adoption papers, or anything about living people who haven't agreed to it.</li>
+      <li>To keep your scans private, use an AI on a computer you own instead, such as Ollama or LM Studio.</li>
+    </ul>
+    <label class="ack"><input type="checkbox" id="${ctx}-ack" data-bind="e.ack" data-rerender ${e.ack ? 'checked' : ''}><span>I understand my scans will be sent to ${co} and are not private.</span></label>
+  </div>`;
+}
+function connEditor(ctx, e, inSetup) {
+  const fld = (id, label, path, val, extra = '') => `<label class="fld" for="${ctx}-${id}">${label}</label><input class="fld-in" id="${ctx}-${id}" data-bind="${path}" value="${esc(val)}" autocomplete="off" spellcheck="false" ${extra}>`;
+  let h = inSetup ? '' : `<h3>${e.id ? `Change ${esc(e.name)}` : 'Add an AI connection'}</h3>
+    <fieldset class="choices two"><legend class="fld">Where does this AI run?</legend>
+      <label class="choice"><input type="radio" id="${ctx}-k-local" name="${ctx}-kind" value="local" data-bind="e.kind" data-rerender ${e.kind === 'local' ? 'checked' : ''}><span><b>${icon('lock')}On a computer you own.</b> Ollama, LM Studio or similar, on this PC or your own server. Private.</span></label>
+      <label class="choice"><input type="radio" id="${ctx}-k-cloud" name="${ctx}-kind" value="cloud" data-bind="e.kind" data-rerender ${e.kind === 'cloud' ? 'checked' : ''}><span><b>${icon('cloud')}A cloud AI company.</b> Anthropic, OpenAI and others, with an API key. Not private.</span></label>
+    </fieldset>`;
+  if (e.kind === 'local') {
+    h += fld('name', 'Name', 'e.name', e.name)
+      + fld('url', 'Address', 'e.url', e.url, `aria-describedby="${ctx}-urlh"`)
+      + `<p class="fld-note" id="${ctx}-urlh">For Ollama on this computer it's usually <span class="mono">http://localhost:11434/v1</span>. LM Studio uses port 1234.</p>`
+      + `<div id="${ctx}-urlwarn">${urlCaution(e)}</div>`
+      + fld('model', 'Model', 'e.model', e.model)
+      + fld('key', 'API key (optional)', 'e.key', e.key, 'type="password"');
+  } else {
+    h += `<label class="fld" for="${ctx}-vendor">Company</label><select class="fld-in" id="${ctx}-vendor" data-bind="e.vendor" data-rerender>${Object.entries(VENDORS).map(([k, v]) => `<option value="${k}" ${e.vendor === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select>`
+      + (e.vendor === 'other' ? fld('url', 'Address', 'e.url', e.url) : '')
+      + fld('model', 'Model', 'e.model', e.model)
+      + cloudWarning(ctx, e)
+      + `<label class="fld" for="${ctx}-key">API key from ${esc(companyOf(e))}</label>
+      <div class="keyrow"><input class="fld-in" id="${ctx}-key" data-bind="e.key" type="${e.show ? 'text' : 'password'}" value="${esc(e.key)}" autocomplete="off" spellcheck="false" ${e.ack ? '' : 'disabled'} aria-describedby="${ctx}-keyh" placeholder="${e.key4 ? `Leave empty to keep the saved key ••••${esc(e.key4)}` : 'Paste your key here'}">
+        <button class="btn" data-conn="show" ${e.ack ? '' : 'disabled'} aria-pressed="${e.show}" aria-label="Show key">${e.show ? 'Hide' : 'Show'}</button></div>
+      <p class="fld-note" id="${ctx}-keyh">${e.ack ? 'Lindley keeps your key in Windows Credential Manager, never in its settings file, and never shows it again after you save it.' : 'Read the warning and check the box above before you enter a key.'}</p>`;
+  }
+  const ok = editReady(e);
+  h += `<div class="actions conn-acts"><button class="btn" data-conn="test" ${ok ? '' : 'disabled'}>Test connection</button>
+    <span class="test-res" id="${ctx}-testres" role="status">${e.tested ? `${icon(e.tested.ok ? 'checkc' : 'warn')}${esc(e.tested.msg)}` : ''}</span>
+    ${inSetup ? '' : `<span class="spacer"></span><button class="btn" data-conn="cancel">Cancel</button><button class="btn primary" data-conn="save" ${ok ? '' : 'disabled'}>${e.id ? 'Update connection' : 'Add connection'}</button>`}</div>`;
+  return `<div class="conn-ed" id="${ctx}-ed">${h}</div>`;
+}
+function foldersEditor(ctx, folders) {
+  return `<ul class="setup-folders">${folders.map((x, i) => `<li>${icon('folder')}<span class="mono">${esc(x)}</span><button class="btn ghost" data-fold="rm:${i}" aria-label="Stop watching ${esc(x)}">Remove</button></li>`).join('') || '<li>No folders yet. Add at least one.</li>'}</ul>
+    <div class="setup-add"><label class="sr-only" for="${ctx}-path">Folder path</label><input class="fld-in" id="${ctx}-path" data-bind="x.path" value="${esc(roots(ctx).x.path)}" placeholder="Type a folder path, for example E:\\Scans"><button class="btn" data-fold="add">Add</button><button class="btn" data-fold="browse">${icon('folder')} Browse…</button></div>`;
+}
+function modeChoices(ctx, d) {
+  return `<fieldset class="choices"><legend class="sr-only">When a scan arrives</legend>
+    <label class="choice"><input type="radio" id="${ctx}-mode-copy" name="${ctx}-mode" value="copy" data-bind="d.mode" ${d.mode === 'copy' ? 'checked' : ''}><span><b>Copy it into Lindley</b> and leave my folder untouched. Recommended: your scan folder keeps every file.</span></label>
+    <label class="choice"><input type="radio" id="${ctx}-mode-move" name="${ctx}-mode" value="move" data-bind="d.mode" ${d.mode === 'move' ? 'checked' : ''}><span><b>Move it into Lindley</b> and empty my scan folder. Handy when the folder is only a drop-off spot for the scanner.</span></label>
+  </fieldset>`;
+}
+
+/* Form fields bind to a draft (d), the connection being edited (e) and scratch values (x). */
+const ctxOf = el => el.closest('#setup') ? 'su' : 'st';
+function roots(ctx) { return ctx === 'su' ? { d: setupDraft, e: setupDraft.edit, x: setupDraft.x } : { d: U.sdraft, e: U.cedit, x: U.sx }; }
+function setEdit(ctx, e) { if (ctx === 'su') setupDraft.edit = e; else U.cedit = e; }
+function bindSet(el) {
+  const ctx = ctxOf(el), [root, ...path] = el.dataset.bind.split('.');
+  const r = roots(ctx);
+  let v = el.type === 'checkbox' ? el.checked : el.type === 'range' || el.type === 'number' ? +el.value : el.value;
+  if ('list' in el.dataset) { const arr = r[root][path[0]]; const i = arr.indexOf(el.value); if (el.checked && i < 0) arr.push(el.value); if (!el.checked && i >= 0) arr.splice(i, 1); return; }
+  // Changing where the AI runs, or which company, starts the form over, including the warning.
+  if (root === 'e' && path[0] === 'kind') { setEdit(ctx, { ...newEdit(v), id: r.e.id }); return; }
+  if (root === 'e' && path[0] === 'vendor') { setEdit(ctx, { ...newEdit('cloud', v), id: r.e.id }); return; }
+  if (ctx === 'su' && root === 'd' && path[0] === 'ai') setupDraft.edit = newEdit(v === 'cloud' ? 'cloud' : 'local');
+  let o = r[root];
+  path.slice(0, -1).forEach(k => { o = o[k]; });
+  o[path[path.length - 1]] = v;
+  if (root === 'e' && el.type !== 'checkbox') { r.e.tested = null; const t = $(`#${ctx}-testres`); if (t) t.innerHTML = ''; }
+}
+function rerender(ctx) {
+  const id = document.activeElement?.id;
+  if (ctx === 'su') renderSetup(); else renderMain();
+  if (id) document.getElementById(id)?.focus();
+}
+function afterInput(el) {
+  const ctx = ctxOf(el), e = roots(ctx).e;
+  if (e) $$(`#${ctx}-ed [data-conn="test"], #${ctx}-ed [data-conn="save"]`).forEach(b => { b.disabled = !editReady(e); });
+  if (el.dataset.bind === 'e.url' && $(`#${ctx}-urlwarn`)) $(`#${ctx}-urlwarn`).innerHTML = urlCaution(e);
+  if (el.dataset.bind === 'd.library') $('#st-libpaths').innerHTML = libPaths(U.sdraft.library);
+  if (el.dataset.bind === 'd.threshold') { const t = U.sdraft.threshold; $('#st-thr').value = t; $('#st-thrn').value = t; $('#st-thrp').textContent = thrPreview(t); }
+  if (ctx === 'st') refreshDock();
+}
+async function foldAct(ctx, act) {
+  const { d, x } = roots(ctx);
+  const back = () => { rerender(ctx); $(`#${ctx}-path`).focus(); if (ctx === 'st') refreshDock(); };
+  if (act.startsWith('rm:')) { d.folders.splice(+act.slice(3), 1); back(); return; }
+  if (act === 'add') { const v = x.path.trim(); if (v && !d.folders.includes(v)) d.folders.push(v); x.path = ''; back(); return; }
+  // The real app uses the system folder dialog. Browsers only reveal the folder's name, not its full path.
+  try {
+    if (!window.showDirectoryPicker) throw new Error('unsupported');
+    const h = await showDirectoryPicker();
+    if (!d.folders.includes(h.name)) d.folders.push(h.name);
+    back();
+  } catch (e) {
+    if (e.name !== 'AbortError') { $(`#${ctx}-path`).focus(); toast('Type the folder path into the box. This browser can’t open a folder picker here.'); }
+  }
+}
+function connAct(ctx, act) {
+  const e = roots(ctx).e, d = U.sdraft;
+  if (act === 'new') { U.cedit = newEdit('local'); renderMain(); $('#st-k-local')?.focus(); return; }
+  if (act === 'show') { e.show = !e.show; rerender(ctx); return; }
+  if (act === 'test') { e.tested = fakeTest(e); rerender(ctx); return; }
+  if (act === 'cancel') { U.cedit = null; renderMain(); $('[data-conn="new"]', main)?.focus(); return; }
+  if (act === 'save') {
+    if (!editReady(e)) return;
+    const c = connFromEdit(e), i = d.conns.findIndex(x => x.id === c.id);
+    if (i >= 0) d.conns[i] = c;
+    else {
+      d.conns.push(c);
+      // A first connection takes on every job that had nothing.
+      TASKS.forEach(([k]) => { if (!connById(d, d.use[k]) && (k !== 'embed' || VENDORS[c.vendor]?.embed !== false)) d.use[k] = c.id; });
+    }
+    U.cedit = null; renderMain();
+    $(`#st-use-chat`)?.focus();
+    toast(`${i >= 0 ? 'Updated' : 'Added'} ${c.name}. Choose which jobs it does, then save your changes.`);
+    return;
+  }
+  const [a, id] = act.split(':'), c = connById(d, id);
+  if (a === 'edit') { U.cedit = { ...newEdit(c.kind, c.vendor), ...c, key: '', ack: true, show: false, tested: null }; renderMain(); ($('#st-name') || $('#st-vendor'))?.focus(); }
+  if (a === 'rm') {
+    d.conns = d.conns.filter(x => x.id !== id);
+    TASKS.forEach(([k]) => { if (d.use[k] === id) d.use[k] = 'none'; });
+    if (U.cedit?.id === id) U.cedit = null;
+    renderMain(); $('[data-conn="new"]', main)?.focus();
+    toast(`Removed ${c.name}.${c.key4 ? ' Its key is deleted from Credential Manager when you save.' : ''} Save your changes to confirm.`);
+  }
+}
+
+/* The Settings screen */
+const SECTIONS = [['ai', 'AI and privacy', 'lock'], ['scans', 'Scans', 'inbox'], ['reading', 'Reading and review', 'flag'], ['library', 'Library', 'folder'], ['look', 'Appearance', 'sun']];
+function flaggedAt(t) {
+  let n = 0;
+  const f = id => { const s = D.scans[id]; if (s.status === 'read' && !s.reviewed && s.conf < t) n++; };
+  docsBy('progress').forEach(x => x.pages.forEach(f)); D.inbox.forEach(f);
+  return n;
+}
+function thrPreview(t) { return `At ${t}%, ${plural(flaggedAt(t), 'page')} would need your review. Right now it's ${flaggedAt(REVIEW_BELOW)}, at ${REVIEW_BELOW}%.`; }
+function libPaths(lib) { return ['Scans', 'lindley.db', 'Exports'].map((x, i) => `<li>${['Lindley’s copies of your scans', 'The database of everything it read', 'PDFs you export'][i]}: <span class="mono">${esc(lib)}\\${x}</span></li>`).join(''); }
+function aiSummary(d) {
+  const cloud = cloudInUse(d);
+  if (cloud.length) {
+    const jobs = TASKS.filter(([k]) => connById(d, d.use[k])?.kind === 'cloud').map(x => x[4]);
+    return `<div class="banner danger" role="note">${icon('cloud')}<div class="b-body"><div class="b-text"><b>Not private. Your scans are sent to ${esc(cloud.join(' and '))}.</b> That happens for ${jobs.length > 1 ? jobs.slice(0, -1).join(', ') + ' and ' + jobs[jobs.length - 1] : jobs[0]}. Anything you'd rather keep to yourself shouldn't go to a cloud AI.</div></div></div>`;
+  }
+  if (anyAi(d)) {
+    const far = TASKS.some(([k]) => { const c = connById(d, d.use[k]); return c && reach(c) === 'server'; });
+    return `<div class="banner ok" role="note">${icon('lock')}<div class="b-body"><div class="b-text"><b>Private. Your scans stay on computers you control.</b> ${far ? "One connection is on a server outside your network, so check that it's yours." : 'No page or question is sent to an AI company.'}</div></div></div>`;
+  }
+  return `<div class="banner warn" role="note">${icon('warn')}<div class="b-body"><div class="b-text"><b>No AI connected.</b> Tesseract still reads printed pages on this computer. Handwriting waits for your review, and Ask Lindley is off.</div></div></div>`;
+}
+function setAi(d) {
+  const uses = c => { const j = TASKS.filter(([k]) => d.use[k] === c.id).map(x => x[4]); return j.length ? 'Used for ' + j.join(', ') : 'Not used for anything yet'; };
+  const conns = d.conns.map(c => `<li class="conn">
+      <div class="conn-main"><b>${esc(c.name)}</b>${privTag(c)}
+        <span class="conn-where">${c.kind === 'cloud' ? `${esc(companyOf(c))}’s cloud` : `<span class="mono">${esc(c.url)}</span>`} · model <span class="mono">${esc(c.model || 'not set')}</span>${c.kind === 'cloud' || c.key4 ? ` · ${c.key4 ? `key saved ••••${esc(c.key4)}` : 'no key'}` : ''}</span>
+        <span class="conn-uses">${uses(c)}</span></div>
+      <div class="conn-acts"><button class="btn" data-conn="edit:${c.id}" aria-label="Change ${esc(c.name)}">Change…</button><button class="btn ghost" data-conn="rm:${c.id}" aria-label="Remove ${esc(c.name)}">Remove</button></div>
+    </li>`).join('');
+  const tasks = TASKS.map(([k, label, what, none]) => {
+    const c = connById(d, d.use[k]);
+    const note = !c ? `<span class="ptag none">${none}</span>`
+      : c.kind === 'cloud' ? `<span class="ptag cloud">${icon('cloud')}Sends ${what} to ${esc(companyOf(c))} · not private</span>`
+      : reach(c) === 'server' ? `<span class="ptag server">${icon('warn')}Sends ${what} to ${esc(hostOf(c.url))}</span>`
+      : `<span class="ptag priv">${icon('lock')}Stays on ${reach(c) === 'this' ? 'this computer' : 'your network'}</span>`;
+    const opts = d.conns.map(x => { const no = k === 'embed' && VENDORS[x.vendor]?.embed === false; return `<option value="${x.id}" ${d.use[k] === x.id ? 'selected' : ''} ${no ? 'disabled' : ''}>${esc(x.name)} (${x.kind === 'cloud' ? 'cloud, not private' : reach(x) === 'server' ? 'your server' : 'private'})${no ? `: ${esc(companyOf(x))} doesn't offer this` : ''}</option>`; }).join('');
+    return `<div class="task"><label class="fld" for="st-use-${k}">${label}</label><select class="fld-in" id="st-use-${k}" data-bind="d.use.${k}" data-rerender><option value="none" ${c ? '' : 'selected'}>None</option>${opts}</select>${note}</div>`;
+  }).join('');
+  return `${aiSummary(d)}
+    <p class="set-p">Lindley uses an AI to read handwriting, answer your questions and find related pages. Where that AI runs decides who else sees your scans. An AI on a computer you own keeps them private. A cloud AI company sees every page it's asked to read.</p>
+    <h3>AI connections</h3>
+    ${d.conns.length ? `<ul class="conns">${conns}</ul>` : '<p class="set-p">No AI connections yet.</p>'}
+    ${U.cedit ? connEditor('st', U.cedit) : `<button class="btn set-add" data-conn="new">${icon('plus')} Add an AI connection</button>`}
+    <h3>Which AI does what</h3>
+    <p class="set-p">Each job can use a different connection. For example, keep reading on this computer and use a cloud AI only for questions.</p>
+    <div class="tasks">${tasks}</div>
+    <p class="fld-note">${icon('lock')} API keys are kept in Windows Credential Manager. They are never written to Lindley's settings file or your library, and never shown again once saved.</p>`;
+}
+function setScans(d) {
+  const am = [['ask', '<b>Ask me each time.</b> Recommended.'], ['copy', '<b>Always copy them</b> and leave the originals where they are.'], ['move', '<b>Always move them</b> into Lindley.']];
+  return `<p class="set-p">Lindley watches these folders. When a scan arrives it reads it and puts it in your Inbox.</p>
+    <h3>Folders to watch</h3>${foldersEditor('st', d.folders)}
+    <h3>When a scan arrives in a watched folder</h3>${modeChoices('st', d)}
+    <h3>When you use Add scans… in the Inbox</h3>
+    <fieldset class="choices"><legend class="sr-only">When you use Add scans</legend>${am.map(([v, l]) => `<label class="choice"><input type="radio" id="st-add-${v}" name="st-add" value="${v}" data-bind="d.addMode" ${d.addMode === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</fieldset>
+    <p class="fld-note">Either way, Lindley never changes the scans themselves.</p>`;
+}
+function setReading(d) {
+  const v = connById(d, d.use.vision);
+  return `<h3>When Lindley asks for your review</h3>
+    <p class="set-p">Lindley flags any page it read with less confidence than this, so a person checks it before it's trusted for search and chat. A higher number means more pages to check, and fewer mistakes slipping through.</p>
+    <label class="fld" for="st-thr">Flag pages read with less than</label>
+    <div class="thr-row"><input type="range" id="st-thr" min="50" max="99" step="1" value="${d.threshold}" data-bind="d.threshold" aria-describedby="st-thrp"><input type="number" class="fld-in" id="st-thrn" min="50" max="99" value="${d.threshold}" data-bind="d.threshold" aria-label="Flag pages read with less than, in percent" aria-describedby="st-thrp"><span aria-hidden="true">% confidence</span></div>
+    <p class="fld-note" id="st-thrp" aria-live="polite">${thrPreview(d.threshold)}</p>
+    <h3>Languages in your scans</h3>
+    <fieldset class="langs"><legend class="sr-only">Languages in your scans</legend>${LANGS.map(([k, l]) => `<label><input type="checkbox" id="st-lang-${k}" value="${k}" data-bind="d.langs" data-list ${d.langs.includes(k) ? 'checked' : ''}>${l}</label>`).join('')}</fieldset>
+    <p class="fld-note">The printed-text reader uses these. Choose only the ones you need, since each one adds a little time.</p>
+    <h3>Printed text</h3>
+    <div class="kv">${icon('checkc')}Read by Tesseract, found at <span class="mono">C:\\Program Files\\Tesseract-OCR\\tesseract.exe</span><button class="btn" data-set="tess">Change…</button></div>
+    <h3>Handwriting and hard pages</h3>
+    <div class="kv">${v ? `Read by ${esc(v.name)} ${privTag(v)}` : 'No AI connected, so these pages wait for your review.'}<button class="btn ghost" data-nav="settings:ai">Change in AI and privacy</button></div>`;
+}
+function setLibrary(d) {
+  return `<p class="set-p">Lindley's copies of your scans, its database and the PDFs you export all live in one folder. Back up that folder and you've backed up everything.</p>
+    <label class="fld" for="st-lib">Library folder</label>
+    <div class="setup-add"><input class="fld-in" id="st-lib" data-bind="d.library" value="${esc(d.library)}" spellcheck="false"><button class="btn" data-set="libBrowse">${icon('folder')} Browse…</button></div>
+    <ul class="kv-list" id="st-libpaths">${libPaths(d.library)}</ul>
+    <h3>Keeping your originals safe</h3>
+    <ul class="safe">
+      <li>${icon('check')}<span>Lindley never changes a scan. Rotating, correcting text and putting pages in order are saved alongside it.</span></li>
+      <li>${icon('check')}<span>Nothing is deleted. Set aside keeps scans you don't need, and you can bring them back at any time.</span></li>
+      <li>${icon('check')}<span>API keys are never stored in the library, so it's safe to back up or copy to another computer.</span></li>
+    </ul>`;
+}
+function setLook(d) {
+  const th = [['system', 'Match my computer'], ['light', 'Light'], ['dark', 'Dark']];
+  return `<h3>Theme</h3>
+    <fieldset class="choices"><legend class="sr-only">Theme</legend>${th.map(([v, l]) => `<label class="choice"><input type="radio" id="st-theme-${v}" name="st-theme" value="${v}" data-bind="d.theme" ${d.theme === v ? 'checked' : ''}><span><b>${l}</b></span></label>`).join('')}</fieldset>
+    <h3>Toolbar</h3>
+    <p class="set-p">Drag the toolbar anywhere by the handle at its left end. This puts it back at the bottom, in the middle.</p>
+    <button class="btn set-add" data-set="resetDock" ${U.dockPos ? '' : 'disabled'}>Reset toolbar position</button>`;
+}
+function viewSettings() {
+  const sec = SECTIONS.some(x => x[0] === U.nav.id) ? U.nav.id : 'ai';
+  const title = SECTIONS.find(x => x[0] === sec)[1];
+  const body = { ai: setAi, scans: setScans, reading: setReading, library: setLibrary, look: setLook }[sec](U.sdraft);
+  return `
+  <div class="head">
+    <div class="crumbs">Settings › ${title}</div>
+    <div class="title-row"><h1 class="title">Settings</h1></div>
+    <p class="sub">Changes take effect when you save them with the toolbar below.</p>
+    <div class="set-pick"><label class="fld" for="set-sec">Section</label><select class="fld-in" id="set-sec">${SECTIONS.map(([k, l]) => `<option value="${k}" ${k === sec ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+  </div>
+  <div class="set">
+    <nav class="set-nav" aria-label="Settings sections">${SECTIONS.map(([k, l, ic]) => `<button data-nav="settings:${k}" ${k === sec ? 'class="is-active" aria-current="page"' : ''}>${icon(ic)}${l}</button>`).join('')}</nav>
+    <div class="scroll set-body"><section class="set-sec" aria-labelledby="set-h"><h2 id="set-h">${title}</h2>${body}</section></div>
+  </div>`;
+}
+function commitSettings(dropEditor) {
+  const d = U.sdraft;
+  if (U.cedit && !dropEditor) { toast('Finish the connection you are adding first: add it or cancel it.'); $('#st-ed')?.scrollIntoView({ block: 'center' }); return false; }
+  if (!d.folders.length) { toast('Add at least one folder for Lindley to watch.'); U.nav = { t: 'settings', id: 'scans' }; renderMain(); $('#st-path')?.focus(); return false; }
+  if (!d.langs.length) { toast('Choose at least one language for reading printed pages.'); U.nav = { t: 'settings', id: 'reading' }; renderMain(); return false; }
+  const before = REVIEW_BELOW, cloudBefore = cloudInUse();
+  Object.assign(SETUP, clone(d));
+  U.cedit = null;
+  saveSettings(); applySettings(); render();
+  const newCloud = cloudInUse().filter(x => !cloudBefore.includes(x));
+  const n = reviewQueue().length;
+  toast('Settings saved.' + (REVIEW_BELOW !== before ? ` ${plural(n, 'page')} now ${n === 1 ? 'needs' : 'need'} your review.` : '') + (newCloud.length ? ` From now on your scans are sent to ${newCloud.join(' and ')}.` : ''));
+  return true;
+}
+function discardSettings() { U.sdraft = clone(SETUP); U.cedit = null; renderMain(); toast('Changes discarded.'); }
+let pendingGo = null;
+function leaveSettingsDialog(nav, extra) {
+  pendingGo = [nav, extra];
+  const n = changedKeys().length;
+  modalReturn = document.activeElement;
+  modal.setAttribute('aria-labelledby', 'modal-h');
+  modal.innerHTML = `<h2 id="modal-h">Save your settings?</h2>
+    <p>${n ? `You have ${plural(n, 'unsaved change')}. Changes only take effect once you save them.` : ''}${U.cedit ? ` ${n ? 'You are also' : "You're"} partway through adding an AI connection, which will be dropped.` : ''}</p>
+    <div class="actions"><button class="btn" data-act="modalClose">Keep editing</button><button class="btn" data-act="modalDiscardGo">Discard changes</button>${n ? '<button class="btn primary" data-act="modalSaveGo">Save and continue</button>' : ''}</div>`;
+  modal.hidden = false; syncScrim();
+  $(n ? '[data-act="modalSaveGo"]' : '[data-act="modalDiscardGo"]', modal).focus();
+}
+
+/* First-run setup: where scans come from, whether they're copied or moved, and which AI to use. */
 const setupEl = $('#setup');
 let setupDraft = null, setupFirst = false, setupReturn = null;
 function openSetup(first) {
   setupFirst = first;
-  setupDraft = { folders: [...SETUP.folders], mode: SETUP.mode };
+  setupDraft = { folders: [...SETUP.folders], mode: SETUP.mode, ai: 'local', edit: newEdit('local'), x: { path: '' } };
   setupReturn = document.activeElement;
   renderSetup();
   setupEl.hidden = false;
@@ -1748,56 +2195,48 @@ function openSetup(first) {
 }
 function renderSetup() {
   const f = setupDraft;
+  const ai = [['local', 'lock', '<b>On this computer. Private.</b> Recommended. Uses Ollama or LM Studio, free programs that run an AI on your own PC. Your scans never leave it.'],
+    ['cloud', 'cloud', '<b>A cloud AI with an API key. Not private.</b> Anthropic, OpenAI and others. Often better at hard handwriting, but every page it reads is sent to that company.'],
+    ['none', 'warn', '<b>Not now.</b> Tesseract still reads printed pages on this computer. Handwriting waits for your review, and Ask Lindley stays off until you connect an AI in Settings.']];
   setupEl.innerHTML = `<div class="setup-card">
     <div class="setup-brand">${lic()}<span>Lindley</span></div>
-    <h2 id="setup-h" tabindex="-1">${setupFirst ? 'Welcome. First, where do your scans come from?' : 'Scan folders'}</h2>
+    <h2 id="setup-h" tabindex="-1">Welcome. First, where do your scans come from?</h2>
     <p>Lindley watches the folders you choose. When a scan arrives it reads it and puts it in your Inbox. You can also add scans from anywhere, such as a thumb drive, with Add scans in the Inbox.</p>
-    <section aria-labelledby="su-1"><h3 id="su-1">1. Folders to watch</h3>
-      <ul class="setup-folders">${f.folders.map((x, i) => `<li>${icon('folder')}<span class="mono">${esc(x)}</span><button class="btn ghost" data-setup="rm:${i}" aria-label="Stop watching ${esc(x)}">Remove</button></li>`).join('') || '<li>No folders yet. Add at least one.</li>'}</ul>
-      <div class="setup-add"><label class="sr-only" for="setup-path">Folder path</label><input class="fld-in" id="setup-path" placeholder="Type a folder path, for example E:\\Scans"><button class="btn" data-setup="add">Add</button><button class="btn" data-setup="browse">${icon('folder')} Browse…</button></div>
-    </section>
-    <section aria-labelledby="su-2"><h3 id="su-2">2. When a scan arrives</h3>
-      <fieldset class="choices"><legend class="sr-only">When a scan arrives</legend>
-        <label class="choice"><input type="radio" name="setup-mode" value="copy" ${f.mode === 'copy' ? 'checked' : ''}><span><b>Copy it into Lindley</b> and leave my folder untouched. Recommended: your scan folder keeps every file.</span></label>
-        <label class="choice"><input type="radio" name="setup-mode" value="move" ${f.mode === 'move' ? 'checked' : ''}><span><b>Move it into Lindley</b> and empty my scan folder. Handy when the folder is only a drop-off spot for the scanner.</span></label>
-      </fieldset>
-    </section>
+    <section aria-labelledby="su-1"><h3 id="su-1">1. Folders to watch</h3>${foldersEditor('su', f.folders)}</section>
+    <section aria-labelledby="su-2"><h3 id="su-2">2. When a scan arrives</h3>${modeChoices('su', f)}</section>
     <section aria-labelledby="su-3"><h3 id="su-3">3. When Lindley needs your help</h3>
-      <p>Lindley flags any page it read with less than ${REVIEW_BELOW}% confidence so you can check it. You'll be able to change this in Settings.</p>
+      <p>Lindley flags any page it read with less than ${REVIEW_BELOW}% confidence so you can check it. You can change this in Settings.</p>
+    </section>
+    <section aria-labelledby="su-4"><h3 id="su-4">4. Choose Lindley's AI</h3>
+      <p>Lindley uses an AI to read handwriting, answer your questions and find related pages. Where that AI runs decides who else sees your scans.</p>
+      <fieldset class="choices"><legend class="sr-only">Where Lindley's AI runs</legend>
+        ${ai.map(([v, ic, l]) => `<label class="choice"><input type="radio" id="su-ai-${v}" name="su-ai" value="${v}" data-bind="d.ai" data-rerender ${f.ai === v ? 'checked' : ''}><span>${l.replace('<b>', `<b>${icon(ic)}`)}</span></label>`).join('')}
+      </fieldset>
+      ${f.ai === 'none' ? '' : connEditor('su', f.edit, true)}
     </section>
     <div class="actions">${setupFirst ? '' : '<button class="btn" data-setup="cancel">Cancel</button>'}<button class="btn primary" data-setup="save">${setupFirst ? 'Start using Lindley' : 'Save'}</button></div>
   </div>`;
 }
-async function setupAct(act) {
+function setupAct(act) {
   const f = setupDraft;
-  f.mode = $('input[name="setup-mode"]:checked', setupEl)?.value || f.mode;
-  if (act.startsWith('rm:')) { f.folders.splice(+act.slice(3), 1); renderSetup(); $('#setup-path', setupEl).focus(); return; }
-  if (act === 'add') {
-    const v = $('#setup-path', setupEl).value.trim();
-    if (v && !f.folders.includes(v)) f.folders.push(v);
-    renderSetup(); $('#setup-path', setupEl).focus(); return;
-  }
-  if (act === 'browse') {
-    // The real app uses the system folder dialog. Browsers only reveal the folder's name, not its full path.
-    try {
-      if (!window.showDirectoryPicker) throw new Error('unsupported');
-      const h = await showDirectoryPicker();
-      if (!f.folders.includes(h.name)) f.folders.push(h.name);
-      renderSetup();
-    } catch (e) {
-      if (e.name !== 'AbortError') { $('#setup-path', setupEl).focus(); toast('Type the folder path into the box. This browser can’t open a folder picker here.'); }
-    }
-    return;
-  }
   if (act === 'cancel') { closeSetup(); return; }
-  if (act === 'save') {
-    if (!f.folders.length) { toast('Add at least one folder for Lindley to watch.'); $('#setup-path', setupEl).focus(); return; }
-    Object.assign(SETUP, { folders: f.folders, mode: f.mode });
-    try { localStorage.setItem('lindley-setup', JSON.stringify(SETUP)); } catch (e) { /* setup shows again next time */ }
-    closeSetup();
-    renderStatus();
-    toast(`Lindley is watching ${plural(SETUP.folders.length, 'folder')} and will ${SETUP.mode === 'copy' ? 'copy new scans, leaving your folders untouched' : 'move new scans into its library'}.`);
+  if (act !== 'save') return;
+  if (!f.folders.length) { toast('Add at least one folder for Lindley to watch.'); $('#su-path').focus(); return; }
+  let conns = [], use = { vision: 'none', chat: 'none', embed: 'none' };
+  if (f.ai !== 'none') {
+    const e = f.edit;
+    if (e.kind === 'cloud' && !e.ack) { toast('Read the warning and check the box to use a cloud AI, or choose On this computer.'); $('#su-ack').focus(); return; }
+    if (e.kind === 'cloud' && !e.key.trim()) { toast('Paste your API key, or choose another option.'); $('#su-key').focus(); return; }
+    const c = connFromEdit(e);
+    conns = [c];
+    use = { vision: c.id, chat: c.id, embed: VENDORS[c.vendor]?.embed === false ? 'none' : c.id };
   }
+  Object.assign(SETUP, { folders: f.folders, mode: f.mode, conns, use });
+  saveSettings();
+  closeSetup();
+  applySettings(); render();
+  const cloud = cloudInUse();
+  toast(`Lindley is watching ${plural(SETUP.folders.length, 'folder')} and will ${SETUP.mode === 'copy' ? 'copy new scans, leaving your folders untouched' : 'move new scans into its library'}.${cloud.length ? ` Your scans will be sent to ${cloud.join(' and ')}.` : ''}`);
 }
 function closeSetup() { setupEl.hidden = true; setupReturn?.focus?.(); }
 
@@ -1889,6 +2328,10 @@ function ask(q, silent) {
   if (!q) return;
   showAi();
   if (!silent) pushMsg('me', `<p>${esc(q)}</p>`);
+  if (!connById(SETUP, SETUP.use.chat)) {
+    pushMsg('ai', "<p>No AI is connected for answering questions yet, so I can't reply. You can connect one on this computer, which keeps your scans private, or a cloud AI in Settings.</p>", [{ label: 'Open AI settings', fn: () => go({ t: 'settings', id: 'ai' }) }]);
+    return;
+  }
   const t = document.createElement('div');
   t.className = 'msg ai'; t.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
   log.appendChild(t); log.scrollTop = log.scrollHeight;
@@ -1996,6 +2439,16 @@ document.addEventListener('click', e => {
   if (m) { closeMenu(); menuFns[+m.dataset.m]?.(); return; }
   const su = t.closest('[data-setup]');
   if (su) { setupAct(su.dataset.setup); return; }
+  const fo = t.closest('[data-fold]');
+  if (fo) { foldAct(ctxOf(fo), fo.dataset.fold); return; }
+  const co = t.closest('[data-conn]');
+  if (co) { if (!co.disabled) connAct(ctxOf(co), co.dataset.conn); return; }
+  const sa = t.closest('[data-set]');
+  if (sa) {
+    if (sa.dataset.set === 'resetDock') resetDock();
+    else toast(sa.dataset.set === 'tess' ? 'The real app opens a file dialog here to find tesseract.exe.' : 'The real app opens the system folder dialog here. For now, type the path.');
+    return;
+  }
   if (t.closest('[data-grip]')) return;
   const afn = t.closest('[data-afn]');
   if (afn) { AFN[+afn.dataset.afn]?.(); return; }
@@ -2066,7 +2519,10 @@ document.addEventListener('click', e => {
     pageMore: () => menuAt(pageMenuItems(ids, true)),
     addScans: () => $('#file-in').click(),
     modalAddScans: () => { const mode = $('input[name="add-mode"]:checked', modal)?.value || 'copy'; const files = pendingFiles; modal.hidden = true; syncScrim(); if (U.nav.t !== 'inbox') go({ t: 'inbox' }); addScans(files, mode); },
-    openSetup: () => openSetup(false),
+    saveSettings: () => commitSettings(),
+    discardSettings,
+    modalDiscardGo: () => { modal.hidden = true; syncScrim(); U.sdraft = null; U.cedit = null; go(...pendingGo); },
+    modalSaveGo: () => { modal.hidden = true; syncScrim(); if (commitSettings(true)) go(...pendingGo); },
     backHome: () => go({ t: locate(U.nav.id)?.where === 'aside' ? 'aside' : 'inbox' }),
     startReview: () => go({ t: 'review', id: 'all' }),
     askReview: () => ask('Which pages need my review?'),
@@ -2121,6 +2577,22 @@ main.addEventListener('change', e => {
   if (t.id === 'doc-title' && d) { const v = t.value.trim(); if (v) setField(d.id, 'name', v, 'Renamed the document.'); else t.value = d.name; }
   else if (t.id === 'folder-title') { const f = D.folders[U.nav.id]; const v = t.value.trim(); if (v && v !== f.name) commit('Renamed the folder.', () => { f.name = v; }); }
   else if (t.id === 'sort') { U.sort = t.value; renderMain(); }
+  else if (t.id === 'set-sec') { go({ t: 'settings', id: t.value }); $('#set-sec')?.focus(); }
+});
+// Settings and setup fields write straight into their draft.
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (!t.dataset?.bind || t.type === 'radio' || t.type === 'checkbox' || t.tagName === 'SELECT') return;
+  if (t.dataset.bind === 'd.threshold' && !(+t.value >= 50 && +t.value <= 99)) return;
+  bindSet(t); afterInput(t);
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (!t.dataset?.bind) return;
+  if (t.dataset.bind === 'd.threshold') t.value = Math.max(50, Math.min(99, Math.round(+t.value || 90)));
+  bindSet(t);
+  if ('rerender' in t.dataset) { rerender(ctxOf(t)); if (ctxOf(t) === 'st') refreshDock(); }
+  else afterInput(t);
 });
 main.addEventListener('input', e => {
   if (e.target.id === 'thumb') { U.thumb = +e.target.value; $('#grid')?.style.setProperty('--thumb', U.thumb + 'px'); }
@@ -2264,11 +2736,11 @@ document.addEventListener('keydown', e => {
     saveDockPos();
     return;
   }
+  if (e.key === 'Enter' && /^(su|st)-path$/.test(e.target.id)) { e.preventDefault(); foldAct(ctxOf(e.target), 'add'); return; }
   if (!setupEl.hidden) {
     if (e.key === 'Escape' && !setupFirst) { closeSetup(); return; }
-    if (e.key === 'Enter' && e.target.id === 'setup-path') { e.preventDefault(); setupAct('add'); return; }
     if (e.key === 'Tab') {
-      const f = $$('button, input', setupEl).filter(x => !x.disabled && x.type !== 'radio' || x.checked);
+      const f = $$('button, input, select', setupEl).filter(x => !x.disabled && (x.type !== 'radio' || x.checked));
       if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
       else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
     }
@@ -2344,7 +2816,12 @@ $('#ai-h').addEventListener('pointerdown', e => {
 /* Theme */
 function effectiveTheme() { return document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); }
 function syncThemeBtn() { $('#theme-btn').innerHTML = icon(effectiveTheme() === 'dark' ? 'sun' : 'moon'); }
-$('#theme-btn').addEventListener('click', () => { document.documentElement.dataset.theme = effectiveTheme() === 'dark' ? 'light' : 'dark'; syncThemeBtn(); });
+$('#theme-btn').addEventListener('click', () => {
+  const t = effectiveTheme() === 'dark' ? 'light' : 'dark';
+  SETUP.theme = t; if (U.sdraft) U.sdraft.theme = t;
+  saveSettings(); applyTheme(t);
+  if (U.nav.t === 'settings') renderMain();
+});
 
 /* Simulated background reading of new scans */
 setInterval(() => {
@@ -2361,11 +2838,12 @@ setInterval(() => {
 /* ================= Boot ================= */
 function boot() {
   D = buildData();
-  U = { nav: { t: 'doc', id: 'd1' }, view: 'grid', sel: new Set(), anchor: null, cur: 0, zoom: 1, closed: {}, ai: 'dock', aiPos: { x: 0, y: 70 }, q: '', sort: 'new', thumb: 150, dockPos: null };
+  U = { nav: { t: 'doc', id: 'd1' }, view: 'grid', sel: new Set(), anchor: null, cur: 0, zoom: 1, closed: {}, ai: 'dock', aiPos: { x: 0, y: 70 }, q: '', sort: 'new', thumb: 150, dockPos: null, sdraft: null, cedit: null, sx: { path: '' } };
   // Per-viewer conveniences: where the dock was left, and whether setup has been done.
   let saved = null;
-  try { U.dockPos = JSON.parse(localStorage.getItem('lindley-dock') || 'null'); saved = JSON.parse(localStorage.getItem('lindley-setup') || 'null'); } catch (e) { /* start fresh */ }
+  try { U.dockPos = JSON.parse(localStorage.getItem('lindley-dock') || 'null'); saved = JSON.parse(localStorage.getItem('lindley-settings') || localStorage.getItem('lindley-setup') || 'null'); } catch (e) { /* start fresh */ }
   if (saved?.folders) Object.assign(SETUP, saved);
+  $('#set-btn').innerHTML = icon('gear');
   $('#tree-toggle').innerHTML = icon('menu');
   document.documentElement.lang = 'en';
   $('#ai-toggle').innerHTML = lic();
@@ -2373,7 +2851,7 @@ function boot() {
   $('#rail-ic').innerHTML = lic();
   $('#ai-close').innerHTML = icon('close');
   $('#ai-send').innerHTML = icon('send');
-  syncThemeBtn();
+  applySettings();
   syncAi();
   render();
   if (!saved) openSetup(true);

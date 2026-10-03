@@ -23,6 +23,7 @@ settings.json
 
 # Local data (scans, processed output, databases)
 data/
+test_scans/
 *.db
 *.sqlite
 *.sqlite3

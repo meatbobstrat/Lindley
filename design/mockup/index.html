@@ -384,6 +384,12 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .set-p { color: var(--muted); max-width: 70ch; }
 .set-sec .fld, .conn-ed .fld { margin: 0 0 -6px; }
 .fld-note { margin: 0; font-size: 13px; color: var(--muted); }
+.fld-note .ic { width: 14px; height: 14px; vertical-align: -2px; }
+.limit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13.5px; }
+.limit-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.limit-check input { accent-color: var(--accent); }
+.limit-in { width: 6em; }
+.conn-uses .ptag { margin-left: 6px; }
 .set-add { justify-self: start; }
 @container (max-width: 700px) {
   .set { grid-template-columns: minmax(0, 1fr); }
@@ -2171,7 +2177,7 @@ function addScans(files, mode) {
 const SETUP = {
   folders: ['D:\\Scans\\Attic box 4', 'D:\\Scans\\Courthouse'], mode: 'copy', addMode: 'ask',
   threshold: 90, langs: ['eng'], library: 'D:\\Lindley library', theme: 'system',
-  conns: [{ id: 'c1', kind: 'local', vendor: 'local', name: 'Ollama on this computer', url: 'http://localhost:11434/v1', model: 'llama3.2-vision', key4: '' }],
+  conns: [{ id: 'c1', kind: 'local', vendor: 'local', name: 'Ollama on this computer', url: 'http://localhost:11434/v1', model: 'llama3.2-vision', key4: '', allow: 'ask', limit: null }],
   use: { vision: 'c1', chat: 'c1', embed: 'c1' },
 };
 const SET_KEYS = Object.keys(SETUP);
@@ -2229,15 +2235,16 @@ function syncPrivacy() {
 
 /* A connection being added or changed, in setup ("su") or Settings ("st") */
 function newEdit(kind = 'local', vendor = 'anthropic') {
-  if (kind === 'local') return { kind, vendor: 'local', name: 'Ollama on this computer', url: 'http://localhost:11434/v1', model: 'llama3.2-vision', key: '', key4: '', ack: true, show: false, tested: null, id: null };
+  if (kind === 'local') return { kind, vendor: 'local', name: 'Ollama on this computer', url: 'http://localhost:11434/v1', model: 'llama3.2-vision', key: '', key4: '', ack: true, show: false, tested: null, id: null, allow: 'ask', limitOn: false, limit: 50 };
   const v = VENDORS[vendor];
-  return { kind, vendor, name: v.short, url: vendor === 'other' ? 'https://' : '', model: v.model, key: '', key4: '', ack: false, show: false, tested: null, id: null };
+  return { kind, vendor, name: v.short, url: vendor === 'other' ? 'https://' : '', model: v.model, key: '', key4: '', ack: false, show: false, tested: null, id: null, allow: 'ask', limitOn: true, limit: 50 };
 }
 const editReady = e => e.kind !== 'cloud' || (e.ack && !!(e.key.trim() || e.key4));
 function connFromEdit(e) {
   const key = e.key.trim();
   return { id: e.id || 'c' + Date.now().toString(36), kind: e.kind, vendor: e.vendor, name: e.name.trim() || (e.kind === 'cloud' ? VENDORS[e.vendor].short : 'AI on this computer'),
-    url: e.url.trim(), model: e.model.trim(), key4: key ? key.slice(-4) : e.key4 || '' };
+    url: e.url.trim(), model: e.model.trim(), key4: key ? key.slice(-4) : e.key4 || '',
+    allow: e.allow, limit: e.allow === 'auto' && e.limitOn ? Math.max(1, Math.round(+e.limit || 50)) : null };
 }
 function fakeTest(e) {
   if (e.kind === 'cloud') {
@@ -2289,11 +2296,30 @@ function connEditor(ctx, e, inSetup) {
         <button class="btn" data-conn="show" ${e.ack ? '' : 'disabled'} aria-pressed="${e.show}" aria-label="Show key">${e.show ? 'Hide' : 'Show'}</button></div>
       <p class="fld-note" id="${ctx}-keyh">${e.ack ? 'Lindley keeps your key in Windows Credential Manager, never in its settings file, and never shows it again after you save it.' : 'Read the warning and check the box above before you enter a key.'}</p>`;
   }
+  h += allowChoice(ctx, e);
   const ok = editReady(e);
   h += `<div class="actions conn-acts"><button class="btn" data-conn="test" ${ok ? '' : 'disabled'}>Test connection</button>
     <span class="test-res" id="${ctx}-testres" role="status">${e.tested ? `${icon(e.tested.ok ? 'checkc' : 'warn')}${esc(e.tested.msg)}` : ''}</span>
     ${inSetup ? '' : `<span class="spacer"></span><button class="btn" data-conn="cancel">Cancel</button><button class="btn primary" data-conn="save" ${ok ? '' : 'disabled'}>${e.id ? 'Update connection' : 'Add connection'}</button>`}</div>`;
   return `<div class="conn-ed" id="${ctx}-ed">${h}</div>`;
+}
+// When Lindley may use a connection on its own: allow and daily_limit in settings.json.
+function allowChoice(ctx, e) {
+  const who = e.kind === 'cloud' ? esc(companyOf(e)) : 'this AI';
+  const auto = e.allow === 'auto';
+  return `<fieldset class="choices"><legend class="fld">When may Lindley use ${e.kind === 'cloud' ? who : 'it'}?</legend>
+      <label class="choice"><input type="radio" id="${ctx}-allow-ask" name="${ctx}-allow" value="ask" data-bind="e.allow" data-rerender ${auto ? '' : 'checked'}><span><b>Ask me first.</b> Recommended. Hard pages, and pages Lindley isn't sure how to sort, wait until you OK sending them. Nothing goes to ${who} without you.</span></label>
+      <label class="choice"><input type="radio" id="${ctx}-allow-auto" name="${ctx}-allow" value="auto" data-bind="e.allow" data-rerender ${auto ? 'checked' : ''}><span><b>Whenever it's needed.</b> Hard pages go to ${who} as soon as they're read, and it helps sort pages into documents as they arrive.</span></label>
+    </fieldset>
+    ${auto ? `<div class="limit-row"><label class="limit-check" for="${ctx}-limiton"><input type="checkbox" id="${ctx}-limiton" data-bind="e.limitOn" data-rerender ${e.limitOn ? 'checked' : ''}><span>Stop after</span></label>
+      <label class="sr-only" for="${ctx}-limit">Calls a day</label><input type="number" class="fld-in limit-in" id="${ctx}-limit" min="1" max="10000" value="${e.limit}" data-bind="e.limit" ${e.limitOn ? '' : 'disabled'} aria-describedby="${ctx}-limith">
+      <span aria-hidden="true">calls a day, then ask me</span></div>
+      <p class="fld-note" id="${ctx}-limith">${e.kind === 'cloud' ? `${who} charges for every call. One call is one page read, or one question about how pages go together.` : 'An AI on your own computer costs nothing to call, but a limit keeps a slow computer from being kept busy.'}</p>` : ''}
+    <p class="fld-note">${icon('send')} Questions you type in Ask Lindley are always sent: asking is your OK.</p>`;
+}
+function allowTag(c) {
+  if (c.allow !== 'auto') return `<span class="ptag">${icon('flag')}Asks you first</span>`;
+  return `<span class="ptag">${icon('send')}Runs on its own${c.limit ? ` · up to ${c.limit} calls a day` : ' · no daily limit'}</span>`;
 }
 function foldersEditor(ctx, folders) {
   return `<ul class="setup-folders">${folders.map((x, i) => `<li>${icon('folder')}<span class="mono">${esc(x)}</span><button class="btn ghost" data-fold="rm:${i}" aria-label="Stop watching ${esc(x)}">Remove</button></li>`).join('') || '<li>No folders yet. Add at least one.</li>'}</ul>
@@ -2373,7 +2399,7 @@ function connAct(ctx, act) {
     return;
   }
   const [a, id] = act.split(':'), c = connById(d, id);
-  if (a === 'edit') { U.cedit = { ...newEdit(c.kind, c.vendor), ...c, key: '', ack: true, show: false, tested: null }; renderMain(); ($('#st-name') || $('#st-vendor'))?.focus(); }
+  if (a === 'edit') { U.cedit = { ...newEdit(c.kind, c.vendor), ...c, key: '', ack: true, show: false, tested: null, limitOn: c.limit != null, limit: c.limit ?? 50 }; renderMain(); ($('#st-name') || $('#st-vendor'))?.focus(); }
   if (a === 'rm') {
     d.conns = d.conns.filter(x => x.id !== id);
     TASKS.forEach(([k]) => { if (d.use[k] === id) d.use[k] = 'none'; });
@@ -2410,7 +2436,7 @@ function setAi(d) {
   const conns = d.conns.map(c => `<li class="conn">
       <div class="conn-main"><b>${esc(c.name)}</b>${privTag(c)}
         <span class="conn-where">${c.kind === 'cloud' ? `${esc(companyOf(c))}’s cloud` : `<span class="mono">${esc(c.url)}</span>`} · model <span class="mono">${esc(c.model || 'not set')}</span>${c.kind === 'cloud' || c.key4 ? ` · ${c.key4 ? `key saved ••••${esc(c.key4)}` : 'no key'}` : ''}</span>
-        <span class="conn-uses">${uses(c)}</span></div>
+        <span class="conn-uses">${uses(c)} ${allowTag(c)}</span></div>
       <div class="conn-acts"><button class="btn" data-conn="edit:${c.id}" aria-label="Change ${esc(c.name)}">Change…</button><button class="btn ghost" data-conn="rm:${c.id}" aria-label="Remove ${esc(c.name)}">Remove</button></div>
     </li>`).join('');
   const tasks = TASKS.map(([k, label, what, none]) => {
@@ -2454,7 +2480,7 @@ function setReading(d) {
     <h3>Printed text</h3>
     <div class="kv">${icon('checkc')}Read by Tesseract, found at <span class="mono">C:\\Program Files\\Tesseract-OCR\\tesseract.exe</span><button class="btn" data-set="tess">Change…</button></div>
     <h3>Handwriting and hard pages</h3>
-    <div class="kv">${v ? `Read by ${esc(v.name)} ${privTag(v)}` : 'No AI connected, so these pages wait for your review.'}<button class="btn ghost" data-nav="settings:ai">Change in AI and privacy</button></div>`;
+    <div class="kv">${v ? `Read by ${esc(v.name)} ${privTag(v)} ${allowTag(v)}` : 'No AI connected, so these pages wait for your review.'}<button class="btn ghost" data-nav="settings:ai">Change in AI and privacy</button></div>`;
 }
 function setLibrary(d) {
   return `<p class="set-p">Lindley's copies of your scans, its database and the PDFs you export all live in one folder. Back up that folder and you've backed up everything.</p>

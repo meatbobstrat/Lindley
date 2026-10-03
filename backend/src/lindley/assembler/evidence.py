@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from lindley.assembler.meaning import alike
 from lindley.assembler.model import Page
 from lindley.assembler.terms import overlap
 from lindley.assembler.weights import WEIGHTS
@@ -49,7 +50,9 @@ FEATURES = (
     "size_differs",  # sheets of clearly different sizes
     "settings_differ",  # scanned at another resolution, or in colour and in grey
     "script_differs",  # one handwritten, the other typed or printed
+    "topic_alike",  # about the same things, by a small embedding model (meaning.py)
 )
+TOPIC_FROM, TOPIC_SPAN = 0.5, 0.3  # cosine 0.5 counts nothing, 0.8 counts fully
 PAUSE_S = 600  # a pause this long between two scans is a long one
 SIZE_IN = 0.5  # sheets differing by more than this, in inches, are different sizes
 _HYPHENATED = re.compile(r"[A-Za-z]{2,}[-=¬]$")  # see clues.HYPHENS
@@ -265,6 +268,10 @@ def pair(a: Page, b: Page, is_adjacent: bool | None = None) -> Pair:
                         "Both use the words " + _and([f"“{w}”" for w in words]),
                     )
                 )
+    if (cos := alike(a.topic, b.topic)) is not None and cos > TOPIC_FROM:
+        f["topic_alike"] = min((cos - TOPIC_FROM) / TOPIC_SPAN, 1.0)
+        if f["topic_alike"] >= 0.5 and counts("topic_alike"):
+            p.links.append(Link("similar_text", round(cos, 2), "They're about the same things"))
     if same_picture(a.phash, b.phash):
         p.links.append(Link("duplicate", 0.95, "The two scans look identical"))
     p.score = score(f)

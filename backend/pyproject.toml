@@ -23,6 +23,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Comparing what pages are about with a small static embedding model (numpy, no GPU)
+embed = ["model2vec>=0.9,<1"]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",

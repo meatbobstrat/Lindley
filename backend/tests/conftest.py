@@ -30,6 +30,14 @@ class MemoryKeyring(KeyringBackend):
 
 
 @pytest.fixture(autouse=True)
+def no_embedding_model(monkeypatch):
+    """Tests never download or load the embedding model, even where it's installed."""
+    from lindley.assembler import meaning
+
+    monkeypatch.setattr(meaning, "enabled", False)
+
+
+@pytest.fixture(autouse=True)
 def keys():
     """Tests never touch the real credential store."""
     before = keyring.get_keyring()

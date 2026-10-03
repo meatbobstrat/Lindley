@@ -36,6 +36,7 @@ WEIGHTS = {
     "size_differs": 0.0,
     "settings_differ": 0.0,
     "script_differs": 0.0,
+    "topic_alike": 0.0,
 }
 
 # A group's confidence, in log-odds, over segment.GROUP_FEATURES. Empty: the hand-made rule in

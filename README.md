@@ -165,6 +165,7 @@ cd backend
 py -3.13 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
+pip install -e ".[embed]"   # optional: compare what pages are about (Model2Vec, 8 MB, no GPU)
 
 # frontend
 cd ..\frontend

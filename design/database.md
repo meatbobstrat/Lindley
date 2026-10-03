@@ -43,10 +43,11 @@ erDiagram
 | `suggestions` | proposal | "Add to document", "reorder", "name", "complete", and so on, with reasons shown in the UI. |
 | `exports` | PDF made | When a document was exported, where to, and which pages were in it. |
 | `intake_steps` | step run | Progress, errors, and the extractor version for each step, so a step can be re-run later. |
+| `seen_files` | file in a watched folder | Its path, size, time and hash, so the start-up sweep needn't hash a file it has met before. |
 | `history` | action | Who did what (a person or Lindley), with before and after. A person's decision is one `batch` of rows, undone together. Used for undo and the audit trail. |
 | `duplicates` | page pair | Two pages that look like the same page scanned again (`same_page`), or that have very similar text (`similar`), with the evidence and a person's decision. |
 | `duplicate_checks`, `text_sketch` | page | Which reading each page was checked for duplicates with, and the page's text sketch for finding candidates. |
-| `ai_calls` | call to an AI | Which connection, what for (reading a page, sorting pages), whether Lindley made it on its own or a person OKed it, and whether it worked. Keeps the daily and monthly limits and shows what was sent where. |
+| `ai_calls` | call to an AI | Which connection, what for (reading a page, sorting pages), whether Lindley made it on its own or a person OKed it, and whether it worked. Keeps the daily and monthly limits (calls that worked), notices an AI whose calls keep failing, and shows what was sent where. |
 | `ai_answers` | question to an AI | The AI's reply about some pages, known by what it was shown, so the same question is never paid for twice. |
 | `needs_ai` | question waiting for an AI | Pages the rules couldn't sort and the AI hasn't been asked about, with the rules' own guess at the documents in them. Refreshed each time the assembler runs. |
 
@@ -54,7 +55,7 @@ Settings stay in `settings.json`. API keys stay in Windows Credential Manager an
 
 ## What intake extracts
 
-Each step writes an `intake_steps` row, so the UI can show "Reading…" and a failed step can be retried alone.
+Each step writes an `intake_steps` row, so the UI can show "Reading…" and a failed step can be retried alone. Steps left `running` when Lindley closed are picked up at start-up: a vision call goes back in the queue, any other step is marked failed, and each watcher start reads scans whose reading never finished, from Lindley's own copy.
 
 | Step | Reads | Writes |
 |---|---|---|
@@ -63,7 +64,7 @@ Each step writes an `intake_steps` row, so the UI can show "Reading…" and a fa
 | `split` | PDF or TIFF | one `pages` row per page, with `page_index` |
 | `image` | the page image | size, DPI, colour mode, `phash`, `paper_color`, `blank_score`, `detected_rotation`, `script` (handwritten, printed, typed, mixed or none) |
 | `ocr` | Tesseract | a `transcriptions` row with word boxes and confidence, and `language` |
-| `vision` | vision model | a `transcriptions` row for handwriting and low-confidence pages. It becomes current if it's the better reading, but never replaces a person's text. With `vision_mode = ask` (the default), the step is first recorded as `queued` ("Waiting for you to OK the vision model") and runs only when a person sends the waiting pages (`Pipeline.read_waiting`). A failed call is never repeated on its own. |
+| `vision` | vision model | a `transcriptions` row for handwriting and low-confidence pages. It becomes current if it's the better reading, but never replaces a person's text. With `vision_mode = ask` (the default), the step is first recorded as `queued` ("Waiting for you to OK the vision model") and runs only when a person sends the waiting pages (`Pipeline.read_waiting`). A failed call is never repeated on its own, and after 3 automatic calls in a row fail, the AI is left alone for 15 minutes while new pages wait. |
 | `facts` | current text, image | `facts` rows (see below) |
 | `embed` | current text | an `embeddings` row |
 | `match` | everything above | `page_links` evidence, then `suggestions` |

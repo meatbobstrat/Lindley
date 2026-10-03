@@ -114,11 +114,18 @@ def _copy(conn: sqlite3.Connection, page_id: int) -> Copy:
 
 
 def open_sets(conn: sqlite3.Connection) -> list[DuplicateSet]:
-    """Every open duplicate set, strongest first."""
+    """Every open duplicate set, strongest first.
+
+    Copies of one page chain together (three scans of a page are one set). A "similar" pair
+    never does: a sheet and a piece of it aren't copies of each other's copies, so each similar
+    pair is a decision of its own. A page can be in both kinds of set.
+    """
     pairs = conn.execute(
         "SELECT id, page_a, page_b, kind, score, evidence FROM duplicates WHERE status = 'open'"
         " ORDER BY id"
     ).fetchall()
+    same = [p for p in pairs if p["kind"] == "same_page"]
+    sets = [_make_set(conn, [p]) for p in pairs if p["kind"] != "same_page"]
     parent: dict[int, int] = {}
 
     def find(x: int) -> int:
@@ -128,12 +135,12 @@ def open_sets(conn: sqlite3.Connection) -> list[DuplicateSet]:
             x = parent[x]
         return x
 
-    for p in pairs:
+    for p in same:
         parent[find(p["page_a"])] = find(p["page_b"])
     groups: dict[int, list[sqlite3.Row]] = {}
-    for p in pairs:
+    for p in same:
         groups.setdefault(find(p["page_a"]), []).append(p)
-    sets = [_make_set(conn, ps) for ps in groups.values()]
+    sets += [_make_set(conn, ps) for ps in groups.values()]
     return sorted(sets, key=lambda s: (KIND_ORDER[s.kind], -s.score, s.id))
 
 

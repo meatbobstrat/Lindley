@@ -80,6 +80,22 @@ def test_pairs_sharing_a_page_make_one_set(conn):
     assert sets[0].reasons == ["85% of the words match, in the same order"]
 
 
+def test_a_similar_pair_never_joins_a_set_of_copies(conn):
+    # Two scans of a sheet, and a slip from it scanned on its own: keeping one scan of the
+    # sheet must not set the slip aside.
+    sheet, rescan, slip = page(conn), page(conn), page(conn)
+    dup(conn, sheet, rescan)
+    dup(conn, sheet, slip, kind="similar", score=40)
+    sets = open_sets(conn)
+    assert [(s.kind, sorted(c.page_id for c in s.copies)) for s in sets] == [
+        ("same_page", [sheet, rescan]),
+        ("similar", [sheet, slip]),
+    ]
+    assert keep(conn, sets[0].id, sheet).set_aside == [rescan]
+    assert where(conn, slip) == (None, None, 0)
+    assert [s.kind for s in open_sets(conn)] == ["similar"]
+
+
 def test_lindley_suggests_the_better_copy_and_says_why(conn):
     d = doc(conn)
     in_doc = page(conn, d, 0, conf=78)

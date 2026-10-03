@@ -246,6 +246,9 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .dock-prog b::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v); background: var(--ink); }
 .dock-hint { flex: none; padding: 0 8px; font-size: 12px; color: var(--muted); }
 .main.has-dock .grid, .main.has-dock .docs, .main.has-dock .results, .main.has-dock .empty, .main.has-dock .rv-done { padding-bottom: 96px; }
+/* Lists of sections leave room for the dock once, at the end, not under every section */
+.main.has-dock .dup-list .docs, .main.has-dock .na-list .docs { padding-bottom: 0; }
+.main.has-dock .dup-list, .main.has-dock .na-list { padding-bottom: 96px; }
 .main.has-dock .side-tx, .main.has-dock .side-img { padding-bottom: 90px; }
 .main.has-dock .reader .strip { padding-bottom: 84px; }
 .main.file-drop { outline: 3px dashed var(--accent); outline-offset: -6px; }
@@ -466,6 +469,21 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .dcard small { color: var(--muted); display: flex; align-items: center; gap: 4px; }
 .dcard small .ic { width: 14px; height: 14px; color: var(--ink); }
 .dcard.is-drop { border-color: var(--accent); border-style: dashed; }
+
+/* Needs AI: scans waiting for an AI, each with a button to send it */
+.na-list { display: flex; flex-direction: column; gap: 24px; padding: 20px; }
+.na-list h2 { display: flex; align-items: center; gap: 6px; margin: 0 0 2px; font-size: 15px; font-weight: 600; }
+.na-list h2 .ic, .na-list h2 .lic { width: 16px; height: 16px; }
+.na-list .sub { margin-bottom: 10px; }
+.na-list .docs { padding: 0; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.na-card { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--raise); }
+.na-card:hover { border-color: var(--ai); }
+.na-card > .dcard { padding: 0; border: 0; background: none; }
+.na-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.na-guess { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; }
+.na-to { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.conf.ai { color: var(--ink); background: var(--ai-soft); border-color: var(--ai); font-weight: 600; }
+.conf .lic, .t-flag .lic { --lic-size: 14px; }
 
 /* Duplicates: copies side by side */
 .dup-list { display: flex; flex-direction: column; gap: 24px; padding: 20px; }
@@ -848,7 +866,7 @@ function buildData() {
     scans[id] = {
       id, file: `SCAN_${String(n).padStart(4, '0')}.tif`, kind, text,
       orient: o.orient || 0, rot: 0, conf,
-      engine: kind === 'hand' || kind === 'note' ? 'vision' : 'tesseract',
+      engine: o.engine || (kind === 'hand' || kind === 'note' ? 'vision' : 'tesseract'),
       status: o.reading ? 'reading' : 'read', reviewed: false, scanned: day(n), hint: o.hint || null,
       // ink: what's really on the page, when the reading (text) got some of it wrong.
       // look: how a second scan with other settings differs (see finish).
@@ -889,7 +907,8 @@ function buildData() {
     missing: 'The entries run January 9 to 12 without gaps. Two more entries, January 13 and 14, look like they are sitting in your Inbox.',
     dateWhy: 'Only the first entry gives a year (1893). The rest follow on day by day. The name has a question mark because the year is written faintly.',
   });
-  const msPages = TEXT.ms.map(t => mk('typed', t));
+  // Page 33 has a smudge Tesseract couldn't get past: it waits for the AI vision model.
+  const msPages = TEXT.ms.map((t, i) => mk('typed', t, i === 2 ? { conf: 63 } : {}));
   doc('d4', {
     name: 'Manuscript: The River Road, chapter 3', conf: 77, type: 'Manuscript',
     pages: [msPages[0], msPages[2], msPages[1]],
@@ -939,6 +958,14 @@ function buildData() {
 
   // Inbox
   const inbox = [deedAgain];
+  // Handwriting Tesseract couldn't make out. The vision model asks first, so these wait in Needs
+  // AI with Tesseract's poor reading in use meanwhile (ink: what the page really says).
+  const smudge = (t, k) => t.split(' ').map((w, i) => (i * 5 + k) % 3 === 0 && w.length > 2 ? w.replace(/[aeiou]/g, 'o').replace(/[nm]/, 'rn') : w).join(' ');
+  [
+    'Bellbrook, O.\nAug. 9th 1890\n\nDear Mother,\nThe harvest hands came Tuesday and we have the wheat in at last. Will says the yield is the best since we came here, and the oats are nearly ready.',
+    'Mrs. Price sends her thanks for the jelly and says she will return the jars when John comes over for the mare.\n\nYour loving son\nJohn',
+    'Recd. of J. W. Branson five dollars on account, for shoeing the bay team and mending the wagon tongue.\nA. Moore, Smith',
+  ].forEach((t, i) => inbox.push(mk('hand', smudge(t, i), { ink: t, engine: 'tesseract', conf: [41, 36, 44][i] })));
   inbox.push(mk('hand', 'Jan. 13th\n\nCold again. J. hauled wood from the back lot. Wrote to Samuel Price that we cannot pay before the fall.', { hint: 'd3' }));
   inbox.push(mk('hand', 'Jan. 14th\n\nWent to Xenia with J. to see Lawyer {Shoup} about the note. He says it is binding. Home by lamplight, very tired.', { hint: 'd3', orient: 270 }));
   const p34 = mk('typed', 'John did not answer her. He was looking at the farm across the water, at the smoke going up straight from the Hale chimney, and thinking of the paper in his coat.\n\n- 34 -', { hint: 'd4' });
@@ -948,7 +975,9 @@ function buildData() {
   inbox.push(draft34);
   inbox.push(mk('hand', 'P.S. Tell Mrs. Branson the dress goods she asked about will come in the same box as the harness.\nS. P.', { hint: 'd5' }));
   PRINTS.forEach(t => inbox.push(mk('print', t)));
-  TYPED.forEach(t => inbox.push(mk('typed', t)));
+  const typed = TYPED.map(t => mk('typed', t));
+  inbox.push(...typed);
+  const loose = [];
   const rs = rng(99);
   const pick = a => a[Math.floor(rs() * a.length)];
   for (let i = 0; i < 22; i++) {
@@ -957,8 +986,31 @@ function buildData() {
     const text = first
       ? `${pick(HEADS)}\n${pick(MONTHS)} ${1 + Math.floor(rs() * 27)}th 18${88 + Math.floor(rs() * 8)}\n\n${pick(DEARS)}\n${body}`
       : i % 3 === 2 ? `${body}\n\n${pick(SIGNS)}` : body;
-    inbox.push(mk('hand', text, { orient: i === 5 ? 90 : i === 13 ? 180 : 0, reading: i >= 19, conf: i === 7 ? 71 : i === 16 ? 68 : undefined }));
+    const id = mk('hand', text, { orient: i === 5 ? 90 : i === 13 ? 180 : 0, reading: i >= 19, conf: i === 7 ? 71 : i === 16 ? 68 : undefined });
+    inbox.push(id); loose.push(id);
   }
+  // What Lindley's rules couldn't sort, and the AI hasn't been asked about (needs_ai in the app):
+  // each with the rules' own guess, and, in this mockup, what the AI answers when it's asked.
+  const letterName = ids => {
+    const first = scans[ids[0]].text.split('\n'), last = scans[ids[ids.length - 1]].text.split('\n');
+    const when = (first[1] || '').match(/^([A-Z][a-z]+)\.? \d+th (18\d\d)/);
+    return `Letter from ${last[last.length - 1]}${when ? `, ${when[1]} ${when[2]}` : ''}`;
+  };
+  const letter = ids => ({ pages: ids, name: letterName(ids), type: 'Letter', conf: 87, why: ['The AI read the pages together: the first opens with a date and greeting, the last is signed, and the news runs on from page to page', 'Same hand throughout'] });
+  const unsorted = [
+    { id: 'n1', pages: loose.slice(0, 3), since: '2026-09-29 10:14', guess: [{ pages: loose.slice(0, 2), conf: 61 }, { pages: [loose[2]], conf: 44 }],
+      why: ['The first page opens with a date and greeting', 'Nothing on the pages says the third follows the second', 'They were scanned one after another'],
+      ai: [letter(loose.slice(0, 3))] },
+    { id: 'n2', pages: loose.slice(3, 6), since: '2026-09-29 10:15', guess: [{ pages: loose.slice(3, 6), conf: 52 }],
+      why: ['The first page opens with a greeting and the last is signed', 'The second page was scanned sideways, so its place is a guess'],
+      ai: [letter(loose.slice(3, 6))] },
+    { id: 'n3', pages: typed, since: '2026-09-30 16:02', guess: [{ pages: typed, conf: 47 }],
+      why: ['Typed on the same machine, with the same margins', 'Neither page says where it belongs'],
+      ai: [
+        { pages: [typed[0]], name: 'Manuscript: The River Road, chapter 5', type: 'Manuscript', conf: 84, why: ['The AI read it as a page of the novel: a chapter heading and a typed page number, 57'] },
+        { pages: [typed[1]], name: 'Notes for chapter six', type: 'Notes', conf: 81, why: ['The AI read it as the author’s notes for the next chapter, not a page of it'] },
+      ] },
+  ];
   for (let i = 0; i < 3; i++) inbox.push(mk('receipt', RECEIPT.replace('Apr 4', ['May 9', 'June 2', 'Oct 17'][i])));
   for (let i = 0; i < 3; i++) inbox.push(mk('blank', ''));
   inbox.push(mk('note', 'Box 4\ncheck the attic trunk for the rest of Mary\'s letters'));
@@ -978,7 +1030,7 @@ function buildData() {
     { id: 'u4', kind: 'same', copies: [deed1, deedAgain], score: 94, status: 'open' },
     { id: 'u5', kind: 'similar', copies: [p34, draft34], score: 58, status: 'open' },
   ];
-  return { scans, docs, inbox, aside, folders, dups, rootFolders: ['f1', 'f2'], nextDoc: 7, nextFolder: 4 };
+  return { scans, docs, inbox, aside, folders, dups, unsorted, rootFolders: ['f1', 'f2'], nextDoc: 7, nextFolder: 4 };
 }
 
 /* ================= Page images (canvas) ================= */
@@ -1133,7 +1185,15 @@ const docsBy = st => Object.values(D.docs).filter(d => d.status === st);
 const curDoc = () => U.nav.t === 'doc' ? D.docs[U.nav.id] : null;
 // Pages read with less than this confidence are flagged for a person to check. Set in Settings › Reading and review.
 let REVIEW_BELOW = 90;
-const needsReview = s => s.status === 'read' && !s.reviewed && s.conf < REVIEW_BELOW;
+// Pages Tesseract read with less than this go to the AI vision model (ocr.confidence_threshold).
+// Set in Settings › Reading and review.
+let AI_BELOW = 70;
+const aiConn = job => connById(SETUP, SETUP.use[job]);
+const aiAuto = job => aiConn(job)?.allow === 'auto';
+// "This scan needs an AI to look at it": Tesseract couldn't read it well enough, and an AI can.
+// With no AI to read it, it waits for your review instead.
+const needsAiRead = s => s.status === 'read' && !s.reviewed && s.engine === 'tesseract' && s.kind !== 'blank' && s.conf < AI_BELOW && !!aiConn('vision');
+const needsReview = s => s.status === 'read' && !s.reviewed && s.conf < REVIEW_BELOW && !needsAiRead(s);
 const docReview = d => d.status === 'progress' ? d.pages.filter(id => needsReview(D.scans[id])).length : 0;
 function reviewQueue(docId) {
   if (docId === 'inbox') return D.inbox.filter(id => needsReview(D.scans[id]));
@@ -1143,6 +1203,15 @@ function reviewQueue(docId) {
   D.inbox.forEach(id => { if (needsReview(D.scans[id])) ids.push(id); });
   return ids;
 }
+const docAiRead = d => d.status === 'progress' ? d.pages.filter(id => needsAiRead(D.scans[id])) : [];
+const aiReadQueue = () => [...docsBy('progress').flatMap(d => d.pages), ...D.inbox].filter(id => needsAiRead(D.scans[id]));
+// Questions for the sorting AI whose pages are all still in the Inbox. With no AI to sort with,
+// there's nothing to ask: you match those pages by hand.
+const sortQueue = () => aiConn('assemble') ? D.unsorted.filter(x => x.pages.every(id => D.inbox.includes(id))) : [];
+const sortItem = id => sortQueue().find(x => x.id === id);
+const sortItemOf = pid => sortQueue().find(x => x.pages.includes(pid));
+const sortPages = () => sortQueue().reduce((n, x) => n + x.pages.length, 0);
+const needsAiCount = () => aiReadQueue().length + sortPages();
 function curScan() {
   if (U.nav.t === 'scan') return U.nav.id;
   if (U.nav.t === 'review') return U.nav.id ? listIds()[U.cur] : null;
@@ -1176,6 +1245,7 @@ function listIds() {
   if (U.nav.t === 'review') return U.nav.id ? reviewQueue(U.nav.id === 'all' ? null : U.nav.id) : [];
   if (U.nav.t === 'inbox') return D.inbox;
   if (U.nav.t === 'aside') return D.aside;
+  if (U.nav.t === 'needsai') return sortItem(U.nav.id)?.pages || [];
   const d = curDoc();
   return d ? d.pages : [];
 }
@@ -1346,6 +1416,55 @@ document.addEventListener('scroll', e => {
 }, true);
 function clampDup() { const e = U.nav.id && dupEntry(U.nav.id); U.cur = e ? Math.max(0, Math.min(U.cur, e.sets.length - 1)) : 0; }
 
+/* ================= Needs AI ================= */
+// Scans Lindley couldn't read or sort well enough on its own (GET /api/needs-ai). If the AI may
+// run on its own, they go to it as they arrive. Otherwise they wait here until you send them, a
+// document at a time or all together: sending is your OK.
+const guessName = ids => { const t = D.scans[ids[0]].text.replace(/[{}]/g, '').split(/\s+/).filter(Boolean).slice(0, 5).join(' '); return `Pages starting “${t}…”`; };
+const aiWho = job => { const c = aiConn(job); return c ? (c.kind === 'cloud' ? companyOf(c) : c.name) : ''; };
+function aiRead(ids) {
+  // What the vision model sends back: the page's real text, read with more confidence.
+  ids.forEach(id => {
+    const s = D.scans[id];
+    s.text = s.ink || s.text.replace(/[{}]/g, '');
+    s.ink = null; s.engine = 'vision'; s.conf = Math.max(s.conf, 84 + hash(id) % 11);
+  });
+}
+function aiSort(items) {
+  // What the sorting AI answers: documents, made with italic names, as Lindley's own are.
+  let made = 0;
+  items.forEach(x => {
+    x.ai.forEach(a => {
+      const id = 'd' + D.nextDoc++;
+      a.pages.forEach(p => { detach(p); D.scans[p].hint = null; });
+      D.docs[id] = { id, name: a.name, temp: true, status: 'progress', conf: a.conf, pages: [...a.pages], type: a.type || '', date: '', people: '', place: '', tags: [], notes: '', ready: false, dismissed: [], note: null, why: a.why, suggest: {}, summary: '' };
+      made++;
+    });
+    D.unsorted = D.unsorted.filter(y => y !== x);
+  });
+  return made;
+}
+function sendToAi(read, items, label) {
+  if (read.length && !aiConn('vision') || items.length && !aiConn('assemble')) { toast('No AI is set up for that. Choose one in Settings › AI and privacy.'); return; }
+  if (!read.length && !items.length) { toast('Nothing here needs an AI.'); return; }
+  commit(label, () => {
+    const bits = [];
+    if (read.length) { aiRead(read); bits.push(`read ${plural(read.length, 'page')}`); }
+    if (items.length) { const n = aiSort(items); bits.push(`sorted ${plural(items.reduce((k, x) => k + x.pages.length, 0), 'page')} into ${plural(n, 'document')}`); }
+    if (U.nav.t === 'needsai' && U.nav.id && !sortItem(U.nav.id)) U.nav = { t: 'needsai', id: sortQueue()[0]?.id };
+    U.sel.clear(); clampCur();
+    return `The AI ${bits.join(' and ')}. Check its work: the documents are under In progress.`;
+  });
+}
+// With "Whenever it's needed", Lindley sends these itself, within the connection's daily limit.
+function aiOnItsOwn() {
+  const out = [];
+  const take = (job, list) => list.slice(0, aiConn(job)?.limit ?? list.length);
+  if (aiAuto('vision')) { const q = take('vision', aiReadQueue()); if (q.length) { aiRead(q); out.push(`read ${plural(q.length, 'hard page')}`); } }
+  if (aiAuto('assemble')) { const q = take('assemble', sortQueue()); if (q.length) { const n = aiSort(q); out.push(`sorted ${plural(q.reduce((k, x) => k + x.pages.length, 0), 'page')} into ${plural(n, 'document')}`); } }
+  return out;
+}
+
 /* ================= History / undo ================= */
 function commit(label, fn) {
   H.push(JSON.stringify(D));
@@ -1496,13 +1615,14 @@ function renderTree() {
   // Second line of a row: status in words, with icons that never carry meaning alone.
   const meta = parts => `<span class="t-meta">${parts.filter(Boolean).join('<span class="t-dot" aria-hidden="true">·</span>')}</span>`;
   const flag = n => n ? `<span class="t-flag">${icon('flag')}${n} to review</span>` : '';
+  const aiFlag = n => n ? `<span class="t-flag">${lic()}${n} need${n === 1 ? 's' : ''} AI</span>` : '';
   const docItem = (d, depth = 0) => {
     const done = d.status === 'complete';
     return `
     <button class="t-item t2${cls('doc', d.id)} ${d.temp ? 'is-temp' : ''}"${cur('doc', d.id)} data-nav="doc:${d.id}" draggable="true" data-dragdoc="${d.id}" ${done ? '' : `data-drop="doc:${d.id}"`} style="--d:${depth}" title="${esc(d.name)}${d.temp ? ' (name suggested by Lindley)' : ''}">
       ${icon(done ? 'checkc' : 'doc')}
       <span class="t-txt"><span class="t-name">${esc(d.name)}${d.temp ? '<span class="sr-only"> (name suggested by Lindley)</span>' : ''}</span>
-        ${meta([flag(docReview(d)), d.ready && !done ? '<span class="t-ready">Ready</span>' : '', done ? `<span>Completed ${esc(d.exported || '')}</span>` : '', `<span>${plural(d.pages.length, 'page')}</span>`])}</span>
+        ${meta([flag(docReview(d)), aiFlag(docAiRead(d).length), d.ready && !done ? '<span class="t-ready">Ready</span>' : '', done ? `<span>Completed ${esc(d.exported || '')}</span>` : '', `<span>${plural(d.pages.length, 'page')}</span>`])}</span>
     </button>`;
   };
   const folderItem = (fid, depth = 0) => {
@@ -1522,16 +1642,19 @@ function renderTree() {
   const done = docsBy('complete').filter(d => !folderOf(d.id));
   const rv = reviewQueue().length;
   const nd = dupEntries().length;
+  const na = needsAiCount();
   tree.innerHTML = `
     <button class="t-item t-inbox${cls('inbox')}"${cur('inbox')} data-nav="inbox" data-drop="inbox">${icon('inbox')}<span class="t-name">Inbox</span><span class="count strong"><span class="sr-only">, </span>${D.inbox.length}<span class="sr-only"> scans</span></span></button>
     <button class="t-item t-review${cls('review')}"${cur('review')} data-nav="review">${icon(rv ? 'flag' : 'checkc')}<span class="t-name">Needs your review</span><span class="count strong"><span class="sr-only">, </span>${rv}<span class="sr-only"> pages</span></span></button>
     <button class="t-item${cls('dups')}"${cur('dups')} data-nav="dups">${icon('dup')}<span class="t-name">Duplicates</span><span class="count${nd ? ' strong' : ''}"><span class="sr-only">, </span>${nd}<span class="sr-only"> to decide</span></span></button>
+    <button class="t-item${cls('needsai')}"${cur('needsai')} data-nav="needsai" title="Scans that need an AI to look at them">${lic()}<span class="t-name">Needs AI</span><span class="count${na ? ' strong' : ''}"><span class="sr-only">, </span>${na}<span class="sr-only"> scans waiting for an AI</span></span></button>
     ${section('progress', 'In progress', prog.length, prog.map(d => docItem(d)).join('') || '<p class="count" style="padding:4px 12px">Nothing in progress</p>', 'data-unfile')}
     ${section('complete', 'Completed', done.length, done.map(d => docItem(d)).join('') || '<p class="count" style="padding:4px 12px">Nothing here</p>', 'data-unfile')}
     <button class="t-item${cls('aside')}"${cur('aside')} data-nav="aside" data-drop="aside" style="margin-top:10px">${icon('aside')}<span class="t-name">Set aside</span><span class="count"><span class="sr-only">, </span>${D.aside.length}<span class="sr-only"> scans</span></span></button>
     ${section('folders', 'My folders', '', D.rootFolders.map(f => folderItem(f)).join('') + `<button class="t-add" data-act="newFolder">${icon('plus')} New folder</button>`)}
     <div class="legend">
       <span>${icon('flag')} Pages that need your review</span>
+      <span>${lic()} Scans that need an AI to look at them</span>
       <span>${icon('checkc')} Completed and exported</span>
       <span><i>Italic names</i> were suggested by Lindley</span>
     </div>
@@ -1546,6 +1669,7 @@ function renderStatus() {
     <span><i class="dot ${reading ? 'busy' : ''}"></i>${reading ? `Reading ${plural(reading, 'new scan')}` : 'All scans read'}</span>
     ${reviewQueue().length ? `<button data-nav="review">${icon('flag')} ${plural(reviewQueue().length, 'page')} to review</button>` : ''}
     ${dupEntries().length ? `<button data-nav="dups">${icon('dup')} ${plural(dupEntries().length, 'possible duplicate')}</button>` : ''}
+    ${needsAiCount() ? `<button data-nav="needsai">${lic()} ${plural(needsAiCount(), 'scan')} waiting for an AI</button>` : ''}
     <span class="hide-narrow">Sample data. Changes are not saved.</span>`;
 }
 
@@ -1554,6 +1678,7 @@ function confChip(s) {
   const how = s.engine === 'vision' ? 'AI' : 'OCR';
   const long = `${s.engine === 'vision' ? 'Read by the AI vision model' : 'Read by Tesseract OCR'}, ${s.conf}% confident`;
   if (s.reviewed) return `<span class="conf mine" title="${long}. You checked the text.">${icon('check')}Checked</span>`;
+  if (needsAiRead(s)) return `<span class="conf ai" data-nav="needsai" title="This scan needs an AI to look at it. ${long}. Click to see what's waiting for the AI.">${lic()}Needs AI · ${how} ${s.conf}%</span>`;
   if (needsReview(s)) return `<span class="conf flag" data-review="${s.id}" title="${long}. Click to review this page.">${icon('flag')}Review · ${how} ${s.conf}%</span>`;
   return `<span class="conf" title="${long}">${how} ${s.conf}%</span>`;
 }
@@ -1571,7 +1696,8 @@ function card(id, i, o) {
       <span class="pg-f"><span class="pg-lbl ${o.numbered ? '' : 'mono'}">${label}</span>${confChip(s)}</span>
       ${s.dupOf && locate(id)?.where === 'aside' ? `<span class="pg-dup" title="A duplicate you set aside">${icon('dup')}<span>Copy of <span class="mono">${D.scans[s.dupOf].file}</span></span></span>` : ''}
     </button>
-    ${hintDoc ? `<button class="pg-hint" data-place="${id}:${hintDoc.id}" title="Lindley thinks this belongs in “${esc(hintDoc.name)}”">${lic()}<span>Add to “${esc(shortName(hintDoc.name))}”</span></button>` : ''}
+    ${hintDoc ? `<button class="pg-hint" data-place="${id}:${hintDoc.id}" title="Lindley thinks this belongs in “${esc(hintDoc.name)}”">${lic()}<span>Add to “${esc(shortName(hintDoc.name))}”</span></button>`
+      : o.hints && sortItemOf(id) ? `<button class="pg-hint" data-nav="needsai:${sortItemOf(id).id}" title="This scan needs an AI to look at it: Lindley couldn't tell which document it belongs in">${lic()}<span>Needs AI to sort</span></button>` : ''}
   </div>`;
 }
 function grid(ids, o = {}) {
@@ -1632,6 +1758,16 @@ function dock() {
       + tbBtn('checkc', both, 'notDup', false, e.sets[0].kind === 'similar' ? 'primary' : '') + SEP
       + `<span class="dock-prog"><span>${k + 1} of ${plural(es.length, 'duplicate')}</span><b style="--v:${Math.round((k + 1) / es.length * 100)}%" aria-hidden="true"></b></span>`
       + tbBtn('chev', 'Next', 'dupNext', k >= es.length - 1, 'next');
+  } else if (t === 'needsai' && U.nav.id && sortItem(U.nav.id)) {
+    const q = sortQueue(), k = q.findIndex(x => x.id === U.nav.id);
+    name = 'Pages to sort';
+    inner = tbBtn('prev', 'Previous', 'aiPrev', k === 0) + SEP
+      + tbBtn('lindley', 'Ask the AI to sort these', 'aiItem', false, 'ai') + tbBtn('newdoc', 'Group them myself…', 'aiMine') + SEP
+      + `<span class="dock-prog"><span>${k + 1} of ${q.length} to sort</span><b style="--v:${Math.round((k + 1) / q.length * 100)}%" aria-hidden="true"></b></span>`
+      + tbBtn('chev', 'Next', 'aiNext', k >= q.length - 1, 'next');
+  } else if (t === 'needsai') {
+    const n = needsAiCount();
+    inner = (n ? tbBtn('lindley', `Ask the AI about all ${n}`, 'aiAll', false, 'ai') : '') + tbBtn('gear', 'AI settings', 'aiSettings');
   } else if (t === 'settings') {
     const n = changedKeys().length;
     name = 'Settings actions';
@@ -1640,7 +1776,8 @@ function dock() {
     const aside = locate(U.nav.id)?.where === 'aside';
     inner = tbBtn('back', aside ? 'Back to Set aside' : 'Back to Inbox', 'backHome') + SEP + rotBtns(1)
       + tbBtn('newdoc', 'New document…', 'newDoc') + tbBtn('move', 'Add to document…', 'moveMenu')
-      + (aside ? tbBtn('inbox', 'Return to Inbox', 'inbox') : tbBtn('aside', 'Set aside', 'aside')) + tbBtn('lindley', 'Ask Lindley', 'askScan', false, 'ai');
+      + (aside ? tbBtn('inbox', 'Return to Inbox', 'inbox') : tbBtn('aside', 'Set aside', 'aside'))
+      + (needsAiRead(D.scans[U.nav.id]) ? tbBtn('lindley', 'Ask the AI to read it', 'aiScan', false, 'ai') : tbBtn('lindley', 'Ask Lindley', 'askScan', false, 'ai'));
   }
   if (!inner) return '';
   const free = U.dockPos && !narrow();
@@ -1678,7 +1815,7 @@ function renderMain() {
   // Keep keyboard focus on the dock button that was used, since the view re-renders.
   const fa = document.activeElement;
   const act = fa?.closest?.('.dock') ? fa.dataset.act : null;
-  const views = { inbox: viewInbox, aside: viewAside, doc: viewDoc, folder: viewFolder, search: viewSearch, scan: viewScan, settings: viewSettings, review: () => U.nav.id ? viewReview() : viewReviewList(), dups: () => U.nav.id && dupEntry(U.nav.id) ? viewDup() : viewDupList() };
+  const views = { inbox: viewInbox, aside: viewAside, doc: viewDoc, folder: viewFolder, search: viewSearch, scan: viewScan, settings: viewSettings, review: () => U.nav.id ? viewReview() : viewReviewList(), needsai: () => U.nav.id && sortItem(U.nav.id) ? viewNeedsAiItem() : viewNeedsAiList(), dups: () => U.nav.id && dupEntry(U.nav.id) ? viewDup() : viewDupList() };
   const dk = dock();
   main.innerHTML = views[U.nav.t]() + dk;
   main.classList.toggle('has-dock', !!dk);
@@ -1689,6 +1826,19 @@ function renderMain() {
 }
 addEventListener('resize', fitDock);
 
+function aiBanner(read, items, what, act, detail) {
+  // An offer to send scans to the AI, saying where they'd go.
+  const n = read.length + items.reduce((k, x) => k + x.pages.length, 0);
+  if (!n) return '';
+  const parts = [];
+  if (read.length) parts.push(`${plural(read.length, 'page')} ${read.length === 1 ? 'was' : 'were'} too hard to read`);
+  if (items.length) parts.push(`${plural(n - read.length, 'page')} couldn’t be sorted into documents`);
+  const who = [...new Set([read.length && aiWho('vision'), items.length && aiWho('assemble')].filter(Boolean))].join(' and ');
+  // Left over with an AI that runs on its own: its daily limit is used up, so they wait for you.
+  const auto = (read.length && aiAuto('vision')) || (items.length && aiAuto('assemble'));
+  const wait = auto ? `Today’s limit for ${esc(who)} is used up, so these wait for you.` : `Lindley asks you first, so nothing is sent to ${esc(who)} until you say so.`;
+  return `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>${what || `${plural(n, 'scan')} ${n === 1 ? 'needs' : 'need'} an AI to look at ${n === 1 ? 'it' : 'them'}.`}</b> ${detail || parts.join(', and ') + '.'} ${wait}</div><span class="b-acts"><button class="btn ai" data-act="${act}">${lic()} Ask the AI</button><button class="btn ghost" data-nav="needsai">See what’s waiting</button></span></div></div>`;
+}
 function viewInbox() {
   const hints = D.inbox.filter(id => D.scans[id].hint).length;
   return `
@@ -1696,6 +1846,7 @@ function viewInbox() {
     <div class="crumbs">Inbox</div>
     <div class="title-row"><h1 class="title">${plural(D.inbox.length, 'scan')} waiting</h1></div>
     <p class="sub">New scans land here. Lindley reads each one and groups pages into documents, but you don't have to wait: select scans and start a document yourself, or double-click one to read and correct it.</p>
+    ${aiBanner(aiReadQueue().filter(id => D.inbox.includes(id)), sortQueue(), '', 'aiInbox')}
     ${hints ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Lindley found ${plural(hints, 'scan')} that probably belong to documents in progress.</b> Look for the suggestion under each page.</div><span class="b-acts"><button class="btn" data-act="sortMatch">Show them first</button></span></div></div>` : ''}
     <div class="viewbar"><label>Sort <select id="sort"><option value="new" ${U.sort === 'new' ? 'selected' : ''}>Newest scans first</option><option value="old" ${U.sort === 'old' ? 'selected' : ''}>Oldest scans first</option><option value="match" ${U.sort === 'match' ? 'selected' : ''}>Suggested matches first</option></select></label>${sizeCtl()}</div>
   </div>
@@ -1725,6 +1876,9 @@ function viewDoc() {
   let banners = '';
   if (done) banners += `<div class="banner ok">${icon('checkc')}<div class="b-body"><div class="b-text"><b>Completed ${esc(d.exported || '')}.</b> Exported as a searchable PDF: <span class="mono">${esc(d.name)}.pdf</span></div></div></div>`;
   else {
+    const ar = docAiRead(d);
+    if (ar.length) banners += aiBanner(ar, [], `${plural(ar.length, 'page')} ${ar.length === 1 ? 'needs' : 'need'} an AI to read ${ar.length === 1 ? 'it' : 'them'}.`, 'aiDoc',
+      `Tesseract read ${ar.length === 1 ? 'it' : 'them'} with less than ${AI_BELOW}% confidence, so ${ar.length === 1 ? 'its' : 'their'} text is only a rough guess.`);
     if (rv) banners += `<div class="banner review">${icon('flag')}<div class="b-body"><div class="b-text"><b>${plural(rv, 'page')} ${rv === 1 ? 'needs' : 'need'} your review.</b> Lindley isn't sure it read ${rv === 1 ? 'it' : 'them'} correctly.</div><span class="b-acts"><button class="btn" data-act="reviewDoc">Review next</button></span></div></div>`;
     if (d.ready) banners += `<div class="banner ok">${icon('checkc')}<div class="b-body"><div class="b-text"><b>Lindley thinks this document is complete.</b> ${esc(d.missing || '')} ${rv ? 'Review the flagged pages first, then export it.' : "Look it over, then export it when you're ready."}</div><span class="b-acts"><button class="btn" data-act="export">Review and export</button><button class="btn ghost" data-act="notReady">Not yet</button></span></div></div>`;
     if (d.note) banners += `<div class="banner warn">${icon('warn')}<div class="b-body"><div class="b-text">${esc(d.note.text)}</div><span class="b-acts"><button class="btn" data-act="fixOrder">${esc(d.note.fix)}</button><button class="btn ghost" data-act="dismissNote">Leave as is</button></span></div></div>`;
@@ -1782,7 +1936,9 @@ function txPanel(s, o) {
   const unsure = s.reviewed ? 0 : (s.text.match(/\{/g) || []).length;
   const body = s.reviewed ? esc(s.text.replace(/[{}]/g, '')) : esc(s.text).replace(/\{([^}]*)\}/g, '<mark title="Lindley wasn\'t sure of this word">$1</mark>');
   const kind = { hand: 'Handwriting', print: 'Printed text', typed: 'Typewritten text' }[s.kind] || 'Scan';
-  const state = flag
+  const state = needsAiRead(s)
+    ? `<div class="rv-state flag">${lic()}<div><b>This scan needs an AI to look at it.</b> Tesseract read it with only ${s.conf}% confidence, so this text is a rough guess. Once the AI has read it, check its text here.</div></div>`
+    : flag
     ? `<div class="rv-state flag">${icon('flag')}<div><b>Needs your review.</b> Lindley read this page with ${s.conf}% confidence${unsure ? ` and wasn't sure of ${plural(unsure, 'word')}` : ''}. Compare the text with the scan and fix anything that's wrong.</div></div>`
     : s.reviewed ? `<div class="rv-state mine">${icon('check')}<div>You checked this page. Your text is used for search and chat.</div></div>` : '';
   return `
@@ -1853,6 +2009,53 @@ function viewReview() {
     <div class="side-img"><img class="rot" src="${pageImg(id)}" alt="Scan of the page to review" style="${rotStyle(s)}"></div>
     <div class="side-tx">${txPanel(s, { pager: '', where, label: 'the page to review', noActs: true })}</div>
   </div>`;
+}
+function aiConnLine(job, what) {
+  // Which AI would get these, and whether it runs on its own.
+  const c = aiConn(job);
+  if (!c) return `<p class="na-to">${icon('warn')} No AI is set up for ${what}. <button class="btn ghost" data-nav="settings:ai">Choose one</button></p>`;
+  return `<p class="na-to">Goes to <b>${esc(c.name)}</b> ${privTag(c)} · ${c.allow === 'auto' ? 'runs on its own, so these are sent as they arrive' : 'asks you first'}</p>`;
+}
+function viewNeedsAiList() {
+  const read = aiReadQueue(), q = sortQueue(), n = needsAiCount();
+  const groups = [...docsBy('progress').map(d => ({ d, ids: docAiRead(d) })), { d: null, ids: read.filter(id => D.inbox.includes(id)) }].filter(x => x.ids.length);
+  const thumbs = ids => `<span class="dup-thumbs">${ids.slice(0, 3).map(id => `<span class="pg-img"><img src="${pageImg(id)}" alt="" style="${rotStyle(D.scans[id])}"></span>`).join('')}</span>`;
+  const readCard = x => {
+    const confs = x.ids.map(id => D.scans[id].conf), lo = Math.min(...confs), hi = Math.max(...confs);
+    const open = x.d ? `doc:${x.d.id}` : 'inbox';
+    return `<div class="na-card"><button class="dcard" data-nav="${open}">${thumbs(x.ids)}<span><b style="${x.d?.temp ? 'font-style:italic' : ''}">${esc(x.d ? x.d.name : 'Inbox')}</b><small>${icon('eye')} ${plural(x.ids.length, 'page')} Tesseract read with ${lo === hi ? lo : `${lo}–${hi}`}% confidence</small><small>${esc(x.d ? docHome(x.d) : 'Scans not in a document yet')}</small></span></button>
+      <div class="na-acts"><button class="btn ai" data-act="aiReadGroup" data-id="${x.d ? x.d.id : 'inbox'}">${lic()} Ask the AI to read ${x.ids.length === 1 ? 'it' : 'them'}</button></div></div>`;
+  };
+  const sortCard = x => {
+    const docs = x.guess.length;
+    return `<div class="na-card"><button class="dcard" data-nav="needsai:${x.id}">${thumbs(x.pages)}<span><b>${plural(x.pages.length, 'page')}: maybe ${plural(docs, 'document')}</b><small>${lic()} Lindley is ${Math.max(...x.guess.map(g => g.conf))}% sure at best</small><small>In the Inbox since ${esc(x.since)}</small></span></button>
+      <div class="na-acts"><button class="btn ghost" data-nav="needsai:${x.id}">Look at them</button><button class="btn ai" data-act="aiItem" data-id="${x.id}">${lic()} Ask the AI to sort them</button></div></div>`;
+  };
+  return `
+  <div class="head">
+    <div class="crumbs">Needs AI</div>
+    <div class="title-row"><h1 class="title">${n ? `${plural(n, 'scan')} ${n === 1 ? 'needs' : 'need'} an AI to look at ${n === 1 ? 'it' : 'them'}` : 'Nothing needs an AI'}</h1></div>
+    <p class="sub">Lindley reads and sorts what it can on its own. These are the scans it couldn't: pages too hard for Tesseract to read, and pages its rules couldn't sort into documents. An AI that may run on its own gets them as they arrive. One that asks first waits for you: send a document at a time, or everything at once.</p>
+    <div style="height:6px"></div>
+  </div>
+  <div class="scroll">${n ? `<div class="na-list">
+    ${groups.length ? `<section><h2>${icon('eye')}Too hard to read</h2><p class="sub">Tesseract read these with less than ${AI_BELOW}% confidence, usually handwriting or a faint copy. Its rough reading is used until the AI reads them properly.</p>${aiConnLine('vision', 'reading hard pages')}<div class="docs">${groups.map(readCard).join('')}</div></section>` : ''}
+    ${q.length ? `<section><h2>${lic()}Couldn’t be sorted</h2><p class="sub">Lindley’s rules couldn’t tell where one document ends and the next begins, or which document these belong in. The AI reads them together and says.</p>${aiConnLine('assemble', 'sorting pages')}<div class="docs">${q.map(sortCard).join('')}</div></section>` : ''}
+  </div>` : `<div class="rv-done">${icon('checkc')}<h2>Nothing is waiting for an AI</h2><p>${aiAuto('vision') || aiAuto('assemble') ? 'Your AI runs on its own, so Lindley sends it scans as they arrive.' : 'Every scan has been read and sorted, by Lindley, the AI or you.'}</p><button class="btn primary" data-nav="inbox">Go to the Inbox</button></div>`}</div>`;
+}
+function viewNeedsAiItem() {
+  const x = sortItem(U.nav.id);
+  const guess = x.guess.map(g => `<li>${plural(g.pages.length, 'page')}: <i>${esc(guessName(g.pages))}</i>, ${g.conf}% sure</li>`).join('');
+  return `
+  <div class="head">
+    <div class="crumbs"><button class="crumb" data-nav="needsai">Needs AI</button> › ${plural(x.pages.length, 'page')} to sort</div>
+    <div class="title-row"><h1 class="title">These scans need an AI to look at them</h1></div>
+    <p class="sub">Lindley’s rules couldn’t tell whether these pages are one document, or several. Ask the AI to read them together, or group them yourself. Either way you can change it after.</p>
+    <div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Lindley’s guess, not sure enough to act on:</b><ul class="na-guess">${guess}</ul><span>${esc(x.why.join('. '))}.</span></div></div></div>
+    ${aiConnLine('assemble', 'sorting pages')}
+    <div class="viewbar">${sizeCtl()}</div>
+  </div>
+  <div class="scroll">${grid(x.pages, {})}</div>`;
 }
 function dupCard(e) {
   const x = e.sets[0];
@@ -1975,6 +2178,8 @@ function viewScan() {
     <div class="title-row"><h1 class="title">${s.file}</h1></div>
     <p class="sub">This scan isn't in a document yet. Correct its text here if you like, then start a new document with it or add it to one you already have.</p>
     ${hint ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text">Lindley thinks this belongs in “${esc(hint.name)}”.</div><span class="b-acts"><button class="btn" data-place="${s.id}:${hint.id}">Add it there</button></span></div></div>` : ''}
+    ${needsAiRead(s) ? aiBanner([s.id], [], 'This scan needs an AI to look at it.', 'aiScan', `Tesseract read it with only ${s.conf}% confidence, so its text is only a rough guess.`) : ''}
+    ${!aside && sortItemOf(s.id) ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>This scan needs an AI to look at it.</b> Lindley couldn’t tell which document it belongs in, or whether the scans with it are one document.</div><span class="b-acts"><button class="btn ai" data-nav="needsai:${sortItemOf(s.id).id}">${lic()} See the pages with it</button></span></div></div>` : ''}
     ${aside && s.dupOf ? `<div class="banner ok">${icon('dup')}<div class="b-body"><div class="b-text">This is a copy you set aside. You kept <span class="mono">${D.scans[s.dupOf].file}</span>: ${esc(copyWhere(s.dupOf))}.</div></div></div>` : ''}
     <div style="height:6px"></div>
   </div>
@@ -2180,7 +2385,7 @@ function addScans(files, mode) {
    except API keys, which go in Windows Credential Manager and never into a file. */
 const SETUP = {
   folders: ['D:\\Scans\\Attic box 4', 'D:\\Scans\\Courthouse'], mode: 'copy', addMode: 'ask',
-  threshold: 90, langs: ['eng'], library: 'D:\\Lindley library', theme: 'system',
+  threshold: 90, aiBelow: 70, langs: ['eng'], library: 'D:\\Lindley library', theme: 'system',
   conns: [{ id: 'c1', kind: 'local', vendor: 'local', name: 'Ollama on this computer', url: 'http://localhost:11434/v1', model: 'llama3.2-vision', key4: '', allow: 'ask', limit: null, monthly: null, perMin: null, atOnce: 2 }],
   // Which connection does each job (ai.jobs in settings.json), and the job's own model ('': the connection's).
   use: { vision: 'c1', assemble: 'c1', chat: 'c1', embed: 'c1' },
@@ -2194,11 +2399,12 @@ function upgradeSaved(st) {
   st.conns?.forEach(c => { if (c.vendor === 'other') c.vendor = 'openai_compat'; c.kind = CONNECTORS[c.vendor]?.where || c.kind; c.monthly ??= null; c.perMin ??= null; c.atOnce ??= 2; });
   if (st.use && !('assemble' in st.use)) st.use.assemble = st.use.chat;
   st.models ??= { vision: '', assemble: '', chat: '', embed: '' };
+  st.aiBelow ??= 70;
   return st;
 }
 function saveSettings() { try { localStorage.setItem('lindley-settings', JSON.stringify(SETUP)); } catch (e) { /* settings last until the page is closed */ } }
 function applyTheme(t) { if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; syncThemeBtn(); }
-function applySettings() { REVIEW_BELOW = SETUP.threshold; applyTheme(SETUP.theme); syncPrivacy(); }
+function applySettings() { REVIEW_BELOW = SETUP.threshold; AI_BELOW = SETUP.aiBelow; applyTheme(SETUP.theme); syncPrivacy(); }
 const changedKeys = () => U.sdraft ? SET_KEYS.filter(k => JSON.stringify(U.sdraft[k]) !== JSON.stringify(SETUP[k])) : [];
 
 // The AI services Lindley can connect to. This mirrors GET /api/connectors, which lists the files in
@@ -2336,7 +2542,7 @@ function allowChoice(ctx, e) {
       <label class="sr-only" for="${ctx}-${k}">${label}</label><input type="number" class="fld-in limit-in" id="${ctx}-${k}" min="1" max="${max}" value="${e[k]}" data-bind="e.${k}" ${e[k + 'On'] ? '' : 'disabled'} aria-describedby="${ctx}-capsh">
       <span aria-hidden="true">${unit}, then ask me</span></div>`;
   return `<fieldset class="choices"><legend class="fld">When may Lindley use ${e.kind === 'cloud' ? who : 'it'}?</legend>
-      <label class="choice"><input type="radio" id="${ctx}-allow-ask" name="${ctx}-allow" value="ask" data-bind="e.allow" data-rerender ${auto ? '' : 'checked'}><span><b>Ask me first.</b> Recommended. Hard pages, and pages Lindley isn't sure how to sort, wait until you OK sending them. Nothing goes to ${who} without you.</span></label>
+      <label class="choice"><input type="radio" id="${ctx}-allow-ask" name="${ctx}-allow" value="ask" data-bind="e.allow" data-rerender ${auto ? '' : 'checked'}><span><b>Ask me first.</b> Recommended. Hard pages, and pages Lindley isn't sure how to sort, wait in Needs AI until you send them. Nothing goes to ${who} without you.</span></label>
       <label class="choice"><input type="radio" id="${ctx}-allow-auto" name="${ctx}-allow" value="auto" data-bind="e.allow" data-rerender ${auto ? 'checked' : ''}><span><b>Whenever it's needed.</b> Hard pages go to ${who} as soon as they're read, and it helps sort pages into documents as they arrive.</span></label>
     </fieldset>
     ${auto ? `${cap('limit', 100000, 'Calls a day', 'calls a day')}${cap('month', 1000000, 'Calls a month', 'calls a month')}
@@ -2542,7 +2748,10 @@ function setReading(d) {
     <h3>Printed text</h3>
     <div class="kv">${icon('checkc')}Read by Tesseract, found at <span class="mono">C:\\Program Files\\Tesseract-OCR\\tesseract.exe</span><button class="btn" data-set="tess">Change…</button></div>
     <h3>Handwriting and hard pages</h3>
-    <div class="kv">${v ? `Read by ${esc(v.name)} ${privTag(v)} ${limitsTag(v)}` : 'No AI connected, so these pages wait for your review.'}<button class="btn ghost" data-nav="settings:ai">Change in AI and privacy</button></div>`;
+    <div class="kv">${v ? `Read by ${esc(v.name)} ${privTag(v)} ${limitsTag(v)}` : 'No AI connected, so these pages wait for your review.'}<button class="btn ghost" data-nav="settings:ai">Change in AI and privacy</button></div>
+    ${v ? `<label class="fld" for="st-aib">Send a page to the AI when Tesseract reads it with less than</label>
+    <div class="thr-row"><input type="range" id="st-aib" min="20" max="95" step="1" value="${d.aiBelow}" data-bind="d.aiBelow" aria-describedby="st-aibp"><input type="number" class="fld-in" id="st-aibn" min="20" max="95" value="${d.aiBelow}" data-bind="d.aiBelow" aria-label="Send a page to the AI when Tesseract reads it with less than, in percent" aria-describedby="st-aibp"><span aria-hidden="true">% confidence</span></div>
+    <p class="fld-note" id="st-aibp">${v.allow === 'auto' ? `${esc(v.name)} runs on its own, so these pages go to it as soon as they're read.` : `${esc(v.name)} asks first, so these pages wait in Needs AI until you send them.`} Tesseract's rough reading is used meanwhile.</p>` : ''}`;
 }
 function setLibrary(d) {
   return `<p class="set-p">Lindley's copies of your scans, its database and the PDFs you export all live in one folder. Back up that folder and you've backed up everything.</p>
@@ -2588,10 +2797,12 @@ function commitSettings(dropEditor) {
   const before = REVIEW_BELOW, cloudBefore = cloudInUse();
   Object.assign(SETUP, clone(d));
   U.cedit = null;
-  saveSettings(); applySettings(); render();
+  saveSettings(); applySettings();
+  const ran = aiOnItsOwn();
+  render();
   const newCloud = cloudInUse().filter(x => !cloudBefore.includes(x));
   const n = reviewQueue().length;
-  toast('Settings saved.' + (REVIEW_BELOW !== before ? ` ${plural(n, 'page')} now ${n === 1 ? 'needs' : 'need'} your review.` : '') + (newCloud.length ? ` From now on your scans are sent to ${newCloud.join(' and ')}.` : ''));
+  toast('Settings saved.' + (REVIEW_BELOW !== before ? ` ${plural(n, 'page')} now ${n === 1 ? 'needs' : 'need'} your review.` : '') + (newCloud.length ? ` From now on your scans are sent to ${newCloud.join(' and ')}.` : '') + (ran.length ? ` Your AI runs on its own now, so it ${ran.join(' and ')}.` : ''));
   return true;
 }
 function discardSettings() { U.sdraft = clone(SETUP); U.cedit = null; renderMain(); toast('Changes discarded.'); }
@@ -2986,6 +3197,16 @@ document.addEventListener('click', e => {
     keepCopy: () => keepCopy(a.dataset.dupset, a.dataset.id),
     keepDoc: () => keepDoc(a.dataset.key, a.dataset.id),
     notDup: () => notDup(U.nav.id),
+    aiAll: () => sendToAi(aiReadQueue(), sortQueue(), 'Sent everything waiting to the AI.'),
+    aiInbox: () => sendToAi(aiReadQueue().filter(id => D.inbox.includes(id)), sortQueue(), 'Sent the Inbox scans to the AI.'),
+    aiDoc: () => sendToAi(docAiRead(d), [], `Sent ${plural(docAiRead(d).length, 'page')} to the AI to read.`),
+    aiScan: () => sendToAi([U.nav.id], [], 'Sent the scan to the AI to read.'),
+    aiReadGroup: () => { const ids = a.dataset.id === 'inbox' ? aiReadQueue().filter(id => D.inbox.includes(id)) : docAiRead(D.docs[a.dataset.id]); sendToAi(ids, [], `Sent ${plural(ids.length, 'page')} to the AI to read.`); },
+    aiItem: () => { const x = sortItem(a.dataset.id || U.nav.id); if (x) sendToAi([], [x], `Sent ${plural(x.pages.length, 'page')} to the AI to sort.`); },
+    aiMine: () => newDocDialog(sortItem(U.nav.id).pages),
+    aiPrev: () => { const q = sortQueue(), k = q.findIndex(x => x.id === U.nav.id); if (q[k - 1]) go({ t: 'needsai', id: q[k - 1].id }); },
+    aiNext: () => { const q = sortQueue(), k = q.findIndex(x => x.id === U.nav.id); if (q[k + 1]) go({ t: 'needsai', id: q[k + 1].id }); },
+    aiSettings: () => go({ t: 'settings', id: 'ai' }),
     dupPrev: () => stepDup(-1),
     dupNext: () => stepDup(1),
     undo,
@@ -3017,12 +3238,14 @@ document.addEventListener('input', e => {
   const t = e.target;
   if (!t.dataset?.bind || t.type === 'radio' || t.type === 'checkbox' || t.tagName === 'SELECT') return;
   if (t.dataset.bind === 'd.threshold' && !(+t.value >= 50 && +t.value <= 99)) return;
+  if (t.dataset.bind === 'd.aiBelow' && !(+t.value >= 20 && +t.value <= 95)) return;
   bindSet(t); afterInput(t);
 });
 document.addEventListener('change', e => {
   const t = e.target;
   if (!t.dataset?.bind) return;
   if (t.dataset.bind === 'd.threshold') t.value = Math.max(50, Math.min(99, Math.round(+t.value || 90)));
+  if (t.dataset.bind === 'd.aiBelow') t.value = Math.max(20, Math.min(95, Math.round(+t.value || 70)));
   bindSet(t);
   if ('rerender' in t.dataset) { rerender(ctxOf(t)); if (ctxOf(t) === 'st') refreshDock(); }
   else afterInput(t);
@@ -3290,6 +3513,7 @@ function boot() {
   $('#ai-close').innerHTML = icon('close');
   $('#ai-send').innerHTML = icon('send');
   applySettings();
+  aiOnItsOwn();  // an AI that runs on its own has already had what was waiting
   syncAi();
   render();
   if (!saved) openSetup(true);

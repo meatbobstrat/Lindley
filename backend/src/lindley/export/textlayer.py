@@ -83,14 +83,14 @@ def align(text: str, boxed: list[Word]) -> list[Word]:
     return out
 
 
-def _same_line(a: Box, b: Box) -> bool:
+def same_line(a: Box, b: Box) -> bool:
     overlap = min(a[1] + a[3], b[1] + b[3]) - max(a[1], b[1])
     return overlap > min(a[3], b[3]) / 2
 
 
 def _gap(before: Box | None, after: Box | None, chars: int) -> Box:
     """Room for `chars` characters a reading has between two boxed words (or at one end)."""
-    if before and after and _same_line(before, after) and after[0] > before[0] + before[2]:
+    if before and after and same_line(before, after) and after[0] > before[0] + before[2]:
         x0 = before[0] + before[2]
         top = min(before[1], after[1])
         bottom = max(before[1] + before[3], after[1] + after[3])

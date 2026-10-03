@@ -15,6 +15,7 @@ dependencies = [
     "watchdog>=5.0",
     "pypdfium2>=4.30",
     "Pillow>=10.4",
+    "fpdf2>=2.8,<3",  # searchable PDFs, written from Lindley's own readings
     "keyring>=25",
     # Each AI through its company's own library
     "anthropic>=1.11,<2",

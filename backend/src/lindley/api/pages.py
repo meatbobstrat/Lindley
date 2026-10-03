@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from PIL import Image
 
 from lindley.api.deps import Conn
-from lindley.worker.image import open_upright
+from lindley.worker.image import upright_page
 
 router = APIRouter(prefix="/pages", tags=["pages"])
 
@@ -26,10 +26,7 @@ def page_image(
     ).fetchone()
     if row is None or not row["image_path"] or not Path(row["image_path"]).is_file():
         raise HTTPException(404, "That page has no image")
-    img = open_upright(Path(row["image_path"]))
-    rotation = (row["detected_rotation"] + row["user_rotation"]) % 360
-    if rotation:
-        img = img.rotate(-rotation, expand=True)
+    img = upright_page(Path(row["image_path"]), row["detected_rotation"] + row["user_rotation"])
     img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=85)

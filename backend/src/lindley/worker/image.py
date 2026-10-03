@@ -63,11 +63,17 @@ def needs_turning(path: Path, rotation: int) -> bool:
         return exif_orientation(img) != 1
 
 
-def upright_copy(src: Path, dest: Path, rotation: int, dpi: int | None = None) -> Path:
-    """Save the page turned upright (EXIF orientation, then `rotation` degrees clockwise)."""
-    img = open_upright(src)
+def upright_page(path: Path, rotation: int) -> Image.Image:
+    """The page turned upright: EXIF orientation, then `rotation` degrees clockwise."""
+    img = open_upright(path)
     if rotation % 360:
         img = img.rotate(-rotation, expand=True)
+    return img
+
+
+def upright_copy(src: Path, dest: Path, rotation: int, dpi: int | None = None) -> Path:
+    """Save the page turned upright (EXIF orientation, then `rotation` degrees clockwise)."""
+    img = upright_page(src, rotation)
     dest.parent.mkdir(parents=True, exist_ok=True)
     img.save(dest, **({"dpi": (dpi, dpi)} if dpi else {}))
     return dest

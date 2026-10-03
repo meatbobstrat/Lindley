@@ -114,15 +114,17 @@ def test_a_missing_watch_folder_is_skipped(settings, tmp_path):
 
 def test_the_background_watcher_picks_up_a_dropped_file(settings, inbox):
     w = make_watcher(settings, poll_s=0.05)
+    read = [("dropped.png", "watched", "read")]
     w.start()
     try:
         (inbox / "dropped.png").write_bytes(png_bytes("ivory"))
         deadline = time.monotonic() + 10
-        while not scans(settings) and time.monotonic() < deadline:
+        # wait for it to be read, not only found: a busy computer can see it mid-read
+        while scans(settings) != read and time.monotonic() < deadline:
             time.sleep(0.05)
     finally:
         w.stop()
-    assert scans(settings) == [("dropped.png", "watched", "read")]
+    assert scans(settings) == read
 
 
 def test_the_app_starts_and_stops_the_watcher(settings, inbox, tmp_path):

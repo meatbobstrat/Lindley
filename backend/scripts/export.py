@@ -24,6 +24,9 @@ from lindley.export import export_document
 
 
 def main() -> int:
+    # Document names hold whatever was read off the page: sent to a file or pipe on Windows, a
+    # character the code page lacks would otherwise stop the run.
+    sys.stdout.reconfigure(errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--settings", type=Path, help="path to settings.json")
     which = ap.add_mutually_exclusive_group()

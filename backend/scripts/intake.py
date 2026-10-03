@@ -75,6 +75,9 @@ def where_vision_goes(settings) -> str:
 
 
 def main() -> int:
+    # Names and reasons hold whatever was read off the page, and arrows; sent to a file or pipe
+    # on Windows, a character the code page lacks would otherwise stop the run.
+    sys.stdout.reconfigure(errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("paths", nargs="*", type=Path)
     ap.add_argument("--settings", type=Path, help="path to settings.json")

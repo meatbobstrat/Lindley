@@ -136,6 +136,12 @@ class Settings(BaseModel):
             if isinstance(providers, dict) and isinstance(providers.get(name), dict):
                 providers[name].setdefault("allow", "auto")
         _jobs_from_earlier(data)
+        # Google connections once went through Google's OpenAI-compatible address; its own
+        # library uses its own.
+        for p in providers.values() if isinstance(providers, dict) else ():
+            old_url = isinstance(p, dict) and (p.get("base_url") or "").rstrip("/")
+            if old_url and p.get("type") == "google" and old_url.endswith("/openai"):
+                p["base_url"] = None
         return data
 
 

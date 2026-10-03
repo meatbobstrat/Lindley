@@ -64,11 +64,3 @@ class ConnectorInfo:
 
 class ProviderError(RuntimeError):
     """Raised when a provider is misconfigured or a call fails."""
-
-
-class ProviderBusy(ProviderError):
-    """The AI said it's busy (HTTP 429, 503 or 529): try again after `retry_after` seconds."""
-
-    def __init__(self, message: str, retry_after: float | None = None) -> None:
-        super().__init__(message)
-        self.retry_after = retry_after

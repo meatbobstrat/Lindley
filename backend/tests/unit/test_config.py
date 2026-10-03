@@ -94,3 +94,17 @@ def test_settings_from_before_jobs_carry_over(tmp_path: Path):
     assert ai.providers["far"].type == "openai_compat"
     saved = save_settings(load_settings(path), path).read_text(encoding="utf-8")
     assert "chat_provider" not in saved and "vision_provider" not in saved
+
+
+def test_google_through_its_openai_address_moves_to_its_own(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        '{"ai": {"providers": {'
+        '   "gemini": {"type": "google",'
+        '              "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"},'
+        '   "proxy": {"type": "google", "base_url": "https://gemini.example.com"}}}}',
+        encoding="utf-8",
+    )
+    ai = load_settings(path).ai
+    assert ai.providers["gemini"].base_url is None
+    assert ai.providers["proxy"].base_url == "https://gemini.example.com"

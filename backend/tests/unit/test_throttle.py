@@ -1,4 +1,4 @@
-"""Throttling an AI connection: calls a minute, calls at once, and waiting when it's busy."""
+"""Throttling an AI connection: calls a minute, and calls at once."""
 
 import threading
 import time
@@ -6,7 +6,7 @@ import time
 import pytest
 
 from lindley.config import AiSettings, JobConfig, ProviderConfig
-from lindley.providers.base import ChatMessage, ProviderBusy, ProviderError
+from lindley.providers.base import ChatMessage, ProviderError
 from lindley.providers.registry import get_provider
 from lindley.providers.throttle import Guarded, Throttle, throttle_for
 
@@ -24,18 +24,6 @@ class Clock:
     def sleep(self, s: float) -> None:
         self.slept.append(s)
         self.now += s
-
-
-def flaky(*errors):
-    """A call that raises these errors in turn, then answers "ok"."""
-    left = list(errors)
-
-    def fn():
-        if left:
-            raise left.pop(0)
-        return "ok"
-
-    return fn
 
 
 def test_calls_a_minute():
@@ -81,47 +69,28 @@ def test_calls_at_once():
     assert most[0] == 2
 
 
-def test_busy_waits_as_asked_and_tries_again_twice():
+def test_a_failed_call_is_not_repeated_and_frees_its_place():
     clock = Clock()
-    t = Throttle(clock=clock, sleep=clock.sleep)
-    assert t.call(flaky(ProviderBusy("busy", 3), ProviderBusy("busy", None))) == "ok"
-    assert clock.slept == [3, 5]  # as asked; 5 s when it doesn't say
-    with pytest.raises(ProviderBusy):
-        t.call(flaky(*[ProviderBusy("busy", 500)] * 3))
-    assert clock.slept[2:] == [60, 60]  # never more than a minute, and only twice
+    t = Throttle(at_once=1, clock=clock, sleep=clock.sleep)
+    calls = []
 
+    def refused():
+        calls.append(1)
+        raise ProviderError("refused the key")
 
-def test_a_failed_call_is_not_repeated():
-    clock = Clock()
-    t = Throttle(clock=clock, sleep=clock.sleep)
     with pytest.raises(ProviderError):
-        t.call(flaky(ProviderError("refused the key")))
-    assert clock.slept == []
+        t.call(refused)
+    assert calls == [1] and clock.slept == []
+    assert t.call(lambda: "ok") == "ok"
 
 
-def test_a_stream_is_tried_again_only_before_it_starts():
-    clock = Clock()
-    t = Throttle(clock=clock, sleep=clock.sleep)
-    tries = []
-
-    def stream(fail_after):
-        tries.append(fail_after)
-        if fail_after == 0:
-            raise ProviderBusy("busy", 1)
-        yield "Dear"
-        raise ProviderBusy("busy", 1)
-
-    attempts = iter([0, None])
-
-    def first_busy_then_fine():
-        if next(attempts) == 0:
-            raise ProviderBusy("busy", 1)
-        yield from ["Dear", "Sister"]
-
-    assert list(t.stream(first_busy_then_fine)) == ["Dear", "Sister"]
-    with pytest.raises(ProviderBusy):
-        list(t.stream(stream, 1))
-    assert tries == [1]  # part of the answer had arrived, so not tried again
+def test_a_stream_holds_its_place_until_the_last_piece():
+    t = Throttle(at_once=1)
+    stream = t.stream(lambda: iter(["Dear", "Sister"]))
+    assert next(stream) == "Dear"
+    assert not t._slots.acquire(blocking=False)  # still held
+    assert list(stream) == ["Sister"]
+    assert t._slots.acquire(blocking=False)
 
 
 def test_one_throttle_per_connection_until_its_limits_change():

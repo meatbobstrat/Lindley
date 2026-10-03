@@ -1,9 +1,10 @@
-"""Any other service that speaks the OpenAI API, at an address you give it."""
+"""Any other service that speaks the OpenAI API, at an address you give it, through OpenAI's
+library."""
 
 from __future__ import annotations
 
 from lindley.providers.base import JOBS, ConnectorInfo
-from lindley.providers.connectors._openai_wire import OpenAIWire
+from lindley.providers.connectors._openai_chat import OpenAIChat
 
 INFO = ConnectorInfo(
     id="openai_compat",
@@ -13,5 +14,5 @@ INFO = ConnectorInfo(
 )
 
 
-class Provider(OpenAIWire):
+class Provider(OpenAIChat):
     info = INFO

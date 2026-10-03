@@ -7,5 +7,9 @@ To add one, drop a module in this folder that defines:
   whichever of `chat`/`chat_stream`, `transcribe` and `embed` its jobs need, plus `check()`,
   a cheap call that returns a short message for "Test connection".
 
+Call the AI through its company's own library (SDK), the way its documentation shows, and
+turn the library's errors into a ProviderError a person can read (`_common.py`). The library
+keeps up with the AI's API and tries again when it's busy; Lindley only throttles.
+
 Modules starting with `_` are shared helpers, not connectors.
 """

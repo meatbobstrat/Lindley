@@ -1,9 +1,10 @@
-"""An AI on a computer you control: Ollama, LM Studio, vLLM or similar. Private."""
+"""An AI on a computer you control: Ollama, LM Studio, vLLM or similar, through OpenAI's library
+at its address, as they document. Private."""
 
 from __future__ import annotations
 
 from lindley.providers.base import JOBS, ConnectorInfo
-from lindley.providers.connectors._openai_wire import OpenAIWire
+from lindley.providers.connectors._openai_chat import OpenAIChat
 
 INFO = ConnectorInfo(
     id="local",
@@ -20,5 +21,5 @@ INFO = ConnectorInfo(
 )
 
 
-class Provider(OpenAIWire):
+class Provider(OpenAIChat):
     info = INFO

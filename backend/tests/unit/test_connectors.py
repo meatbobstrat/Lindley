@@ -1,250 +1,566 @@
-"""The HTTP connectors, against made-up servers: what they send, and how they read answers.
+"""The connectors, against made-up servers: what each company's library sends for them, and how
+they read the answers and errors.
 
-No test here touches the network: every client runs on an httpx.MockTransport.
+No test here touches the network. The Anthropic and OpenAI libraries run on an
+httpx2.MockTransport, Google's on an httpx.MockTransport.
 """
 
 import base64
 import json
 
 import httpx
+import httpx2
 import pytest
 
 from lindley.config import ProviderConfig
-from lindley.providers.base import ChatMessage, ProviderBusy, ProviderError
+from lindley.providers.base import ChatMessage, ProviderError
 from lindley.providers.connectors import anthropic, google, local, openai, openai_compat
 from lindley.providers.prompts import TRANSCRIBE
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\0" * 20
 PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 20
-TALK = [ChatMessage("system", "Be brief."), ChatMessage("user", "Who wrote it?")]
+TALK = [
+    ChatMessage("system", "Be brief."),
+    ChatMessage("user", "Who wrote it?"),
+    ChatMessage("assistant", "Which letter?"),
+    ChatMessage("user", "The first."),
+]
+# Busy replies ask the library to wait a millisecond before trying again, so tests stay fast
+BUSY_NOW = {"retry-after-ms": "1"}
 
 
 class Server:
     """Answers each request with the next reply, and keeps the requests."""
 
-    def __init__(self, *replies: httpx.Response) -> None:
+    def __init__(self, *replies, lib=httpx2) -> None:
         self.replies = list(replies)
-        self.requests: list[httpx.Request] = []
+        self.requests: list = []
+        self.lib = lib
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
+    def __call__(self, request):
         self.requests.append(request)
-        return self.replies.pop(0)
+        reply = self.replies.pop(0)
+        return reply(request) if callable(reply) else reply
 
-    def client(self) -> httpx.Client:
-        return httpx.Client(transport=httpx.MockTransport(self))
+    def client(self):
+        return self.lib.Client(transport=self.lib.MockTransport(self))
 
     @property
     def body(self) -> dict:
         return json.loads(self.requests[-1].content)
 
 
-def sse(*events: dict | str) -> httpx.Response:
-    lines = [f"data: {e if isinstance(e, str) else json.dumps(e)}\n\n" for e in events]
-    return httpx.Response(200, text="".join(lines), headers={"content-type": "text/event-stream"})
+def sse(*events: dict | str, lib=httpx2, key="type"):
+    lines = []
+    for e in events:
+        if isinstance(e, str):
+            lines.append(f"data: {e}\n\n")
+        else:
+            lines.append(f"event: {e[key]}\ndata: {json.dumps(e)}\n\n")
+    return lib.Response(200, text="".join(lines), headers={"content-type": "text/event-stream"})
 
 
-def completion(text: str) -> httpx.Response:
-    return httpx.Response(200, json={"choices": [{"message": {"content": text}}]})
+def down(request):
+    raise httpx2.ConnectError("refused")
 
 
-# OpenAI-compatible: local, OpenAI, Google, any other
+# Local and other OpenAI-compatible services: Chat Completions, through OpenAI's library
 
 
-def make(module, server, **cfg):
-    config = ProviderConfig(type=module.INFO.id, **cfg)
-    return module.Provider(
-        config=config, model=cfg.get("model"), api_key="k", client=server.client()
+def completion(text: str):
+    return httpx2.Response(
+        200,
+        json={
+            "id": "c",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "m",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": text},
+                }
+            ],
+        },
     )
 
 
-@pytest.mark.parametrize(
-    ("module", "url"),
-    [
-        (openai, "https://api.openai.com/v1/chat/completions"),
-        (google, "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"),
-        (local, "http://localhost:11434/v1/chat/completions"),
-    ],
-)
-def test_openai_wire_chat(module, url):
+def make(module, server, key="k", **cfg):
+    config = ProviderConfig(type=module.INFO.id, **cfg)
+    return module.Provider(
+        config=config, model=cfg.get("model"), api_key=key, http_client=server.client()
+    )
+
+
+def test_local_chat():
     server = Server(completion("Will Branson."))
-    p = make(module, server)
-    assert p.chat(TALK) == "Will Branson."
+    assert make(local, server).chat(TALK) == "Will Branson."
     req = server.requests[0]
-    assert str(req.url) == url
+    assert str(req.url) == "http://localhost:11434/v1/chat/completions"
     assert req.headers["authorization"] == "Bearer k"
-    assert server.body["model"] == module.INFO.default_models["chat"]
+    assert server.body["model"] == local.INFO.default_models["chat"]
     assert server.body["messages"][0] == {"role": "system", "content": "Be brief."}
+    assert server.body["messages"][2] == {"role": "assistant", "content": "Which letter?"}
 
 
-def test_openai_wire_needs_an_address_for_another_service():
+def test_a_local_ai_never_gets_the_openai_key_from_the_environment(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-openai-key")
+    server = Server(completion("ok"))
+    make(local, server, key=None).chat(TALK)
+    assert server.requests[0].headers["authorization"] == "Bearer none"
+
+
+def test_another_service_needs_an_address(monkeypatch):
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     p = make(openai_compat, Server())
     with pytest.raises(ProviderError, match="No address"):
         p.chat(TALK)
+    server = Server(completion("ok"))
+    make(openai_compat, server, base_url="https://ai.example.com/v1/").chat(TALK)
+    assert str(server.requests[0].url) == "https://ai.example.com/v1/chat/completions"
 
 
-def test_openai_wire_reads_a_page():
+def test_local_reads_a_page():
     server = Server(completion("  Dear Sister,\nWe are well.  "))
-    p = make(local, server, model="llama3.2-vision")
-    t = p.transcribe(PNG, hints="A letter, 1892")
+    t = make(local, server, model="llama3.2-vision").transcribe(PNG, hints="A letter, 1892")
     assert t.text == "Dear Sister,\nWe are well." and t.confidence is None
     text, image = server.body["messages"][0]["content"]
     assert text["text"].startswith(TRANSCRIBE) and "A letter, 1892" in text["text"]
     assert image["image_url"]["url"] == "data:image/png;base64," + base64.b64encode(PNG).decode()
 
 
-def test_openai_wire_streams():
+def test_local_streams():
+    chunk = {"id": "c", "object": "chat.completion.chunk", "created": 0, "model": "m"}
     server = Server(
         sse(
-            {"choices": [{"delta": {"role": "assistant"}}]},
-            {"choices": [{"delta": {"content": "Will "}}]},
-            {"choices": [{"delta": {"content": "Branson."}}]},
+            {**chunk, "choices": [{"index": 0, "delta": {"role": "assistant"}}]},
+            {**chunk, "choices": [{"index": 0, "delta": {"content": "Will "}}]},
+            {**chunk, "choices": [{"index": 0, "delta": {"content": "Branson."}}]},
             "[DONE]",
+            key="object",
         )
     )
-    assert list(make(openai, server).chat_stream(TALK)) == ["Will ", "Branson."]
+    assert list(make(local, server).chat_stream(TALK)) == ["Will ", "Branson."]
     assert server.body["stream"] is True
 
 
-def test_openai_wire_embeds_in_order():
+def test_embeds_in_order():
     server = Server(
-        httpx.Response(
-            200, json={"data": [{"index": 1, "embedding": [0.2]}, {"index": 0, "embedding": [0.1]}]}
+        httpx2.Response(
+            200,
+            json={
+                "object": "list",
+                "model": "m",
+                "data": [
+                    {"object": "embedding", "index": 1, "embedding": [0.2]},
+                    {"object": "embedding", "index": 0, "embedding": [0.1]},
+                ],
+                "usage": {"prompt_tokens": 1, "total_tokens": 1},
+            },
         )
     )
     p = make(openai, server, model="text-embedding-3-small")
     assert p.embed(["a", "b"]) == [[0.1], [0.2]]
-    assert str(server.requests[0].url).endswith("/embeddings")
+    assert str(server.requests[0].url) == "https://api.openai.com/v1/embeddings"
+    assert server.body["model"] == "text-embedding-3-small" and server.body["input"] == ["a", "b"]
 
 
-def test_openai_wire_check_finds_the_model():
-    models = {"data": [{"id": "llama3.2-vision:latest"}, {"id": "nomic-embed-text:latest"}]}
-    p = make(local, Server(httpx.Response(200, json=models)))
-    assert "has llama3.2-vision" in p.check()
-    p = make(local, Server(httpx.Response(200, json=models)), model="qwen2.5vl")
+def test_local_check_finds_the_model():
+    def models():
+        return httpx2.Response(
+            200,
+            json={
+                "object": "list",
+                "data": [
+                    {
+                        "id": "llama3.2-vision:latest",
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": "o",
+                    },
+                    {
+                        "id": "nomic-embed-text:latest",
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": "o",
+                    },
+                ],
+            },
+        )
+
+    assert "has llama3.2-vision" in make(local, Server(models())).check()
     with pytest.raises(ProviderError, match="no model qwen2.5vl. It has: llama3.2-vision"):
-        p.check()
-    p = make(
-        google, Server(httpx.Response(200, json={"data": [{"id": "models/gemini-2.5-flash"}]}))
-    )
-    assert "Google has gemini-2.5-flash" in p.check()
-
-
-def test_errors_in_words_for_a_person():
-    refused = httpx.Response(401, json={"error": {"message": "Incorrect API key"}})
-    with pytest.raises(ProviderError, match="OpenAI refused the key .*Incorrect API key"):
-        make(openai, Server(refused)).chat(TALK)
-    busy = httpx.Response(
-        429, json={"error": {"message": "slow down"}}, headers={"retry-after": "7"}
-    )
-    with pytest.raises(ProviderBusy) as e:
-        make(google, Server(busy)).chat(TALK)
-    assert e.value.retry_after == 7
-    with pytest.raises(ProviderError, match="The AI at localhost answered 500"):
-        make(local, Server(httpx.Response(500, text="boom"))).chat(TALK)
+        make(local, Server(models()), model="qwen2.5vl").check()
 
 
 def test_a_server_that_isnt_there():
-    def down(request):
-        raise httpx.ConnectError("refused")
-
-    p = local.Provider(
-        config=ProviderConfig(type="local"),
-        client=httpx.Client(transport=httpx.MockTransport(down)),
-    )
+    p = make(local, Server(down, down, down))
     with pytest.raises(ProviderError, match="Couldn't reach The AI at localhost"):
         p.chat(TALK)
 
 
-# Anthropic
+# OpenAI: the Responses API
+
+
+def response(*content: dict):
+    return httpx2.Response(
+        200,
+        json={
+            "id": "r",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "m",
+            "output": [
+                {
+                    "type": "message",
+                    "id": "m",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": list(content),
+                }
+            ],
+            "parallel_tool_calls": False,
+            "tool_choice": "auto",
+            "tools": [],
+        },
+    )
+
+
+def said(text: str) -> dict:
+    return {"type": "output_text", "text": text, "annotations": []}
+
+
+def test_openai_chat_through_responses_and_not_stored():
+    server = Server(response(said("Will Branson.")))
+    assert make(openai, server).chat(TALK) == "Will Branson."
+    req = server.requests[0]
+    assert str(req.url) == "https://api.openai.com/v1/responses"
+    assert req.headers["authorization"] == "Bearer k"
+    assert server.body == {
+        "model": openai.INFO.default_models["chat"],
+        "instructions": "Be brief.",
+        "input": [
+            {"role": "user", "content": "Who wrote it?"},
+            {"role": "assistant", "content": "Which letter?"},
+            {"role": "user", "content": "The first."},
+        ],
+        "store": False,
+    }
+
+
+def test_openai_reads_a_page():
+    server = Server(response(said(" Dear Sister, ")))
+    assert make(openai, server).transcribe(JPEG).text == "Dear Sister,"
+    text, image = server.body["input"][0]["content"]
+    assert text == {"type": "input_text", "text": TRANSCRIBE}
+    data = base64.b64encode(JPEG).decode()
+    assert image == {
+        "type": "input_image",
+        "image_url": f"data:image/jpeg;base64,{data}",
+        "detail": "high",
+    }
+    assert "instructions" not in server.body
+
+
+def test_openai_refusal():
+    refused = {"type": "refusal", "refusal": "I can't help with that."}
+    with pytest.raises(ProviderError, match="OpenAI declined"):
+        make(openai, Server(response(refused))).chat(TALK)
+
+
+def test_openai_streams():
+    def delta(n, text):
+        return {
+            "type": "response.output_text.delta",
+            "sequence_number": n,
+            "item_id": "m",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": text,
+            "logprobs": [],
+        }
+
+    server = Server(sse(delta(1, "Will "), delta(2, "Branson.")))
+    assert list(make(openai, server).chat_stream(TALK)) == ["Will ", "Branson."]
+    assert server.body["stream"] is True and server.body["store"] is False
+    failed = sse({"type": "error", "sequence_number": 1, "message": "boom", "code": "x"})
+    with pytest.raises(ProviderError, match="OpenAI: boom"):
+        list(make(openai, Server(failed)).chat_stream(TALK))
+
+
+def test_openai_check():
+    model = {"id": "gpt-6.1-sol", "object": "model", "created": 0, "owned_by": "openai"}
+    server = Server(httpx2.Response(200, json=model))
+    assert make(openai, server).check() == "Connected. OpenAI has gpt-6.1-sol."
+    assert str(server.requests[0].url) == "https://api.openai.com/v1/models/gpt-6.1-sol"
+
+
+def test_openai_errors_in_words_for_a_person():
+    refused = httpx2.Response(401, json={"error": {"message": "Incorrect API key"}})
+    with pytest.raises(ProviderError, match="OpenAI refused the key .*Incorrect API key"):
+        make(openai, Server(refused)).chat(TALK)
+    missing = httpx2.Response(404, json={"error": {"message": "No such model"}})
+    with pytest.raises(ProviderError, match="no such model .*No such model"):
+        make(openai, Server(missing)).chat(TALK)
+
+
+def test_the_library_tries_again_when_busy():
+    busy = httpx2.Response(429, json={"error": {"message": "slow down"}}, headers=BUSY_NOW)
+    server = Server(busy, response(said("ok")))
+    assert make(openai, server).chat(TALK) == "ok"
+    assert len(server.requests) == 2
+    server = Server(busy, busy, busy)
+    with pytest.raises(ProviderError, match="OpenAI is busy \\(429\\), even after trying again"):
+        make(openai, server).chat(TALK)
+    assert len(server.requests) == 3  # tried twice more
+
+
+# Anthropic: the Messages API, through Anthropic's library
 
 
 def claude(server, model="claude-opus-5", key="k"):
-    return anthropic.Provider(config=None, model=model, api_key=key, client=server.client())
+    return anthropic.Provider(model=model, api_key=key, http_client=server.client())
 
 
 def message(*blocks, stop="end_turn"):
-    return httpx.Response(200, json={"content": list(blocks), "stop_reason": stop})
+    return httpx2.Response(
+        200,
+        json={
+            "id": "m",
+            "type": "message",
+            "role": "assistant",
+            "model": "m",
+            "content": list(blocks),
+            "stop_reason": stop,
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        },
+    )
+
+
+def text(t: str) -> dict:
+    return {"type": "text", "text": t}
 
 
 def test_anthropic_chat():
-    server = Server(
-        message({"type": "thinking", "thinking": ""}, {"type": "text", "text": "Will."})
-    )
-    assert claude(server).chat(TALK) == "Will."
+    server = Server(message({"type": "thinking", "thinking": "", "signature": "s"}, text("Will.")))
+    assert claude(server, model="claude-haiku-4-5").chat(TALK) == "Will."
     req = server.requests[0]
     assert str(req.url) == "https://api.anthropic.com/v1/messages"
     assert req.headers["x-api-key"] == "k" and req.headers["anthropic-version"] == "2023-06-01"
-    body = server.body
-    assert body["system"] == "Be brief."
-    assert body["messages"] == [{"role": "user", "content": "Who wrote it?"}]
-    assert body["max_tokens"] == anthropic.MAX_TOKENS
+    assert server.body == {
+        "model": "claude-haiku-4-5",
+        "max_tokens": anthropic.MAX_TOKENS,
+        "system": "Be brief.",
+        "messages": [
+            {"role": "user", "content": "Who wrote it?"},
+            {"role": "assistant", "content": "Which letter?"},
+            {"role": "user", "content": "The first."},
+        ],
+    }
+    assert "anthropic-beta" not in req.headers
 
 
 def test_anthropic_falls_back_on_a_refusal_where_the_model_can():
-    server = Server(
-        message({"type": "text", "text": "ok"}), message({"type": "text", "text": "ok"})
-    )
+    server = Server(message(text("ok")))
     claude(server).chat(TALK)
     assert server.body["fallbacks"] == "default"
     assert server.requests[0].headers["anthropic-beta"] == anthropic.FALLBACK_BETA
-    claude(server, model="claude-haiku-4-5").chat(TALK)
-    assert "fallbacks" not in server.body and "anthropic-beta" not in server.requests[1].headers
 
 
-def test_anthropic_refusal_and_no_key():
+def test_anthropic_refusal_and_no_key(monkeypatch):
     with pytest.raises(ProviderError, match="declined"):
         claude(Server(message(stop="refusal"))).chat(TALK)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-from-the-environment")
     with pytest.raises(ProviderError, match="No API key"):
         claude(Server(), key=None).chat(TALK)
+    with pytest.raises(ProviderError, match="No API key"):
+        claude(Server(), key=None).check()
 
 
 def test_anthropic_reads_a_page():
-    server = Server(message({"type": "text", "text": "Dear Sister,"}))
+    server = Server(message(text("Dear Sister,")))
     assert claude(server).transcribe(JPEG).text == "Dear Sister,"
-    image, text = server.body["messages"][0]["content"]
+    image, prompt = server.body["messages"][0]["content"]
     assert image["source"] == {
         "type": "base64",
         "media_type": "image/jpeg",
         "data": base64.b64encode(JPEG).decode(),
     }
-    assert text["text"] == TRANSCRIBE
+    assert prompt["text"] == TRANSCRIBE
+    assert "system" not in server.body
+
+
+def anthropic_stream(*deltas, stop="end_turn"):
+    events = [
+        {
+            "type": "message_start",
+            "message": {
+                "id": "m",
+                "type": "message",
+                "role": "assistant",
+                "model": "m",
+                "content": [],
+                "stop_reason": None,
+                "usage": {"input_tokens": 1, "output_tokens": 0},
+            },
+        },
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
+        *(
+            {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": d}}
+            for d in deltas
+        ),
+        {"type": "content_block_stop", "index": 0},
+        {"type": "message_delta", "delta": {"stop_reason": stop}, "usage": {"output_tokens": 2}},
+        {"type": "message_stop"},
+    ]
+    return sse(*events)
 
 
 def test_anthropic_streams():
-    server = Server(
-        sse(
-            {"type": "message_start", "message": {}},
-            {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta"}},
-            {
-                "type": "content_block_delta",
-                "index": 1,
-                "delta": {"type": "text_delta", "text": "Wi"},
-            },
-            {
-                "type": "content_block_delta",
-                "index": 1,
-                "delta": {"type": "text_delta", "text": "ll"},
-            },
-            {"type": "message_delta", "delta": {"stop_reason": "end_turn"}},
-            {"type": "message_stop"},
-        )
-    )
+    server = Server(anthropic_stream("Wi", "ll"))
     assert list(claude(server).chat_stream(TALK)) == ["Wi", "ll"]
-    overloaded = sse({"type": "error", "error": {"type": "overloaded_error", "message": "busy"}})
-    with pytest.raises(ProviderBusy):
-        list(claude(Server(overloaded)).chat_stream(TALK))
+    assert server.body["stream"] is True and server.body["fallbacks"] == "default"
+    with pytest.raises(ProviderError, match="declined"):
+        list(claude(Server(anthropic_stream("I", stop="refusal"))).chat_stream(TALK))
 
 
-def test_anthropic_busy_and_check():
-    with pytest.raises(ProviderBusy):
-        claude(Server(httpx.Response(529, json={"error": {"message": "Overloaded"}}))).chat(TALK)
-    server = Server(
-        httpx.Response(200, json={"id": "claude-opus-5", "display_name": "Claude Opus 5"})
+def test_anthropic_busy_in_a_stream_and_after_trying_again():
+    overloaded = sse(
+        {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}
     )
+    with pytest.raises(ProviderError, match="Anthropic is busy \\(529\\)"):
+        list(claude(Server(overloaded)).chat_stream(TALK))
+    busy = httpx2.Response(
+        529,
+        json={"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}},
+        headers=BUSY_NOW,
+    )
+    server = Server(busy, busy, busy)
+    with pytest.raises(ProviderError, match="Anthropic is busy \\(529\\), even after .*Overloaded"):
+        claude(server).chat(TALK)
+    assert len(server.requests) == 3
+
+
+def test_anthropic_check():
+    model = {
+        "id": "claude-opus-5",
+        "type": "model",
+        "display_name": "Claude Opus 5",
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+    server = Server(httpx2.Response(200, json=model))
     assert claude(server).check() == "Connected. Anthropic has Claude Opus 5."
-    assert str(server.requests[0].url).endswith("/v1/models/claude-opus-5")
+    assert str(server.requests[0].url) == "https://api.anthropic.com/v1/models/claude-opus-5"
 
 
 def test_pages_must_be_an_image_every_ai_takes():
     with pytest.raises(ProviderError, match="JPEG, PNG or WebP"):
         claude(Server()).transcribe(b"GIF89a")
+
+
+# Google: the Interactions API, through google-genai
+
+
+def gemini(server, model=None, key="k"):
+    return google.Provider(model=model, api_key=key, http_client=server.client())
+
+
+def interaction(t: str):
+    return httpx.Response(
+        200,
+        json={
+            "id": "",
+            "status": "completed",
+            "steps": [
+                {"type": "thought", "signature": "s"},
+                {"type": "model_output", "content": [{"type": "text", "text": t}]},
+            ],
+        },
+    )
+
+
+def test_google_chat_through_interactions_and_not_stored():
+    server = Server(interaction("Will Branson."), lib=httpx)
+    assert gemini(server).chat(TALK) == "Will Branson."
+    req = server.requests[0]
+    assert str(req.url) == "https://generativelanguage.googleapis.com/v1beta/interactions"
+    assert req.headers["x-goog-api-key"] == "k"
+    assert server.body == {
+        "model": google.INFO.default_models["chat"],
+        "system_instruction": "Be brief.",
+        "input": [
+            {"type": "user_input", "content": [{"type": "text", "text": "Who wrote it?"}]},
+            {"type": "model_output", "content": [{"type": "text", "text": "Which letter?"}]},
+            {"type": "user_input", "content": [{"type": "text", "text": "The first."}]},
+        ],
+        "store": False,
+    }
+
+
+def test_google_reads_a_page():
+    server = Server(interaction(" Dear Sister, "), lib=httpx)
+    assert gemini(server).transcribe(PNG).text == "Dear Sister,"
+    prompt, image = server.body["input"][0]["content"]
+    assert prompt == {"type": "text", "text": TRANSCRIBE}
+    assert image == {
+        "type": "image",
+        "mime_type": "image/png",
+        "data": base64.b64encode(PNG).decode(),
+    }
+    assert server.body["store"] is False and "system_instruction" not in server.body
+
+
+def test_google_streams():
+    events = [
+        {"event_type": "interaction.created", "interaction": {"id": "", "status": "in_progress"}},
+        {"event_type": "step.start", "index": 0, "step": {"type": "model_output"}},
+        {"event_type": "step.delta", "index": 0, "delta": {"type": "text", "text": "Wi"}},
+        {"event_type": "step.delta", "index": 0, "delta": {"type": "text", "text": "ll"}},
+        {"event_type": "interaction.completed", "interaction": {"id": "", "status": "completed"}},
+    ]
+    server = Server(sse(*events, lib=httpx, key="event_type"), lib=httpx)
+    assert list(gemini(server).chat_stream(TALK)) == ["Wi", "ll"]
+    assert server.body["stream"] is True and server.body["store"] is False
+    failed = sse({"event_type": "error", "error": {"message": "boom"}}, lib=httpx, key="event_type")
+    with pytest.raises(ProviderError, match="Google: boom"):
+        list(gemini(Server(failed, lib=httpx)).chat_stream(TALK))
+
+
+def test_google_embeds():
+    reply = httpx.Response(200, json={"embeddings": [{"values": [0.1]}, {"values": [0.2]}]})
+    server = Server(reply, lib=httpx)
+    assert gemini(server, model="gemini-embedding-2").embed(["a", "b"]) == [[0.1], [0.2]]
+    assert str(server.requests[0].url).endswith("/models/gemini-embedding-2:batchEmbedContents")
+
+
+def test_google_check():
+    model = {"name": "models/gemini-3.8-flash", "displayName": "Gemini 3.8 Flash"}
+    server = Server(httpx.Response(200, json=model), lib=httpx)
+    assert gemini(server).check() == "Connected. Google has Gemini 3.8 Flash."
+    assert str(server.requests[0].url).endswith("/v1beta/models/gemini-3.8-flash")
+
+
+def test_google_errors_in_words_for_a_person(monkeypatch):
+    def error(status, message):
+        body = {"error": {"code": status, "message": message, "status": "X"}}
+        return httpx.Response(status, json=body, headers=BUSY_NOW)
+
+    with pytest.raises(ProviderError, match="Google refused the key .*API key not valid"):
+        gemini(Server(error(401, "API key not valid"), lib=httpx)).chat(TALK)
+    with pytest.raises(ProviderError, match="Google refused the key .*API key not valid"):
+        gemini(Server(error(403, "API key not valid"), lib=httpx)).check()
+    server = Server(*[error(429, "Quota exceeded")] * 4, lib=httpx)
+    with pytest.raises(ProviderError, match="Google is busy \\(429\\)"):
+        gemini(server).chat(TALK)
+    assert len(server.requests) > 1  # the library tried again
+
+    def gone(request):
+        raise httpx.ConnectError("refused")
+
+    with pytest.raises(ProviderError, match="Couldn't reach Google"):
+        gemini(Server(*[gone] * 4, lib=httpx)).chat(TALK)
+    monkeypatch.setenv("GEMINI_API_KEY", "from-the-environment")
+    with pytest.raises(ProviderError, match="No API key"):
+        gemini(Server(lib=httpx), key=None).chat(TALK)

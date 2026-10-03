@@ -3,7 +3,7 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from lindley.app import create_app
 from lindley.config import Settings
@@ -156,3 +156,35 @@ def test_dropped_scans_never_call_the_vision_model_without_an_ok(settings, inbox
         w.tick()
     assert scans(settings) == [("a.png", "watched", "queued")]
     assert vision.calls == 0
+
+
+class SamePage:
+    """Reads every scan as the same long page, as two scans of one sheet would read."""
+
+    name = "tesseract"
+    version = "tesseract v5.test eng"
+    TEXT = " ".join(
+        f"Line {i} of the memoir tells how we crossed the river at Eldorado in the spring."
+        for i in range(8)
+    )
+
+    def recognize(self, image_path):
+        return [PageResult(1, self.TEXT, 90.0, self.name, [])]
+
+
+def test_the_watcher_finds_duplicates_before_assembling(settings, inbox):
+    w = FolderWatcher(settings, Pipeline(settings, SamePage()), chat=None, settle_s=0)
+    for name, color in (("scan_0001.png", "white"), ("scan_0002.png", "ivory")):
+        img = Image.new("RGB", (400, 560), color)
+        ImageDraw.Draw(img).rectangle([40, 60, 340, 400], fill="black")  # some writing
+        img.save(inbox / name)
+        w.notice(inbox / name)
+    for _ in range(3):
+        w.tick()
+    conn = connect(settings.db_path)
+    try:
+        assert [r[0] for r in conn.execute("SELECT kind FROM duplicates")] == ["same_page"]
+        docs = [r[0] for r in conn.execute("SELECT document_id FROM pages")]
+        assert docs[0] is None or docs[0] != docs[1]
+    finally:
+        conn.close()

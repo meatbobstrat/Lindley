@@ -20,6 +20,7 @@ from watchdog.observers import Observer
 from lindley.assembler import assemble
 from lindley.config import Settings
 from lindley.db.database import connect
+from lindley.duplicates import find_duplicates
 from lindley.providers.base import ChatProvider, ProviderError
 from lindley.providers.registry import get_provider
 from lindley.worker.intake import ingest, is_supported
@@ -158,6 +159,9 @@ class FolderWatcher:
         with self._lock:
             waiting = bool(self._pending)
         if self._unassembled and not waiting and time.monotonic() - self._last_new >= self.settle_s:
+            found = find_duplicates(conn).found  # first: copies of a page never share a document
+            if found:
+                log.info("%d possible duplicate(s) to look at under Duplicates", len(found))
             report = assemble(conn, self.settings.assembler, self.chat)
             log.info(
                 "Assembled %d Inbox pages: %d new documents",

@@ -25,6 +25,7 @@ from pathlib import Path
 from lindley.assembler import assemble
 from lindley.config import load_settings
 from lindley.db.database import connect, init_db
+from lindley.duplicates import find_duplicates
 from lindley.providers.base import ProviderError
 from lindley.providers.registry import get_provider
 from lindley.worker.image import BLANK_AT
@@ -51,6 +52,15 @@ def find_files(paths: list[Path]) -> list[Path]:
         else:
             found.append(p)
     return [f for f in found if is_supported(f)]
+
+
+def page_name(conn, page_id: int) -> str:
+    r = conn.execute(
+        "SELECT s.original_name, s.page_count, p.page_index FROM pages p"
+        " JOIN scans s ON s.id = p.scan_id WHERE p.id = ?",
+        (page_id,),
+    ).fetchone()
+    return r[0] + (f" p{r[2] + 1}" if (r[1] or 1) > 1 else "")
 
 
 def where_vision_goes(settings) -> str:
@@ -166,6 +176,22 @@ def main() -> int:
             )
         )
         print(f"Page checks: {checked[1]} blank, {checked[2]} turned upright. Writing: {scripts}")
+
+    found = find_duplicates(conn).found
+    if found:
+        print(f"\nPossible duplicates ({len(found)} new):")
+        for page_a, page_b, match in found:
+            what = (
+                "look like the same page" if match.kind == "same_page" else "have very similar text"
+            )
+            print(
+                f"  {page_name(conn, page_a)} and {page_name(conn, page_b)} {what} ({match.score}%)"
+            )
+    waiting_dups = conn.execute("SELECT COUNT(*) FROM duplicates WHERE status = 'open'").fetchone()[
+        0
+    ]
+    if waiting_dups:
+        print(f"{waiting_dups} possible duplicate pair(s) are waiting for you to decide.")
 
     if not a.no_assemble:
         chat = None

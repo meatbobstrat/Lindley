@@ -1,9 +1,12 @@
 """Folder watcher: new scans dropped into a watched folder are imported, read and assembled.
 
 watchdog reports new or changed files, and a sweep at start-up catches anything dropped while
-Lindley was closed. A file is taken only once its size has stopped changing (a scanner or a copy
-may still be writing it). One background thread does the work, one file at a time. Once no new
-file has arrived for `settle_s` seconds, the assembler runs once over the whole Inbox.
+Lindley was closed. A file is taken only once it has finished arriving: its size and time
+unchanged for `stable_s` seconds, and its ending there (worker.intake.looks_complete), since a
+scanner or a copy may still be writing it. A file that never finishes (empty, or kept locked)
+stops holding things up after `stuck_s` seconds. One background thread does the work, one file
+at a time. Once no new file has arrived for `settle_s` seconds, the assembler runs once over the
+whole Inbox.
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ import logging
 import sqlite3
 import threading
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
@@ -23,13 +27,27 @@ from lindley.config import Settings
 from lindley.db.database import connect
 from lindley.duplicates import find_duplicates
 from lindley.providers.base import ChatProvider
-from lindley.worker.intake import ingest, is_supported
+from lindley.worker.intake import ingest, is_supported, looks_complete
 from lindley.worker.pipeline import Pipeline, waiting_for_vision
 
 log = logging.getLogger(__name__)
 
 POLL_S = 1.0
 SETTLE_S = 20.0
+STABLE_S = 3.0  # a file unchanged this long has finished arriving, if its ending is there
+STUCK_S = 60.0  # a file unchanged this long but still not ready no longer holds things up
+MAX_TRIES = 3  # a file whose import raised is tried this many times, then left until it changes
+BACKOFF_S = (30.0, 3600.0)  # waits after the assembler fails: the first, doubling to the most
+
+
+@dataclass
+class _Arrival:
+    """A file noticed but not taken yet."""
+
+    size: int = -1  # -1: not looked at yet
+    mtime: int = -1
+    changed: float = field(default_factory=time.monotonic)  # when it last changed
+    warned: bool = False  # logged as stuck
 
 
 class _Handler(FileSystemEventHandler):
@@ -52,13 +70,20 @@ class FolderWatcher:
         *,
         poll_s: float = POLL_S,
         settle_s: float = SETTLE_S,
+        stable_s: float = STABLE_S,
+        stuck_s: float = STUCK_S,
     ) -> None:
         self.settings = settings
         self.pipeline = pipeline or Pipeline.from_settings(settings)
         self.chat = chat if chat is not None else chat_on_its_own(settings)
         self.poll_s = poll_s
         self.settle_s = settle_s
-        self._pending: dict[Path, int] = {}  # path -> size at the last check (-1: not yet seen)
+        self.stable_s = stable_s
+        self.stuck_s = stuck_s
+        self._pending: dict[Path, _Arrival] = {}
+        self._tries: dict[Path, int] = {}  # files whose import raised: how many times
+        self._assemble_after = 0.0  # after a failure, the assembler waits until then
+        self._backoff = 0.0
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -120,72 +145,133 @@ class FolderWatcher:
     # --------------------------------------------------------------- work
 
     def notice(self, path: Path) -> None:
-        """A file appeared or changed. It's taken once its size stops changing."""
-        own = (self.settings.library_dir.resolve(), self.settings.quarantine_dir.resolve())
+        """A file appeared or changed. It's taken once it has finished arriving."""
+        s = self.settings
+        own = (s.library_dir.resolve(), s.quarantine_dir.resolve(), s.processing_dir.resolve())
         if not is_supported(path) or any(path.resolve().is_relative_to(d) for d in own):
             return
         with self._lock:
-            self._pending.setdefault(path, -1)
+            self._pending.setdefault(path, _Arrival())
 
     def tick(self) -> list[Path]:
         """Take the files that have finished arriving, then assemble once things settle.
 
         Returns the files taken. Called by the background thread; tests call it directly.
         """
-        ready = []
         conn = self._db()
-        with self._lock:
-            for path, last in list(self._pending.items()):
-                try:
-                    size = path.stat().st_size
-                except OSError:
-                    del self._pending[path]  # gone, or a folder
-                    continue
-                if last == -1 and _already_read(conn, path, size):
-                    del self._pending[path]
-                    continue
-                if size == last and size > 0 and _readable(path):
-                    ready.append(path)
-                    del self._pending[path]
-                else:
-                    self._pending[path] = size
-        for path in ready:
-            r = ingest(conn, self.settings, self.pipeline, path, origin="watched")
+        ready = self._arrived(conn)
+        for i, path in enumerate(ready):
+            if self._stop.is_set():  # the next watcher's start-up sweep finds the rest
+                del ready[i:]
+                break
+            try:
+                r = ingest(conn, self.settings, self.pipeline, path, origin="watched")
+            except Exception:
+                log.exception("Couldn't take %s", path)
+                self._try_again(path)
+                continue
+            self._tries.pop(path, None)
             log.info("%s: %s%s", path.name, r.status, f", {r.reading}" if r.reading else "")
             if r.status == "new" or r.reading:
                 self._unassembled = True
             self._last_new = time.monotonic()
         # Hard pages that arrived while the vision model had to ask go now, if it may run on
         # its own (see lindley.assembler.auto); the rest wait in Needs AI for a person.
-        if (run := read_on_its_own(conn, self.settings, self.pipeline)) and run.read:
-            log.info("Read %d hard page(s) with the vision model", run.read)
-            self._unassembled = True
-            self._last_new = time.monotonic()
-        if ready and (waiting := waiting_for_vision(conn)):
-            log.info("%d page(s) are waiting in Needs AI for the vision model", waiting)
-        with self._lock:
-            waiting = bool(self._pending)
-        if self._unassembled and not waiting and time.monotonic() - self._last_new >= self.settle_s:
-            found = find_duplicates(conn).found  # first: copies of a page never share a document
-            if found:
-                log.info("%d possible duplicate(s) to look at under Duplicates", len(found))
-            report = sort_on_its_own(conn, self.settings, self.chat)
-            log.info(
-                "Assembled %d Inbox pages: %d new documents",
-                report.considered,
-                report.documents_created,
-            )
-            self._unassembled = False
-            try:  # people's answers so far may teach it to do better
-                if (learnt := relearn(conn)) is not None:
-                    log.info(
-                        "Learned from %d documents people vouched for: %s",
-                        learnt.documents,
-                        "now in use" if learnt.adopted else "no better, so not used",
-                    )
-            except Exception:  # noqa: BLE001 - learning is a bonus; sorting goes on without it
-                log.exception("Learning from people's answers failed")
+        try:
+            if not self._stop.is_set() and (
+                (run := read_on_its_own(conn, self.settings, self.pipeline)) and run.read
+            ):
+                log.info("Read %d hard page(s) with the vision model", run.read)
+                self._unassembled = True
+                self._last_new = time.monotonic()
+            if ready and (waiting := waiting_for_vision(conn)):
+                log.info("%d page(s) are waiting in Needs AI for the vision model", waiting)
+        except Exception:
+            log.exception("Reading hard pages with the vision model failed")
+        now = time.monotonic()
+        if (
+            self._unassembled
+            and not self._stop.is_set()
+            and not self._arriving(now)
+            and now - self._last_new >= self.settle_s
+            and now >= self._assemble_after
+        ):
+            try:
+                self._assemble(conn)
+            except Exception:
+                self._backoff = min(max(self._backoff * 2, BACKOFF_S[0]), BACKOFF_S[1])
+                self._assemble_after = time.monotonic() + self._backoff
+                log.exception("Assembling the Inbox failed; trying again in %.0fs", self._backoff)
+            else:
+                self._unassembled = False
+                self._backoff = 0.0
         return ready
+
+    def _arrived(self, conn: sqlite3.Connection) -> list[Path]:
+        """The files that have finished arriving, taken off the list."""
+        ready, now = [], time.monotonic()
+        with self._lock:
+            for path, seen in list(self._pending.items()):
+                try:
+                    st = path.stat()
+                except OSError:
+                    del self._pending[path]  # gone, or a folder
+                    continue
+                if seen.size == -1 and _already_read(conn, path, st.st_size):
+                    del self._pending[path]
+                    continue
+                if (st.st_size, st.st_mtime_ns) != (seen.size, seen.mtime):
+                    seen.size, seen.mtime, seen.changed = st.st_size, st.st_mtime_ns, now
+                    continue
+                if now - seen.changed < self.stable_s:
+                    continue
+                stuck = now - seen.changed >= self.stuck_s
+                # A file whose ending never arrives is taken in the end, to fail and be
+                # quarantined where a person will see it.
+                if st.st_size > 0 and _readable(path) and (looks_complete(path) or stuck):
+                    ready.append(path)
+                    del self._pending[path]
+                elif stuck and not seen.warned:
+                    seen.warned = True
+                    why = "it's empty" if st.st_size == 0 else "it can't be opened"
+                    log.warning("Waiting for %s to change: %s", path, why)
+        return ready
+
+    def _arriving(self, now: float) -> bool:
+        """Files still arriving: the assembler waits for them. Stuck ones don't count."""
+        with self._lock:
+            return any(now - seen.changed < self.stuck_s for seen in self._pending.values())
+
+    def _try_again(self, path: Path) -> None:
+        """A file whose import raised (the database was busy, say) is tried again, a few times."""
+        with self._lock:
+            tries = self._tries.get(path, 0) + 1
+            if tries < MAX_TRIES:
+                self._tries[path] = tries
+                self._pending[path] = _Arrival()
+            else:
+                del self._tries[path]
+                log.error("Gave up on %s after %d tries, until it changes", path, tries)
+
+    def _assemble(self, conn: sqlite3.Connection) -> None:
+        found = find_duplicates(conn).found  # first: copies of a page never share a document
+        if found:
+            log.info("%d possible duplicate(s) to look at under Duplicates", len(found))
+        report = sort_on_its_own(conn, self.settings, self.chat)
+        log.info(
+            "Assembled %d Inbox pages: %d new documents",
+            report.considered,
+            report.documents_created,
+        )
+        try:  # people's answers so far may teach it to do better
+            if (learnt := relearn(conn)) is not None:
+                log.info(
+                    "Learned from %d documents people vouched for: %s",
+                    learnt.documents,
+                    "now in use" if learnt.adopted else "no better, so not used",
+                )
+        except Exception:  # noqa: BLE001 - learning is a bonus; sorting goes on without it
+            log.exception("Learning from people's answers failed")
 
     def _db(self) -> sqlite3.Connection:
         if self._conn is None:  # made on the thread that uses it

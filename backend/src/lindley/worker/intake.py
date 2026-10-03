@@ -47,6 +47,35 @@ def is_supported(path: Path) -> bool:
     return path.suffix.lower() in SUPPORTED_SUFFIXES
 
 
+def looks_complete(path: Path) -> bool:
+    """Whether the file's ending is there yet: a scanner or a copy may still be writing it.
+
+    PDFs end with %%EOF, JPEGs with an end-of-image marker and PNGs with an IEND chunk; BMP and
+    WebP files give their own length at the start. TIFFs have no ending to look for, so a steady
+    size has to do.
+    """
+    try:
+        with path.open("rb") as f:
+            head = f.read(16)
+            size = f.seek(0, 2)
+            f.seek(max(0, size - 1024))
+            tail = f.read()
+    except OSError:
+        return False
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        return b"%%EOF" in tail
+    if suffix in (".jpg", ".jpeg"):
+        return b"\xff\xd9" in tail
+    if suffix == ".png":
+        return b"IEND" in tail[-32:]
+    if suffix == ".bmp":
+        return len(head) >= 6 and int.from_bytes(head[2:6], "little") <= size
+    if suffix == ".webp":
+        return head[:4] == b"RIFF" and int.from_bytes(head[4:8], "little") + 8 <= size
+    return True
+
+
 def sha256_of(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:

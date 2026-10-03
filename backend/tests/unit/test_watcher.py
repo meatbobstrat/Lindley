@@ -1,4 +1,5 @@
 import io
+import sqlite3
 import time
 
 import pytest
@@ -38,7 +39,9 @@ def png_bytes(color="white"):
 
 def make_watcher(settings, **kw):
     kw.setdefault("settle_s", 0)
-    return FolderWatcher(settings, Pipeline(settings, StubOcr()), chat=None, **kw)
+    kw.setdefault("stable_s", 0)
+    kw.setdefault("pipeline", Pipeline(settings, StubOcr()))
+    return FolderWatcher(settings, chat=None, **kw)
 
 
 def scans(settings):
@@ -152,7 +155,7 @@ def test_dropped_scans_never_call_the_vision_model_without_an_ok(settings, inbox
     vision = CountingVision()
     (inbox / "a.png").write_bytes(png_bytes())
     for _ in range(2):  # a first run, then a restart whose start-up sweep finds it again
-        w = FolderWatcher(settings, Pipeline(settings, StubOcr(), vision), chat=None, settle_s=0)
+        w = make_watcher(settings, pipeline=Pipeline(settings, StubOcr(), vision))
         w.sweep([inbox])
         w.tick()
         w.tick()
@@ -175,7 +178,7 @@ class SamePage:
 
 
 def test_the_watcher_finds_duplicates_before_assembling(settings, inbox):
-    w = FolderWatcher(settings, Pipeline(settings, SamePage()), chat=None, settle_s=0)
+    w = make_watcher(settings, pipeline=Pipeline(settings, SamePage()))
     for name, color in (("scan_0001.png", "white"), ("scan_0002.png", "ivory")):
         img = Image.new("RGB", (400, 560), color)
         ImageDraw.Draw(img).rectangle([40, 60, 340, 400], fill="black")  # some writing
@@ -221,3 +224,105 @@ def test_saving_settings_starts_the_watcher_again_with_them(client, settings, mo
     new.ai.providers["local"].allow = "auto"
     assert client.put("/api/settings", json=new.model_dump(mode="json")).status_code == 200
     assert started[0] == "stopped" and started[1].ai.providers["local"].allow == "auto"
+
+
+def test_an_empty_file_doesnt_hold_up_sorting(settings, inbox, monkeypatch):
+    calls = []
+    monkeypatch.setattr(watcher_mod, "sort_on_its_own", lambda *a: calls.append(a) or _Report())
+    w = make_watcher(settings, stuck_s=3600)
+    (inbox / "empty.png").write_bytes(b"")
+    (inbox / "a.png").write_bytes(png_bytes())
+    w.sweep([inbox])
+    for _ in range(3):
+        w.tick()
+    assert calls == []  # it may still be on its way
+    w.stuck_s = 0
+    assert w.tick() == []  # never taken while it's empty...
+    assert len(calls) == 1  # ...but no longer waited for
+    (inbox / "empty.png").write_bytes(png_bytes("ivory"))  # the scanner finished after all
+    w.tick()
+    assert w.tick() == [inbox / "empty.png"]
+
+
+def test_one_file_that_fails_doesnt_lose_the_others(settings, inbox, monkeypatch):
+    real = watcher_mod.ingest
+    fail = {"a.png"}
+
+    def ingest(conn, settings, pipeline, path, origin):
+        if path.name in fail:
+            raise sqlite3.OperationalError("database is locked")
+        return real(conn, settings, pipeline, path, origin)
+
+    monkeypatch.setattr(watcher_mod, "ingest", ingest)
+    w = make_watcher(settings, settle_s=3600)
+    for name, color in (("a.png", "white"), ("b.png", "ivory"), ("c.png", "linen")):
+        (inbox / name).write_bytes(png_bytes(color))
+    w.sweep([inbox])
+    w.tick()
+    w.tick()
+    assert sorted(s[0] for s in scans(settings)) == ["b.png", "c.png"]
+    fail.clear()  # the database is free again: it's tried again
+    w.tick()
+    w.tick()
+    assert sorted(s[0] for s in scans(settings)) == ["a.png", "b.png", "c.png"]
+
+
+def test_a_file_that_keeps_failing_is_given_up_on(settings, inbox, monkeypatch):
+    tries = []
+    monkeypatch.setattr(watcher_mod, "ingest", lambda *a, **k: tries.append(1) / 0)
+    w = make_watcher(settings, settle_s=3600)
+    (inbox / "a.png").write_bytes(png_bytes())
+    w.notice(inbox / "a.png")
+    for _ in range(10):
+        w.tick()
+    assert len(tries) == watcher_mod.MAX_TRIES and not w._pending
+
+
+def test_a_pdf_still_being_written_waits_for_its_ending(settings, inbox):
+    w = make_watcher(settings, settle_s=3600)
+    buf = io.BytesIO()
+    Image.new("RGB", (120, 160), "white").save(buf, "PDF")
+    path = inbox / "scan.pdf"
+    path.write_bytes(buf.getvalue()[:-200])  # the scanner paused half way
+    w.notice(path)
+    for _ in range(3):
+        assert w.tick() == []
+    path.write_bytes(buf.getvalue())
+    w.tick()
+    assert w.tick() == [path]
+
+
+def test_a_file_must_stay_unchanged_for_a_while(settings, inbox):
+    w = make_watcher(settings, settle_s=3600, stable_s=3600)
+    (inbox / "a.png").write_bytes(png_bytes())
+    w.notice(inbox / "a.png")
+    for _ in range(3):
+        assert w.tick() == []
+    w.stable_s = 0
+    assert w.tick() == [inbox / "a.png"]
+
+
+def test_assembling_that_fails_waits_before_trying_again(settings, inbox, monkeypatch):
+    calls = []
+
+    def broken(*a):
+        calls.append(a)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(watcher_mod, "sort_on_its_own", broken)
+    w = make_watcher(settings)
+    for _ in range(5):
+        w.tick()
+    assert len(calls) == 1 and w._unassembled  # waits, rather than failing every second
+    w._assemble_after = 0
+    w.tick()
+    assert len(calls) == 2
+
+
+def test_lindleys_working_folder_is_ignored(settings, inbox):
+    settings.processing_dir = inbox / "processing"
+    settings.processing_dir.mkdir()
+    (settings.processing_dir / "page-1.png").write_bytes(png_bytes())
+    w = make_watcher(settings)
+    w.sweep([inbox])
+    assert w.tick() == [] and w.tick() == []

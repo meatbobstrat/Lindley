@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import heapq
 import json
+import logging
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -37,6 +38,8 @@ from hashlib import blake2b
 from pathlib import Path
 
 from lindley.worker.image import BLANK_AT, image_signature, signature_likeness
+
+log = logging.getLogger(__name__)
 
 SOURCE = "duplicates v1"
 GRAM = 8  # letters per gram
@@ -162,7 +165,11 @@ def find_duplicates(conn: sqlite3.Connection) -> DuplicateReport:
         sig = None
         if len(letters(r["text"])) < MIN_LETTERS and r["image_path"]:
             rotation = ((r["detected_rotation"] or 0) + (r["user_rotation"] or 0)) % 360
-            sig = image_signature(Path(r["image_path"]), rotation)
+            try:
+                sig = image_signature(Path(r["image_path"]), rotation)
+            except OSError as e:  # the image has gone: compare what text there is
+                log.warning("Page %d's image couldn't be opened: %s", i, e)
+        if sig is not None:
             sigs[i] = sig
         else:
             sigs.pop(i, None)

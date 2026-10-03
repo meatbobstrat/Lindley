@@ -213,3 +213,11 @@ def test_a_different_drawing_is_not_a_duplicate(conn, tmp_path):
     add(conn, "Map", image=tmp_path / "c.png")
     find_duplicates(conn)
     assert pairs(conn) == {}
+
+
+def test_a_page_whose_image_has_gone_doesnt_stop_the_others(conn, tmp_path):
+    add(conn, "Sketch", image=tmp_path / "gone.png")
+    a = add(conn, PAGE)
+    b = add(conn, ocr_noise(PAGE))
+    find_duplicates(conn)
+    assert pairs(conn) == {(a, b): "same_page"}

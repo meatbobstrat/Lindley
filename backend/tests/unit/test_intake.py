@@ -6,7 +6,7 @@ from PIL import Image
 
 from lindley.config import Settings
 from lindley.db.database import connect, init_db
-from lindley.worker.intake import import_file, sha256_of
+from lindley.worker.intake import import_file, looks_complete, sha256_of
 
 
 @pytest.fixture
@@ -167,3 +167,19 @@ def test_a_photo_turned_by_exif_is_measured_as_it_is_shown(conn, settings, inbox
     import_file(conn, settings, inbox / "phone.jpg")
     p = conn.execute("SELECT width_px, height_px FROM pages").fetchone()
     assert (p["width_px"], p["height_px"]) == (200, 300)
+
+
+def test_a_file_cut_short_doesnt_look_complete(inbox):
+    for name, make in (
+        ("a.pdf", make_pdf),
+        ("a.jpg", make_jpeg),
+        ("a.png", lambda p: page().save(p) or p),
+        ("a.bmp", lambda p: page().save(p) or p),
+        ("a.webp", lambda p: page().save(p) or p),
+    ):
+        path = make(inbox / name)
+        assert looks_complete(path), name
+        data = path.read_bytes()
+        path.write_bytes(data[: len(data) * 2 // 3])
+        assert not looks_complete(path), name
+    assert looks_complete(make_tiff(inbox / "a.tif"))  # nothing to check: a steady size does

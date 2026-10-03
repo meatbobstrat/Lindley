@@ -28,7 +28,7 @@ from lindley.db.database import connect
 from lindley.duplicates import find_duplicates
 from lindley.providers.base import ChatProvider
 from lindley.worker.intake import ingest, is_supported, looks_complete
-from lindley.worker.pipeline import Pipeline, waiting_for_vision
+from lindley.worker.pipeline import Pipeline, unfinished_scans, waiting_for_vision
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +38,10 @@ STABLE_S = 3.0  # a file unchanged this long has finished arriving, if its endin
 STUCK_S = 60.0  # a file unchanged this long but still not ready no longer holds things up
 MAX_TRIES = 3  # a file whose import raised is tried this many times, then left until it changes
 BACKOFF_S = (30.0, 3600.0)  # waits after the assembler fails: the first, doubling to the most
+
+# Held while a watcher works. A watcher replaced by new settings may still be finishing a long
+# read; its successor waits, so the two never read the same file or page at once.
+_WORK = threading.Lock()
 
 
 @dataclass
@@ -122,25 +126,51 @@ class FolderWatcher:
             for f in folder.rglob("*"):
                 self.notice(f)
 
-    def stop(self) -> None:
+    def stop(self, wait: bool = True) -> None:
+        """Stop after the file or page in hand. `wait=False` returns at once (new settings: the
+        next watcher waits for this one's work to finish before starting its own)."""
         self._stop.set()
         if self._observer:
             self._observer.stop()
             self._observer.join(timeout=5)
-        if self._thread:
+        if self._thread and wait:
             self._thread.join(timeout=30)
 
     def _run(self, folders: list[Path]) -> None:
         try:
+            with _WORK:
+                if not self._stop.is_set():
+                    self.resume()
             self.sweep(folders)
             while not self._stop.wait(self.poll_s):
-                try:
-                    self.tick()
-                except Exception:
-                    log.exception("Folder watcher step failed")
+                with _WORK:
+                    if self._stop.is_set():
+                        break
+                    try:
+                        self.tick()
+                    except Exception:
+                        log.exception("Folder watcher step failed")
         finally:
             if self._conn:
                 self._conn.close()
+
+    def resume(self) -> list[int]:
+        """Read scans whose reading never finished: cut off when Lindley closed, or failed
+        (Tesseract wasn't installed, say). Lindley's own copy is read, so this works in move
+        mode too, where the original has gone. Returns the scans picked up."""
+        conn = self._db()
+        scans = unfinished_scans(conn)
+        for scan_id in scans:
+            if self._stop.is_set():
+                break
+            try:
+                status = self.pipeline.process_scan(conn, scan_id)
+            except Exception:
+                log.exception("Couldn't pick up reading scan %d", scan_id)
+                continue
+            log.info("Picked up reading scan %d: %s", scan_id, status)
+            self._unassembled = True
+        return scans
 
     # --------------------------------------------------------------- work
 

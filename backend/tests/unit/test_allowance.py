@@ -55,3 +55,29 @@ def test_the_calls_are_recorded_with_what_they_were_for(conn):
     rows = conn.execute("SELECT purpose, automatic, ok FROM ai_calls ORDER BY id").fetchall()
     assert [tuple(r) for r in rows] == [("vision", 1, 0), ("assemble", 0, 1), ("assemble", 0, 1)]
     assert allowance.calls_today(conn, "local", automatic=False) == 2
+
+
+def test_only_calls_that_worked_count_against_the_limits(conn, settings):
+    cfg = settings.ai.providers["local"]
+    cfg.allow, cfg.daily_limit = "auto", 2
+    allowance.record(conn, "local", "vision", True, ok=False)
+    allowance.record(conn, "local", "vision", True)
+    assert allowance.automatic_left(conn, settings, "local") == 1
+    assert allowance.calls_today(conn, "local") == 2  # both are shown
+
+
+def test_an_ai_whose_calls_keep_failing_is_left_alone_for_a_while(conn, settings):
+    settings.ai.providers["local"].allow = "auto"
+    allowance.record(conn, "local", "vision", True, ok=False, count=allowance.FAILING_AFTER - 1)
+    assert not allowance.failing(conn, "local")
+    allowance.record(conn, "local", "vision", False, ok=False)  # a person's call isn't counted
+    assert not allowance.failing(conn, "local")
+    allowance.record(conn, "local", "vision", True, ok=False)
+    assert allowance.failing(conn, "local")
+    assert "calls failed" in allowance.why_waiting(conn, settings, "local")
+    conn.execute(
+        "UPDATE ai_calls SET at = datetime('now', ?)", (f"-{allowance.FAILING_WAIT_MIN} minutes",)
+    )
+    assert not allowance.failing(conn, "local")  # time to try it again
+    allowance.record(conn, "local", "vision", True)
+    assert not allowance.failing(conn, "local")

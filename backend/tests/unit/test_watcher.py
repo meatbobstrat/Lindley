@@ -215,8 +215,8 @@ def test_saving_settings_starts_the_watcher_again_with_them(client, settings, mo
         def start(self):
             started.append(self.settings)
 
-        def stop(self):
-            started.append("stopped")
+        def stop(self, wait=True):
+            started.append("stopped" if not wait else "waited")  # the request doesn't wait
 
     monkeypatch.setattr("lindley.api.settings.FolderWatcher", Watcher)
     client.app.state.watcher = Watcher(settings)
@@ -326,3 +326,55 @@ def test_lindleys_working_folder_is_ignored(settings, inbox):
     w = make_watcher(settings)
     w.sweep([inbox])
     assert w.tick() == [] and w.tick() == []
+
+
+class NoTesseract:
+    name = "tesseract"
+    version = "tesseract (missing)"
+
+    def recognize(self, image_path):
+        raise RuntimeError("Tesseract wasn't found")
+
+
+def test_a_scan_whose_reading_failed_is_read_when_lindley_starts_again(settings, inbox):
+    settings.move_files = True  # the original goes once imported: only Lindley's copy is left
+    (inbox / "a.png").write_bytes(png_bytes())
+    first = make_watcher(settings, pipeline=Pipeline(settings, NoTesseract()))
+    first.sweep([inbox])
+    first.tick()
+    first.tick()
+    assert scans(settings) == [("a.png", "watched", "failed")]
+    assert not (inbox / "a.png").exists()
+    later = make_watcher(settings)  # Tesseract installed since
+    assert len(later.resume()) == 1
+    assert scans(settings) == [("a.png", "watched", "read")]
+    assert later.resume() == []
+
+
+def test_a_new_watcher_waits_for_the_old_one_to_finish(settings, inbox):
+    (inbox / "a.png").write_bytes(png_bytes())
+    w = make_watcher(settings, poll_s=0.02)
+    with watcher_mod._WORK:  # the old watcher is part way through a long read
+        w.start()
+        time.sleep(0.3)
+        assert scans(settings) == []
+    deadline = time.monotonic() + 10
+    while scans(settings) != [("a.png", "watched", "read")] and time.monotonic() < deadline:
+        time.sleep(0.05)
+    w.stop()
+    assert scans(settings) == [("a.png", "watched", "read")]
+
+
+def test_the_app_picks_up_work_cut_off_when_it_closed(settings, inbox, tmp_path):
+    conn = connect(settings.db_path)
+    conn.execute(
+        "INSERT INTO scans (id, sha256, original_name, source_path, origin, import_mode)"
+        " VALUES (1, 'h', 'a.png', 'a.png', 'watched', 'copy')"
+    )
+    conn.execute("INSERT INTO intake_steps (scan_id, step, status) VALUES (1, 'split', 'running')")
+    conn.commit()
+    app = create_app(settings, settings_path=tmp_path / "settings.json", watch=False)
+    with TestClient(app):
+        status = conn.execute("SELECT status FROM intake_steps").fetchone()[0]
+    conn.close()
+    assert status == "failed"

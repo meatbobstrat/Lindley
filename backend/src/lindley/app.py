@@ -25,8 +25,9 @@ from lindley.api import (
 from lindley.api import history as history_api
 from lindley.api import settings as settings_api
 from lindley.config import Settings, load_settings
-from lindley.db.database import init_db
+from lindley.db.database import connect, init_db
 from lindley.watcher.watcher import FolderWatcher
+from lindley.worker.pipeline import recover_interrupted
 
 # Built frontend (frontend/dist), served in production so the app is a single process.
 FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
@@ -43,6 +44,11 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_db(settings.db_path)
+        conn = connect(settings.db_path)
+        try:  # nothing else is running yet: whatever was running was cut off
+            recover_interrupted(conn)
+        finally:
+            conn.close()
         watcher = FolderWatcher(settings) if watch else None
         if watcher:
             watcher.start()

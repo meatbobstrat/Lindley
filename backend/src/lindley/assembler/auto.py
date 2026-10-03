@@ -53,12 +53,13 @@ def read_on_its_own(
 ) -> WaitingRun | None:
     """Send pages waiting for the vision model, if it may run on its own now: pages that
     arrived while it had to ask, or after its limits were used up. Pages whose call failed
-    still wait for a person. None: nothing was sent."""
+    still wait for a person, and an AI whose calls keep failing is left alone for a while.
+    None: nothing was sent. The watcher asks every second, so the quick checks go first."""
     name = settings.ai.connection_for("vision")
-    if pipeline.vision is None or not waiting_for_vision(conn):
+    if pipeline.vision is None:
         return None
     left = allowance.automatic_left(conn, settings, name)
-    if left == 0:
+    if left == 0 or allowance.failing(conn, name) or not waiting_for_vision(conn):
         return None
     run = pipeline.read_waiting(conn, automatic=True, limit=left)
     if run.stopped:

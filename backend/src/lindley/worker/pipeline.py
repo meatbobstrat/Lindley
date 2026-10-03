@@ -9,7 +9,9 @@ for the Inbox.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
@@ -48,6 +50,8 @@ class StepStatus(StrEnum):
     FAILED = "failed"
     SKIPPED = "skipped"
 
+
+log = logging.getLogger(__name__)
 
 STOP_AFTER_FAILURES = 3  # read_waiting stops after this many vision failures in a row
 # When Tesseract is unsure which way up a page is, the turned reading must beat this many points.
@@ -99,6 +103,48 @@ def vision_failures(conn: sqlite3.Connection) -> tuple[int, str | None]:
     return n, error
 
 
+def recover_interrupted(conn: sqlite3.Connection) -> tuple[int, int]:
+    """After Lindley stopped part way (closed, or the computer slept and was shut down): steps
+    left running can't finish now. A vision call goes back in the queue, sent again on its own
+    or waiting in Needs AI as any other; any other step is marked failed, and the scan's reading
+    is picked up again (unfinished_scans). Run once at start-up, before any work.
+
+    Returns (vision calls queued again, other steps marked failed).
+    """
+    with conn:
+        vision = conn.execute(
+            "UPDATE intake_steps SET status = 'queued', started_at = NULL, error = ?"
+            " WHERE status = 'running' AND step = 'vision'",
+            ("Lindley closed while the vision model was reading this page",),
+        ).rowcount
+        other = conn.execute(
+            "UPDATE intake_steps SET status = 'failed', finished_at = datetime('now'), error = ?"
+            " WHERE status = 'running'",
+            ("Lindley closed before this step finished",),
+        ).rowcount
+    if vision or other:
+        log.info("Picked up after an interruption: %d vision call(s), %d step(s)", vision, other)
+    return vision, other
+
+
+def unfinished_scans(conn: sqlite3.Connection) -> list[int]:
+    """Scans whose reading never finished: interrupted, or failed. Pages waiting for the vision
+    model aren't unfinished; they wait in Needs AI."""
+    return [
+        r[0]
+        for r in conn.execute(
+            "SELECT s.id FROM scans s WHERE s.status = 'reading'"
+            " OR (s.status != 'read' AND EXISTS ("
+            " SELECT 1 FROM pages p WHERE p.scan_id = s.id AND NOT EXISTS ("
+            "  SELECT 1 FROM transcriptions t WHERE t.page_id = p.id AND t.is_current = 1)"
+            " AND coalesce((SELECT v.status FROM intake_steps v WHERE v.page_id = p.id"
+            "  AND v.step = 'vision' ORDER BY v.id DESC LIMIT 1), '')"
+            "  NOT IN ('queued', 'failed', 'running')))"
+            " ORDER BY s.id"
+        )
+    ]
+
+
 def now() -> str:
     """UTC timestamp in SQLite's datetime('now') format."""
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
@@ -123,6 +169,10 @@ def record_step(
     ).lastrowid
 
 
+class StepTaken(Exception):
+    """Someone else (the watcher, or a person's request) got to this step first."""
+
+
 @contextmanager
 def run_step(
     conn: sqlite3.Connection,
@@ -132,26 +182,34 @@ def run_step(
     page_id: int | None = None,
     engine_version: str | None = None,
     queued: int | None = None,
+    supersedes: int | None = None,
 ) -> Iterator[None]:
     """Record a step as running while the block runs, then as done, or failed with the error.
 
-    `queued` is the id of a queued row to run, instead of adding a new one. The block should
+    `queued` is the id of a queued row to run, instead of adding a new one; `supersedes` is the
+    id of the page's last row for this step, run again in a new one. Either is claimed in one
+    statement, and raises StepTaken if another thread has claimed it since. The block should
     commit its own writes (`with conn:`) so a failure rolls them back.
     """
     with conn:
         if queued:
             row = queued
-            conn.execute(
+            claimed = conn.execute(
                 "UPDATE intake_steps SET status = 'running', engine_version = ?, error = NULL,"
-                " started_at = datetime('now') WHERE id = ?",
+                " started_at = datetime('now') WHERE id = ? AND status = 'queued'",
                 (engine_version, row),
-            )
+            ).rowcount
         else:
-            row = conn.execute(
+            cur = conn.execute(
                 "INSERT INTO intake_steps (scan_id, page_id, step, status, engine_version,"
-                " started_at) VALUES (?, ?, ?, 'running', ?, datetime('now'))",
-                (scan_id, page_id, step, engine_version),
-            ).lastrowid
+                " started_at) SELECT ?, ?, ?, 'running', ?, datetime('now')"
+                " WHERE ? IS NULL"
+                " OR (SELECT max(id) FROM intake_steps WHERE page_id = ? AND step = ?) = ?",
+                (scan_id, page_id, step, engine_version, supersedes, page_id, step, supersedes),
+            )
+            row, claimed = cur.lastrowid, cur.rowcount
+    if not claimed:
+        raise StepTaken(f"{step} for page {page_id} is already being done")
     try:
         yield
     except Exception as e:
@@ -290,6 +348,7 @@ class Pipeline:
                     page_id=r["page_id"],
                     engine_version=model,
                     queued=queued,
+                    supersedes=None if queued else r["id"],
                 ):
                     image = Path(r["image_path"])
                     with self._upright(r["page_id"], image, rotation, r["dpi"]) as upright:
@@ -300,6 +359,8 @@ class Pipeline:
                             raise
                     self._record_call(conn, r["page_id"], automatic, ok=True)
                     self._add_vision_reading(conn, r["page_id"], model, result)
+            except StepTaken:
+                continue  # the watcher or a person's request is reading it already
             except Exception as e:
                 run.failed += 1
                 in_a_row += 1
@@ -425,7 +486,8 @@ class Pipeline:
         """The page to read: the image itself, or a turned copy that's removed afterwards."""
         if not pageimage.needs_turning(image, rotation):
             return nullcontext(image)
-        work = self.settings.processing_dir / f"page-{page_id}.png"
+        # Named for this call: the watcher and a person's request may turn the same page.
+        work = self.settings.processing_dir / f"page-{page_id}-{uuid.uuid4().hex[:8]}.png"
         return _removed_after(pageimage.upright_copy(image, work, rotation, dpi))
 
     def _check_image(
@@ -496,9 +558,11 @@ class Pipeline:
                         page_id=page_id,
                         error="No vision model is set up",
                     )
-            elif _last_vision_status(conn, page_id) in ("queued", "failed"):
-                pass  # already waiting for a person; never sent again on its own
-            elif not allowance.may_call(conn, self.settings, self.vision_name):
+            elif _last_vision_status(conn, page_id) in ("queued", "failed", "running"):
+                pass  # waiting for a person, or being read; never sent again on its own
+            elif not allowance.may_call(conn, self.settings, self.vision_name) or allowance.failing(
+                conn, self.vision_name
+            ):
                 with conn:
                     conn.execute(
                         "INSERT INTO intake_steps (scan_id, page_id, step, status, error)"

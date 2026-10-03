@@ -41,7 +41,8 @@ def put_settings(new: Settings, request: Request) -> Settings:
     if (watcher := getattr(request.app.state, "watcher", None)) is not None:
         # The watcher works from the settings it started with: start it again with these, so
         # new folders are watched, and an AI that may now run on its own gets what's waiting.
-        watcher.stop()
+        # The old one may be part way through a long read; the new one waits for it to finish.
+        watcher.stop(wait=False)
         request.app.state.watcher = FolderWatcher(new)
         request.app.state.watcher.start()
     for name in set(old.ai.providers) - set(new.ai.providers):

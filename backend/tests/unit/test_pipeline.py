@@ -4,10 +4,16 @@ from PIL import Image, ImageDraw
 from lindley.assembler import assemble
 from lindley.config import Settings
 from lindley.db.database import connect, init_db
+from lindley.providers import allowance
 from lindley.providers.connectors.fake import FakeProvider
 from lindley.worker.intake import import_file
 from lindley.worker.ocr.base import PageResult
-from lindley.worker.pipeline import Pipeline, waiting_for_vision
+from lindley.worker.pipeline import (
+    Pipeline,
+    recover_interrupted,
+    unfinished_scans,
+    waiting_for_vision,
+)
 
 
 class StubOcr:
@@ -394,3 +400,100 @@ def test_an_unsure_turn_that_reads_no_better_is_dropped(conn, settings, scan):
     Pipeline(settings, ocr).process_scan(conn, sid)
     assert len(ocr.seen) == 2 and page_row(conn, sid)["detected_rotation"] == 0
     assert current_text(conn, sid) == "He had been a mule driver"
+
+
+def test_a_page_another_thread_is_reading_isnt_sent_twice(conn, settings, scan):
+    a, b = scan("a.png"), scan("b.png")
+    for sid in (a, b):
+        Pipeline(settings, StubOcr(("Dcar", 30.0)), MustNotCall()).process_scan(conn, sid)
+    pipe = Pipeline(settings, StubOcr(), FakeProvider())
+    real = pipe._vision_reader
+
+    def meanwhile():  # while a's page is read, a person's request takes b's
+        conn.execute(
+            "UPDATE intake_steps SET status = 'running' WHERE step = 'vision' AND scan_id = ?",
+            (b,),
+        )
+        conn.commit()
+        return real()
+
+    pipe._vision_reader = meanwhile
+    run = pipe.read_waiting(conn)
+    assert (run.read, run.failed) == (1, 0)
+    assert [s for s, _ in steps(conn, b, "vision")] == ["running"]
+
+
+def test_a_failed_page_retried_elsewhere_isnt_retried_twice(conn, settings, scan):
+    a, b = scan("a.png"), scan("b.png")
+    for sid in (a, b):
+        Pipeline(settings, StubOcr(("Dcar", 30.0)), MustNotCall()).process_scan(conn, sid)
+    Pipeline(settings, StubOcr(), BrokenVision()).read_waiting(conn)  # both failed
+    pipe = Pipeline(settings, StubOcr(), FakeProvider())
+    real = pipe._vision_reader
+
+    def meanwhile():  # while a's page is retried, another request retries b's
+        conn.execute(
+            "INSERT INTO intake_steps (scan_id, page_id, step, status)"
+            " SELECT scan_id, page_id, 'vision', 'running' FROM intake_steps"
+            " WHERE step = 'vision' AND scan_id = ?",
+            (b,),
+        )
+        conn.commit()
+        return real()
+
+    pipe._vision_reader = meanwhile
+    run = pipe.read_waiting(conn, retry_failed=True)
+    assert (run.read, run.failed) == (1, 0)
+    assert [s for s, _ in steps(conn, b, "vision")] == ["failed", "running"]
+
+
+def test_a_page_being_read_isnt_sent_again_by_a_new_reading(conn, settings, scan):
+    settings.ocr.engine = "vision"
+    settings.ai.providers["local"].allow = "auto"
+    sid = scan()
+    conn.execute(
+        "INSERT INTO intake_steps (scan_id, page_id, step, status) VALUES (?, ?, 'vision',"
+        " 'running')",
+        (sid, page_row(conn, sid)["id"]),
+    )
+    conn.commit()
+    assert Pipeline(settings, StubOcr(), MustNotCall()).process_scan(conn, sid) == "queued"
+
+
+def test_an_ai_that_keeps_failing_is_left_alone_and_pages_wait(conn, settings, scan):
+    settings.ai.providers["local"].allow = "auto"
+    sids = [scan(f"scan_000{i}.png") for i in range(1, 6)]
+    broken = BrokenVision()
+    pipe = Pipeline(settings, StubOcr(*[("Dcar", 30.0)] * 5), broken)
+    for sid in sids:
+        pipe.process_scan(conn, sid)
+    assert broken.calls == allowance.FAILING_AFTER  # then it stopped calling
+    [(status, why)] = steps(conn, sids[-1], "vision")
+    assert status == "queued" and "calls failed" in why
+
+
+def test_steps_cut_off_when_lindley_closed_are_picked_up(conn, settings, scan):
+    sid = scan()
+    page = page_row(conn, sid)["id"]
+    conn.executemany(
+        "INSERT INTO intake_steps (scan_id, page_id, step, status) VALUES (?, ?, ?, 'running')",
+        [(sid, page, "ocr"), (sid, page, "vision")],
+    )
+    conn.execute("UPDATE scans SET status = 'reading'")
+    conn.commit()
+    assert recover_interrupted(conn) == (1, 1)
+    assert steps(conn, sid, "ocr")[0][0] == "failed"
+    assert steps(conn, sid, "vision")[0][0] == "queued" and waiting_for_vision(conn) == 1
+    assert unfinished_scans(conn) == [sid]  # its reading was cut off too
+
+
+def test_unfinished_scans_leave_out_pages_waiting_for_vision(conn, settings, scan):
+    settings.ocr.engine = "vision"
+    waiting, done, cut_off = scan("a.png"), scan("b.png"), scan("c.png")
+    Pipeline(settings, StubOcr(), MustNotCall()).process_scan(conn, waiting)
+    Pipeline(settings, StubOcr(), FakeProvider()).read_waiting(conn)
+    Pipeline(settings, StubOcr(), MustNotCall()).process_scan(conn, done)
+    settings.ai.providers["local"].allow = "auto"
+    Pipeline(settings, StubOcr(), FakeProvider()).process_scan(conn, done)
+    # cut_off: imported, then Lindley closed before reading it
+    assert unfinished_scans(conn) == [cut_off]

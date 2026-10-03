@@ -74,6 +74,13 @@ def waiting_for_vision(conn: sqlite3.Connection) -> int:
     return conn.execute(sql).fetchone()[0]
 
 
+def vision_failures(conn: sqlite3.Connection) -> tuple[int, str | None]:
+    """Pages whose last vision call failed (they wait for a person to retry), and an error."""
+    sql = f"SELECT COUNT(*), MAX(error) FROM ({_LAST_VISION}) WHERE status = 'failed'"
+    n, error = conn.execute(sql).fetchone()
+    return n, error
+
+
 def now() -> str:
     """UTC timestamp in SQLite's datetime('now') format."""
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")

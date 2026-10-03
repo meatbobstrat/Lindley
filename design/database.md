@@ -58,7 +58,7 @@ Each step writes an `intake_steps` row, so the UI can show "Reading…" and a fa
 | `split` | PDF or TIFF | one `pages` row per page, with `page_index` |
 | `image` | the page image | size, DPI, colour mode, `phash`, `paper_color`, `blank_score`, `detected_rotation`, `script` (handwritten, printed, typed, mixed or none) |
 | `ocr` | Tesseract | a `transcriptions` row with word boxes and confidence, and `language` |
-| `vision` | vision model | a `transcriptions` row for handwriting and low-confidence pages. It becomes current if it's the better reading. |
+| `vision` | vision model | a `transcriptions` row for handwriting and low-confidence pages. It becomes current if it's the better reading, but never replaces a person's text. With `vision_mode = ask` (the default), the step is first recorded as `queued` ("Waiting for you to OK the vision model") and runs only when a person sends the waiting pages (`Pipeline.read_waiting`). A failed call is never repeated on its own. |
 | `facts` | current text, image | `facts` rows (see below) |
 | `embed` | current text | an `embeddings` row |
 | `match` | everything above | `page_links` evidence, then `suggestions` |

@@ -81,6 +81,13 @@ watched folders ─► watcher ─► intake ───────────�
   will include. Searchable PDFs are built from Lindley's own readings and word positions, so
   they need no Ghostscript or second OCR pass, and they carry people's corrections.
 - **Accessible.** The UI targets WCAG 2.2 AA, and status is never shown by colour alone.
+- **No AI calls without your OK.** AI calls can cost money, so by default Lindley makes none
+  until you say so.
+  - Pages that need the vision model wait for you, with their Tesseract reading in use meanwhile.
+  - The assembler's AI step is off until you turn it on.
+  - Pages are reduced before they're sent (2000 px on the longer side, as JPEG).
+  - A call that failed is never repeated on its own.
+  - Sending automatically is a setting (`ocr.vision_mode`).
 - **Private by default.** Lindley works with an AI on your own computer (Ollama, LM Studio).
   - Cloud AI (Anthropic, OpenAI and others) is supported, but setup and Settings warn plainly
     that your scans are then sent to that company and are no longer private. You must
@@ -169,6 +176,7 @@ page, and runs the assembler. Point it at a settings file whose `db_path`, `libr
 cd backend
 python scripts\intake.py D:\scans --settings D:\scratch\settings.json
 python scripts\intake.py D:\scans --settings D:\scratch\settings.json --no-ai   # rules and Tesseract only
+python scripts\intake.py --vision --settings D:\scratch\settings.json           # OK the waiting pages
 ```
 
 Folders are searched recursively in natural name order (`scan_2` before `scan_10`). It's safe
@@ -180,6 +188,10 @@ vision model. Sideways or upside-down pages are read from a turned copy (Tessera
 check needs `osd.traineddata`, which the UB-Mannheim installer includes). Each page is also
 marked handwritten, printed or mixed. The script's summary counts blank pages, turned pages and
 each kind of writing.
+
+Pages Tesseract struggles with wait for the vision model, and the summary says how many there
+are and where they'd be sent. `--vision` is your OK to send them. `--vision --retry-failed` also
+tries again the ones whose vision call failed.
 
 ## Config
 
@@ -199,8 +211,8 @@ file in these places, in order:
 | `library_dir` | Lindley's library: its copies of scans, and exported PDFs |
 | `db_path` | SQLite database location |
 | `move_files` | `true` moves scans out of watched folders; `false` copies them and leaves the originals |
-| `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this, a Tesseract reading is retried with the vision model |
-| `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" hint (45). `ai_band`: which uncertain breaks are sent to the AI. `use_ai`: turns the AI step on or off |
+| `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this, a page needs the vision model. `vision_mode`: `ask` (the default) waits for your OK; `auto` sends pages as they're read. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000) |
+| `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" hint (45). `ai_band`: which uncertain breaks are sent to the AI. `use_ai`: turns the AI step on (off by default) |
 | `ai` | Named providers, plus which one to use for chat and for embeddings |
 
 The review threshold (90%) is designed as a setting on the app's Settings screen. It isn't in
@@ -243,4 +255,5 @@ folders.
 - [ ] Search and Ask Lindley (chat with your documents)
 - [ ] Details view: everything Lindley found about a page or document
 - [ ] Settings in the app, with API keys in Windows Credential Manager
+- [ ] AI spending controls: per-provider "local, so automatic", a monthly limit, and the cost of each call
 - [ ] One-click installer (Windows/Mac), with Tesseract included

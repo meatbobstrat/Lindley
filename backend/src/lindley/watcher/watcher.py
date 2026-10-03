@@ -23,7 +23,7 @@ from lindley.db.database import connect
 from lindley.providers.base import ChatProvider, ProviderError
 from lindley.providers.registry import get_provider
 from lindley.worker.intake import ingest, is_supported
-from lindley.worker.pipeline import Pipeline
+from lindley.worker.pipeline import Pipeline, waiting_for_vision
 
 log = logging.getLogger(__name__)
 
@@ -152,6 +152,9 @@ class FolderWatcher:
             if r.status == "new" or r.reading:
                 self._unassembled = True
             self._last_new = time.monotonic()
+        if ready and (waiting := waiting_for_vision(conn)):
+            # Never sent from here: a person OKs it (vision_mode "auto" sends as pages are read).
+            log.info("%d page(s) are waiting for you to OK the vision model", waiting)
         with self._lock:
             waiting = bool(self._pending)
         if self._unassembled and not waiting and time.monotonic() - self._last_new >= self.settle_s:

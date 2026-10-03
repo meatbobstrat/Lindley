@@ -139,12 +139,12 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
 `lindley.assembler.assemble(conn, settings.assembler, chat)` runs once new scans have settled. It's safe to run as often as you like; a second run with nothing new changes nothing.
 
 1. **Clues** (`clues.py`, rules only).
-   - **Page numbers.** A number on a row of its own in the top or bottom 12% of the page ("- 2 -", "Page 2 of 3", "ii"). Specks and smudges on that row don't count against it, and OCR slips next to a real digit are read through ("1l" is 11). A number inside a sentence, or in a typesetter's note like "Indent 1 em", isn't one. A number read with doubt is marked unsure and counts for less. When every page of a document is numbered, a gap is reported: "Page 4 seems to be missing".
+   - **Page numbers.** A number on a row of its own in the top or bottom 12% of the page ("- 2 -", "Page 2 of 3", "ii"). Specks and smudges on that row don't count against it, and OCR slips next to a real digit are read through ("1l" is 11). A number inside a sentence, or in a typesetter's note like "Indent 1 em", isn't one. A number read with doubt is marked unsure and counts for less: it never moves a page, and an unsure 1 doesn't start a document. Creases and specks by the paper's edge are often read as numbers. When every page of a document is numbered, a gap is reported: "Page 4 seems to be missing".
    - **Noise at the edges.** Lines of specks (the paper's edge, show-through, a hole punch) are dropped from the top and bottom before the first and last lines are taken, and so are stray marks before the first word. A scrap Tesseract read out of order goes back into the line it sits in.
    - greetings ("Dear Sister,"), letterheads, headings and bylines ("By Lindley C. Branson"), which start a document;
-   - closings and signatures ("Your loving son / John"), "Paid" and "Notary Public", which end one;
+   - closings and signatures ("Your loving son / John"), "Paid" on a short line of its own ("Paid. Thank you.", not "and paid no attention" in a story) and "Notary Public", which end one;
    - sentences cut off at the bottom of a page and picked up at the top of the next;
-   - dates in old spellings, people, places, amounts, and file sequence numbers (`scan_0042`);
+   - dates in old spellings, people, places, amounts, and file sequence numbers (`scan_0042` is 42). Scanners and file managers often number only the files after the first (Image, Image (2), Image (3) on Windows; Image, Image 2 on a Mac), so a name without a number is number 1 (`clues.file_series`);
    - whether a page looks like a letter, receipt, deed, diary, stray note or blank.
 
    All of these are saved as `facts` with `source = 'rule'`.
@@ -153,7 +153,7 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    - page numbers running n → n+1, close (a page swapped or missing) or far apart;
    - a sentence carried over the break, counted for less between pages not scanned together (in a typescript nearly every page ends mid-sentence);
    - the same letterhead, shared names, the same paper colour;
-   - the **layout fingerprint** (`layout.py`): where lines start and end as a share of the page width, line spacing in character widths, and characters in a full line. It's free of the scan's size and resolution. Pages set out differently (a single-spaced letter, a page of 40-character notes) are kept apart;
+   - the **layout fingerprint** (`layout.py`): line spacing in character widths, and characters in a full line. It's free of the scan's size and resolution. Margins aren't compared: on a flatbed the sheet lies wherever it was put down, and on 25 sorted folders a third of true neighbours looked set out differently by their margins alone. Pages set out differently (a single-spaced letter, a page of 40-character notes) are kept apart;
    - **rare words** both pages use (`terms.py`, tf-idf), measured but not yet counted (see below). How rare a word is is measured over every page in the library, not only the Inbox;
    - a word hyphenated at the bottom of one page and finished at the top of the next. Tesseract often reads a typewriter's hyphen as "=", which counts too;
    - **what pages are about** (`meaning.py`), when the optional Model2Vec package is installed (`pip install lindley[embed]`): a static embedding model, `minishlab/potion-base-8M` (8 MB, numpy only, about 0.25 ms a page on a laptop CPU), turns each page into a vector, and pages whose vectors point the same way count as alike. The model is downloaded once; no text leaves the computer. Vectors are made afresh each run, which is quicker than keeping them current as pages are read again. On the 7 real typescripts it was weaker than rare words (a page's most-alike page was from its own document for 36 of 45 pages, against 39 for rare words), the fitted weight was −0.03, and counting it at 1.0 made the rules' proposals less precise (0.72 → 0.69). So it's measured but weighed at nothing, for weights learned from a person's own archive to take up if it helps there;
@@ -161,9 +161,10 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
 
    A reason is shown to a person only when its evidence counts towards the pages going together. Each is saved in `page_links` with a readable note (`same_writer` for layout, `similar_text` for shared words).
 3. **Grouping** (`segment.py`). Each page is linked to the page that follows it, and the chains of links are the documents: each page has at most one page after it and one before, and there are no loops (a path cover).
-   - **Scan order first.** Neighbours in scan order are linked wherever they score 0.5 or more. Scan order is the strongest single hint.
+   - **Scan order first.** Neighbours in scan order are linked wherever they score 0.5 or more. Scan order is the strongest single hint. It goes folder by folder (the folder each scan was found in), then by file number, then by time, and only files in one folder count as scanned one after the other: every folder a scanner writes to can have its own Image (2).
+   - **A page scanned again** (an open `same_page` duplicate of a page earlier in the stream) is taken out of the stream before neighbours are scored, so the pages either side of it still join, and is suggested for setting aside. Which copy to keep is a person's choice in Duplicates.
    - **Then loose ends, over the whole Inbox, best first.** A chain that doesn't end is joined to one that doesn't start when one clearly continues the other (0.75; 0.6 for two pages fed through the scanner the wrong way round), and no other loose end comes within 0.1 of it, for either page. Without that last rule, page 3 of one typescript was joined to page 4 of another: typescripts by one author share page numbers, and nearly every page ends mid-sentence.
-   - **Order within a group:** page numbers first, then greeting first and signature last, then the chain. The order counts as settled, so the AI isn't asked about it, when every link in the chain scores 0.7 or more.
+   - **Order within a group:** clearly read page numbers first, then greeting first and signature last, then the chain. The order counts as settled, so the AI isn't asked about it, when every link in the chain scores 0.7 or more.
    - **Confidence:** each group gets one (0–100), based on how sure the breaks inside and around it are. It drops when the group has no clear start or end (a page may be missing), except for diaries.
 4. **A person, then the AI** (`ai.py`). What the rules can't settle goes to a person as hints in the Inbox: an answer costs nothing and is right. The AI is the last resort, asked only about breaks scoring 35–75 and groups whose order isn't settled, and only:
    - on its own, when its connection's `allow` is `auto` and its limits aren't used up (`auto.py`), as the pages arrive, or once they've waited `ask_ai_after_days` for a person to answer first (default 0). Pages whose "Do these go together?" a person dismissed aren't sent on their own. Naming new documents follows the same rule.
@@ -215,7 +216,7 @@ The list also says which connection would be used, where it runs (local or cloud
 
 The rules were written knowing what the bench generates, so these numbers are a ceiling, not a forecast. The bench's job is to catch regressions and to measure a real model (`--ai settings`).
 
-**Real scans.** `scripts/bench_assembler.py --real lindley.db` uses assembled PDFs as the answer key: each PDF read into a Lindley database is one document, in its page order. Its pages are fed back in as loose scans under made-up names: in reading order, with neighbours swapped here and there, or shuffled. With 7 typescripts (45 pages) by one author, all typed alike, the rules' proposals before any confidence threshold score:
+**Real scans.** `scripts/bench_assembler.py --real lindley.db` uses assembled PDFs as the answer key: each PDF read into a Lindley database is one document, in its page order. A database with no PDFs uses the folders a person sorted its scans into instead, one document per folder in file name order (`bench.real_answers`). Its pages are fed back in as loose scans under made-up names: in reading order, with neighbours swapped here and there, or shuffled. With 7 typescripts (45 pages) by one author, all typed alike, the rules' proposals before any confidence threshold score:
 
 | Pages fed in | Pair F1 before | Pair F1 now | Rebuilt exactly now |
 |---|---|---|---|
@@ -243,7 +244,20 @@ Almost none of it becomes a document yet. A group of pages that's no kind the ru
 | Hand-made rule | 0.56 | 13 | 2 |
 | Fitted | 0.99 | 42 | 23 |
 
-Seven documents are too few to fit even that, so `GROUP_WEIGHTS` is empty and the hand-made rule stands. The weakest link inside a typescript (scanned next, ends mid-sentence) honestly scores about 0.7, and about three in ten such links on these scans really are breaks, so a typescript's confidence near 60 isn't too low. Those pages need a person's answer, or the AI.
+Seven documents are too few to fit even that, so `GROUP_WEIGHTS` is empty and the hand-made rule stands. Twenty-five sorted folders (below) didn't change that: fitted and tested on folders left out in turn, it made 34 documents, 24 of them wrong. The weakest link inside a typescript (scanned next, ends mid-sentence) honestly scores about 0.7, and about three in ten such links on these scans really are breaks, so a typescript's confidence near 60 isn't too low. Those pages need a person's answer, or the AI.
+
+**Sorted folders.** 156 typescript pages, mostly by one author, in 25 folders a person sorted (one article or letter each, its scans named Image, Image (2)...), read with Tesseract only. Fed in the way they were scanned, one folder at a time, and each folder alone, before the confidence bar:
+
+| | Before | Now |
+|---|---|---|
+| Folders proposed as exactly one group | 9 | 17 |
+| ... in the right order | 8 | 17 |
+| Documents mixing folders, one folder at a time | 3 | 0 |
+| Folders in the scanner's order, made one document | 18 | 22 |
+
+What changed: a file without a number counts as the first, file numbers count within a folder, a page scanned again is set aside instead of cutting its document in two, unsure page numbers no longer move pages, "Paid" in a story no longer ends one, and margins no longer count as layout.
+
+Still none of it becomes a document by itself: the right groups score 25–64. Fed in as one stream under made-up names, with no folders to go by, the proposals find most pages that go together but often run one article into the next (in order: precision 0.60, recall 0.93, 46% rebuilt exactly). Groups at `hint_at` or above, asked about as "Do these go together?", are then right about half the time (96 right, 91 wrong over 10 runs), and none of the group features tells the two apart: a fitted rule did no better. With a folder to themselves, 14 of the 18 groups asked about are right, and 7 more right ones fall below `hint_at`.
 
 ## Duplicates
 
@@ -265,7 +279,7 @@ The same page is often scanned more than once, sometimes with different settings
 
 Blank pages are never compared, and copies already set aside as duplicates are left out. A page is checked again whenever its current reading changes, such as after a vision reading or a person's correction.
 
-Duplicates is a queue to work through, like Needs your review, not a place. The pages stay where they are, but the assembler never puts two copies of a page in one document, and never adds a page to a document that already holds its copy. So a document scanned twice becomes two documents, which the queue shows as a pair.
+Duplicates is a queue to work through, like Needs your review, not a place. The pages stay where they are, but the assembler never puts two copies of a page in one document, and never adds a page to a document that already holds its copy. A copy that comes in with the page it copies is set aside from the sorting, so its document is built once. A document scanned again after it was made becomes a second document, which the queue shows as a pair.
 
 **Deciding** (`lindley.duplicates.resolve`). Open pairs that share a page form a set. Sets whose copies all lie in the same two documents form a document pair.
 - **Suggestion.** Lindley suggests a copy and says why, in this order: text a person checked, the clearer reading, the bigger scan, colour. Where a copy already is only breaks ties. For very similar text (drafts), the UI suggests keeping both.

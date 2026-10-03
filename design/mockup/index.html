@@ -457,6 +457,44 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .dcard small .ic { width: 14px; height: 14px; color: var(--ink); }
 .dcard.is-drop { border-color: var(--accent); border-style: dashed; }
 
+/* Duplicates: copies side by side */
+.dup-list { display: flex; flex-direction: column; gap: 24px; padding: 20px; }
+.dup-list h2 { display: flex; align-items: center; gap: 6px; margin: 0 0 2px; font-size: 15px; font-weight: 600; }
+.dup-list h2 .ic { width: 16px; height: 16px; }
+.dup-list .sub { margin-bottom: 10px; }
+.dup-list .docs { padding: 0; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.dup-thumbs { display: flex; gap: 4px; flex: none; }
+.dcard .dup-thumbs .pg-img { width: 46px; }
+/* Each copy is a column; their headers, notes, scans and details line up row by row. */
+.dup-cmp { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); grid-template-rows: auto auto minmax(220px, 1fr) auto; flex: 1; min-height: 0; overflow: auto; }
+.dup-bar { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px 16px; flex-wrap: wrap; }
+.dup-bar .strip { padding: 0 0 6px; border: 0; }
+.dup-bar .strip button { width: 38px; }
+.main.has-dock .dup-cmp { padding-bottom: 78px; }
+.dup-col { display: grid; grid-row: span 4; grid-template-rows: subgrid; min-height: 0; border-left: 1px solid var(--line); }
+.dup-col:first-child { border-left: 0; }
+.dup-col-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px; }
+.dup-col-h h2 { flex: 1 1 auto; margin: 0; font-size: 15px; font-weight: 600; }
+.dup-note { margin: 0; padding: 0 16px 8px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
+/* The scan fits its column; zoomed in, it scrolls, and both columns scroll together. */
+.dup-img { position: relative; flex: 1; min-height: 160px; overflow: hidden; background: var(--stage); }
+.dup-img img { position: absolute; inset: 12px; width: calc(100% - 24px); height: calc(100% - 24px); object-fit: contain; transform: rotate(var(--r, 0deg)) scale(var(--s, 1)); }
+.dup-img.zoomed { overflow: auto; }
+.dup-img.zoomed img { position: static; display: block; margin: 12px auto; width: calc(var(--z) * 100% - 24px); height: auto; }
+.dup-tx { flex: 1; min-height: 160px; overflow: auto; padding: 14px 18px; font-family: var(--serif); line-height: 1.6; white-space: pre-wrap; }
+.dup-tx mark, .sub mark { background: var(--warn-soft); color: inherit; text-decoration: underline wavy var(--warn); text-underline-offset: 3px; }
+.dup-facts { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 2px 10px; margin: 0; padding: 8px 16px; border-top: 1px solid var(--line); font-size: 13px; }
+.dup-facts dt { color: var(--muted); }
+.dup-facts dd { margin: 0; overflow-wrap: anywhere; }
+.dup-facts .wide { grid-column: 2 / -1; }
+.pg-dup { display: flex; align-items: center; gap: 4px; padding: 0 8px 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.pg-dup > span { overflow: hidden; text-overflow: ellipsis; }
+.pg-dup .ic { width: 13px; height: 13px; flex: none; }
+@media (max-width: 860px) {
+  .dup-cmp { grid-template-columns: 1fr; grid-template-rows: none; overflow: auto; }
+  .dup-col { grid-row: auto; grid-template-rows: auto auto 360px auto; border-left: 0; border-top: 1px solid var(--line); }
+}
+
 /* Search */
 .results { display: grid; gap: 4px; padding: 12px 20px 24px; max-width: 900px; }
 .res { display: flex; gap: 14px; padding: 10px; border: 1px solid transparent; border-radius: 8px; background: none; text-align: left; align-items: flex-start; }
@@ -663,6 +701,7 @@ const I = {
   inbox: 'M3 13h5l2 3h4l2-3h5M5.5 5h13L21 13v6H3v-6z',
   folder: 'M3 6.5h6l2 2h10V19H3z',
   doc: 'M6 3h9l4 4v14H6zM15 3v4h4',
+  dup: 'M9 3h8l3 3v12H9zM17 3v3h3M5 7v14h11',
   check: 'M5 12.5l4.5 4.5L19 7',
   aside: 'M3 5h18v4H3zM5 9v10h14V9M10 13h4',
   rotL: 'M4 5v5h5M4.6 10a8 8 0 1 1 1.6 6.5',
@@ -801,6 +840,9 @@ function buildData() {
       orient: o.orient || 0, rot: 0, conf,
       engine: kind === 'hand' || kind === 'note' ? 'vision' : 'tesseract',
       status: o.reading ? 'reading' : 'read', reviewed: false, scanned: day(n), hint: o.hint || null,
+      // ink: what's really on the page, when the reading (text) got some of it wrong.
+      // look: how a second scan with other settings differs (see finish).
+      ink: o.ink || null, dpi: o.dpi || 300, look: o.look || null,
     };
     return id;
   };
@@ -870,11 +912,30 @@ function buildData() {
     summary: 'Mary A. Branson congratulates her nephew Lindley on finishing his school term first in his class and sends him his grandfather\'s copy of Emerson\'s Essays.',
   });
 
+  // Scanned twice. The March 1892 letter went through the scanner again, in grey at 200 dpi and
+  // a little off-centre, and Lindley grouped the second scan into a document of its own. Each
+  // scan was read on its own, so the texts differ a little.
+  const misread = (t, k) => t.split(' ').map((w, i) => (i * 7 + k) % 13 === 3 && w.length > 3 ? w.replace(/[eo]/, m => m === 'e' ? 'c' : 'a') : w).join(' ');
+  const again = TEXT.l1.map((t, i) => mk('hand', misread(t, i), { ink: t, dpi: 200, conf: [84, 81, 86][i], look: { grey: true, dark: .18, dx: 16, dy: -12, scale: .94 } }));
+  doc('d6', {
+    name: 'Letter to John Branson, March 1892', conf: 88, pages: again,
+    why: ['Same handwriting and ink on all three pages', 'Page 1 opens with "Dear John" and page 3 is signed by Mary A. Branson'],
+    summary: docs.d1.summary,
+  });
+  // The first page of the deed, scanned again at 600 dpi: sharper, and read better than before.
+  const deed1 = docs.d2.pages[0];
+  Object.assign(scans[deed1], { text: misread(scans[deed1].text, 4), ink: scans[deed1].text, conf: 81 });
+  const deedAgain = mk('print', TEXT.deed[0], { dpi: 600, conf: 96, look: { dark: .06, dx: -12, dy: 10, scale: 1.03 } });
+
   // Inbox
-  const inbox = [];
+  const inbox = [deedAgain];
   inbox.push(mk('hand', 'Jan. 13th\n\nCold again. J. hauled wood from the back lot. Wrote to Samuel Price that we cannot pay before the fall.', { hint: 'd3' }));
   inbox.push(mk('hand', 'Jan. 14th\n\nWent to Xenia with J. to see Lawyer {Shoup} about the note. He says it is binding. Home by lamplight, very tired.', { hint: 'd3', orient: 270 }));
-  inbox.push(mk('typed', 'John did not answer her. He was looking at the farm across the water, at the smoke going up straight from the Hale chimney, and thinking of the paper in his coat.\n\n- 34 -', { hint: 'd4' }));
+  const p34 = mk('typed', 'John did not answer her. He was looking at the farm across the water, at the smoke going up straight from the Hale chimney, and thinking of the paper in his coat.\n\n- 34 -', { hint: 'd4' });
+  inbox.push(p34);
+  // An earlier draft of the same manuscript page: close, but reworded.
+  const draft34 = mk('typed', 'John did not answer. He stood looking at the farm across the river, at the smoke going straight up from the Hale chimney, and he thought of the note folded in his coat.\n\n- 34 -', { conf: 90 });
+  inbox.push(draft34);
   inbox.push(mk('hand', 'P.S. Tell Mrs. Branson the dress goods she asked about will come in the same box as the harness.\nS. P.', { hint: 'd5' }));
   PRINTS.forEach(t => inbox.push(mk('print', t)));
   TYPED.forEach(t => inbox.push(mk('typed', t)));
@@ -900,7 +961,14 @@ function buildData() {
     f3: { id: 'f3', name: 'From friends', parent: 'f1', children: [], docs: ['d5'] },
     f2: { id: 'f2', name: 'Land records', parent: null, children: [], docs: ['d2'] },
   };
-  return { scans, docs, inbox, aside, folders, rootFolders: ['f1', 'f2'], nextDoc: 6, nextFolder: 4 };
+  // What Lindley's duplicate check found: same = the same page scanned again; similar = very
+  // similar text, perhaps another draft. A person decides: kept (one copy) or different (both).
+  const dups = [
+    ...docs.d1.pages.map((id, i) => ({ id: 'u' + (i + 1), kind: 'same', copies: [id, again[i]], score: [92, 88, 90][i], status: 'open' })),
+    { id: 'u4', kind: 'same', copies: [deed1, deedAgain], score: 94, status: 'open' },
+    { id: 'u5', kind: 'similar', copies: [p34, draft34], score: 58, status: 'open' },
+  ];
+  return { scans, docs, inbox, aside, folders, dups, rootFolders: ['f1', 'f2'], nextDoc: 7, nextFolder: 4 };
 }
 
 /* ================= Page images (canvas) ================= */
@@ -932,7 +1000,7 @@ function drawPage(s) {
   c.width = PW; c.height = PH;
   const g = c.getContext('2d');
   const r = rng(hash(s.id));
-  const text = s.text.replace(/[{}]/g, '');
+  const text = (s.ink || s.text).replace(/[{}]/g, '');
   g.fillStyle = '#d6d7d1';
   g.fillRect(0, 0, PW, PH);
   g.save();
@@ -952,7 +1020,7 @@ function drawPage(s) {
       wrap(g, text, w - 40).forEach((l, i) => g.fillText(l, 20, 40 + i * 24));
     }
     g.restore();
-    return c.toDataURL('image/jpeg', .84);
+    return finish(c, s, .84);
   }
   g.translate(PW / 2, PH / 2); g.rotate((r() - .5) * .02); g.translate(-PW / 2, -PH / 2);
   const papers = s.kind === 'typed' ? ['#f3f0e6', '#efebdf'] : ['#efe4cc', '#ece2cd', '#f1eadb', '#e5d9bf'];
@@ -1025,7 +1093,27 @@ function drawPage(s) {
     SENT.slice(0, 12).forEach((l, i) => g.fillText(l.slice(0, 40), 66, 100 + i * 40));
   }
   g.restore();
-  return c.toDataURL('image/jpeg', .82);
+  return finish(c, s, .82);
+}
+// A second scan with other settings: grey, darker or lighter, a little off-centre or bigger.
+function finish(c, s, q) {
+  const k = s.look;
+  if (!k) return c.toDataURL('image/jpeg', q);
+  const o = document.createElement('canvas');
+  o.width = PW; o.height = PH;
+  const g = o.getContext('2d');
+  g.fillStyle = '#d6d7d1'; g.fillRect(0, 0, PW, PH);
+  const sc = k.scale || 1;
+  g.drawImage(c, (PW - PW * sc) / 2 + (k.dx || 0), (PH - PH * sc) / 2 + (k.dy || 0), PW * sc, PH * sc);
+  const im = g.getImageData(0, 0, PW, PH), p = im.data, dark = k.dark || 0;
+  const f = v => Math.max(0, Math.min(255, (v - 128) * (1 + dark) + 128 - dark * 90));
+  for (let i = 0; i < p.length; i += 4) {
+    let r = p[i], gr = p[i + 1], b = p[i + 2];
+    if (k.grey) r = gr = b = .3 * r + .59 * gr + .11 * b;
+    p[i] = f(r); p[i + 1] = f(gr); p[i + 2] = f(b);
+  }
+  g.putImageData(im, 0, 0);
+  return o.toDataURL('image/jpeg', q);
 }
 const angle = s => (s.orient + s.rot + 360) % 360;
 const rotStyle = s => { const a = angle(s); return `--r:${a}deg;--s:${a % 180 ? .75 : 1}`; };
@@ -1121,6 +1209,132 @@ function targets() {
   return list.filter(id => U.sel.has(id));
 }
 function shortName(n) { return n.length > 26 ? n.slice(0, 25) + '…' : n; }
+
+/* ================= Duplicates ================= */
+// Pages Lindley thinks were scanned more than once. It compares what pages say, so different
+// scanner settings don't hide a copy. A person decides what to keep. Copies they don't keep are
+// set aside, never deleted, and the kept scan takes the best place any copy had.
+const PX = { 200: '1700 × 2200', 300: '2550 × 3300', 600: '5100 × 6600' };
+function dupEntries() {
+  // A document scanned twice is one entry. Every other set is an entry of its own.
+  const out = [], byDocs = {};
+  D.dups.filter(x => x.status === 'open').forEach(x => {
+    const docs = [...new Set(x.copies.map(id => { const l = locate(id); return l?.where === 'doc' ? l.doc.id : null; }))];
+    if (x.kind === 'same' && docs.length === 2 && !docs.includes(null)) {
+      const key = 'docs-' + docs.join('-');
+      if (!byDocs[key]) out.push(byDocs[key] = { key, type: 'doc', docs, sets: [] });
+      byDocs[key].sets.push(x);
+    } else out.push({ key: x.id, type: 'set', sets: [x] });
+  });
+  return out;
+}
+const dupEntry = key => dupEntries().find(e => e.key === key);
+function docHome(d) {
+  const f = folderOf(d.id);
+  return f ? 'In ' + folderPath(f.id).join(' › ') : d.status === 'complete' ? 'Completed' : 'In progress';
+}
+function copyWhere(id) {
+  const l = locate(id);
+  if (!l) return 'Not found';
+  if (l.where === 'doc') return `In “${l.doc.name}”, page ${l.doc.pages.indexOf(id) + 1}`;
+  return l.where === 'aside' ? 'In Set aside' : 'In the Inbox';
+}
+function suggestKeep(ids) {
+  // As in the app: text you checked, the clearer reading, the sharper scan, colour, then place.
+  const s = id => D.scans[id];
+  const rank = id => [s(id).reviewed ? 1 : 0, Math.round(s(id).conf / 5), s(id).dpi, s(id).look?.grey ? 0 : 1, locate(id)?.where === 'doc' ? 1 : 0];
+  const best = [...ids].sort((a, b) => { const ra = rank(a), rb = rank(b); const i = ra.findIndex((v, k) => v !== rb[k]); return i < 0 ? 0 : rb[i] - ra[i]; })[0];
+  const rest = ids.filter(i => i !== best), b = s(best), why = [];
+  const conf = Math.max(...rest.map(i => s(i).conf)), dpi = Math.max(...rest.map(i => s(i).dpi));
+  if (b.reviewed && !rest.some(i => s(i).reviewed)) why.push('You’ve checked its text');
+  if (b.conf >= conf + 3) why.push(`Read with ${b.conf}% confidence, against ${conf}%`);
+  if (b.dpi > dpi) why.push(`Sharper scan: ${b.dpi} dpi, against ${dpi}`);
+  if (!b.look?.grey && rest.every(i => s(i).look?.grey)) why.push('Scanned in colour');
+  const lb = locate(best);
+  if (!why.length) why.push(lb?.where === 'doc' && rest.every(i => locate(i)?.where !== 'doc') ? `It’s already in “${lb.doc.name}”` : 'The copies look equally good');
+  const home = rest.map(locate).find(l => l?.where === 'doc');
+  if (lb?.where !== 'doc' && home) why.push(`Keeping it puts it in its place in “${home.doc.name}”`);
+  return { best, why };
+}
+function diffMarks(text, other) {
+  // The words of `text` that `other` doesn't have, marked. Case and punctuation don't count.
+  const key = w => w.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const toks = text.replace(/[{}]/g, '').split(/(\s+)/);
+  const words = toks.map((t, i) => [t, i]).filter(([t]) => t.trim());
+  const a = words.map(([t]) => key(t)), b = other.replace(/[{}]/g, '').split(/\s+/).filter(Boolean).map(key);
+  // Longest common subsequence: page texts are short.
+  const L = Array.from({ length: a.length + 1 }, () => new Int16Array(b.length + 1));
+  for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const same = new Set();
+  for (let i = 0, j = 0; i < a.length && j < b.length;) {
+    if (a[i] === b[j]) { same.add(words[i][1]); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) i++; else j++;
+  }
+  let n = 0;
+  const html = toks.map((t, i) => !t.trim() || same.has(i) ? esc(t) : (n++, `<mark><span class="sr-only">[differs] </span>${esc(t)}</mark>`)).join('');
+  return { html, n };
+}
+function placeKept(keep, others) {
+  // The kept scan takes the best place any copy had (a document position, else the Inbox); the
+  // others are set aside. Returns the documents that lost a page.
+  const lk = locate(keep), touched = [];
+  const home = lk?.where === 'doc' ? null : others.find(o => locate(o)?.where === 'doc');
+  if (home) { detach(keep); const lh = locate(home); lh.arr.splice(lh.arr.indexOf(home), 1, keep); }
+  else if (lk?.where === 'aside' && others.some(o => locate(o)?.where === 'inbox')) { detach(keep); D.inbox.unshift(keep); }
+  others.forEach(o => { const l = detach(o); if (l?.doc) touched.push(l.doc); D.aside.unshift(o); D.scans[o].dupOf = keep; });
+  return touched;
+}
+function dupNext(key) {
+  // Where to go once this entry is decided: the next one, else the one before, else the list.
+  const es = dupEntries(), k = es.findIndex(e => e.key === key);
+  return es[k + 1]?.key || es[k - 1]?.key || null;
+}
+const removedNote = r => r.length ? ` “${shortName(r[0])}” had no pages left, so it was removed.` : '';
+function keepCopy(setId, keep) {
+  const x = D.dups.find(y => y.id === setId), key = U.nav.id, next = dupNext(key);
+  commit(`Kept ${D.scans[keep].file}.`, () => {
+    const others = x.copies.filter(c => c !== keep);
+    const removed = dropEmptyDocs(placeKept(keep, others));
+    x.status = 'kept'; x.kept = keep;
+    U.nav = { t: 'dups', id: dupEntry(key) ? key : next };
+    clampDup();
+    return `Set aside ${plural(others.length, 'copy', 'copies')}. Nothing was deleted.${removedNote(removed)}`;
+  });
+}
+function keepDoc(key, docId) {
+  const e = dupEntry(key), next = dupNext(key), name = D.docs[docId].name;
+  commit(`Kept “${shortName(name)}”.`, () => {
+    let n = 0;
+    const touched = [];
+    e.sets.forEach(x => {
+      const keep = x.copies.find(id => locate(id)?.doc?.id === docId);
+      if (!keep) return;
+      touched.push(...placeKept(keep, x.copies.filter(c => c !== keep)));
+      x.status = 'kept'; x.kept = keep; n += x.copies.length - 1;
+    });
+    const removed = dropEmptyDocs(touched);
+    U.nav = { t: 'dups', id: next }; U.cur = 0;
+    return `Set aside the other document’s ${plural(n, 'page')}. Nothing was deleted.${removed.length ? ' The other document had no pages left, so it was removed.' : ''}`;
+  });
+}
+function notDup(key) {
+  const e = dupEntry(key), next = dupNext(key);
+  commit(e.type === 'doc' ? 'Kept both documents.' : 'Kept both.', () => {
+    e.sets.forEach(x => { x.status = 'different'; });
+    U.nav = { t: 'dups', id: next }; U.cur = 0;
+    return 'Lindley won’t suggest these as duplicates again.';
+  });
+}
+function stepDup(dir) {
+  const es = dupEntries(), k = es.findIndex(e => e.key === U.nav.id);
+  if (es[k + dir]) go({ t: 'dups', id: es[k + dir].key });
+}
+// Zoomed in, the scans of all copies scroll together, so the same spot stays side by side.
+document.addEventListener('scroll', e => {
+  const el = e.target;
+  if (!el.classList?.contains('dup-img') || el.dataset.syncing) return;
+  $$('.dup-img').forEach(o => { if (o !== el) { o.dataset.syncing = '1'; o.scrollTop = el.scrollTop; o.scrollLeft = el.scrollLeft; requestAnimationFrame(() => delete o.dataset.syncing); } });
+}, true);
+function clampDup() { const e = U.nav.id && dupEntry(U.nav.id); U.cur = e ? Math.max(0, Math.min(U.cur, e.sets.length - 1)) : 0; }
 
 /* ================= History / undo ================= */
 function commit(label, fn) {
@@ -1297,9 +1511,11 @@ function renderTree() {
   const prog = docsBy('progress').filter(d => !folderOf(d.id));
   const done = docsBy('complete').filter(d => !folderOf(d.id));
   const rv = reviewQueue().length;
+  const nd = dupEntries().length;
   tree.innerHTML = `
     <button class="t-item t-inbox${cls('inbox')}"${cur('inbox')} data-nav="inbox" data-drop="inbox">${icon('inbox')}<span class="t-name">Inbox</span><span class="count strong"><span class="sr-only">, </span>${D.inbox.length}<span class="sr-only"> scans</span></span></button>
     <button class="t-item t-review${cls('review')}"${cur('review')} data-nav="review">${icon(rv ? 'flag' : 'checkc')}<span class="t-name">Needs your review</span><span class="count strong"><span class="sr-only">, </span>${rv}<span class="sr-only"> pages</span></span></button>
+    <button class="t-item${cls('dups')}"${cur('dups')} data-nav="dups">${icon('dup')}<span class="t-name">Duplicates</span><span class="count${nd ? ' strong' : ''}"><span class="sr-only">, </span>${nd}<span class="sr-only"> to decide</span></span></button>
     ${section('progress', 'In progress', prog.length, prog.map(d => docItem(d)).join('') || '<p class="count" style="padding:4px 12px">Nothing in progress</p>', 'data-unfile')}
     ${section('complete', 'Completed', done.length, done.map(d => docItem(d)).join('') || '<p class="count" style="padding:4px 12px">Nothing here</p>', 'data-unfile')}
     <button class="t-item${cls('aside')}"${cur('aside')} data-nav="aside" data-drop="aside" style="margin-top:10px">${icon('aside')}<span class="t-name">Set aside</span><span class="count"><span class="sr-only">, </span>${D.aside.length}<span class="sr-only"> scans</span></span></button>
@@ -1319,6 +1535,7 @@ function renderStatus() {
     <button class="hide-narrow" data-nav="settings:scans" title="${esc(SETUP.folders.join(', '))}">${icon('eye')} Watching ${plural(SETUP.folders.length, 'folder')} · ${SETUP.mode === 'copy' ? 'copying' : 'moving'} new scans</button>
     <span><i class="dot ${reading ? 'busy' : ''}"></i>${reading ? `Reading ${plural(reading, 'new scan')}` : 'All scans read'}</span>
     ${reviewQueue().length ? `<button data-nav="review">${icon('flag')} ${plural(reviewQueue().length, 'page')} to review</button>` : ''}
+    ${dupEntries().length ? `<button data-nav="dups">${icon('dup')} ${plural(dupEntries().length, 'possible duplicate')}</button>` : ''}
     <span class="hide-narrow">Sample data. Changes are not saved.</span>`;
 }
 
@@ -1342,6 +1559,7 @@ function card(id, i, o) {
       <span class="pg-check" data-check aria-hidden="true">${icon('check')}</span>
       ${a ? `<span class="pg-flag">${icon('rotR')}Sideways?</span>` : s.added ? `<span class="pg-flag">${icon('upload')}Added by you</span>` : ''}
       <span class="pg-f"><span class="pg-lbl ${o.numbered ? '' : 'mono'}">${label}</span>${confChip(s)}</span>
+      ${s.dupOf && locate(id)?.where === 'aside' ? `<span class="pg-dup" title="A duplicate you set aside">${icon('dup')}<span>Copy of <span class="mono">${D.scans[s.dupOf].file}</span></span></span>` : ''}
     </button>
     ${hintDoc ? `<button class="pg-hint" data-place="${id}:${hintDoc.id}" title="Lindley thinks this belongs in “${esc(hintDoc.name)}”">${lic()}<span>Add to “${esc(shortName(hintDoc.name))}”</span></button>` : ''}
   </div>`;
@@ -1395,6 +1613,15 @@ function dock() {
       + tbBtn('check', 'The text is correct', 'confirmTx', false, 'primary') + tbBtn('pen', 'Save my correction', 'saveTx') + SEP
       + `<span class="dock-prog"><span>Page ${U.cur + 1} of ${q} to review</span><b style="--v:${Math.round((U.cur + 1) / q * 100)}%" aria-hidden="true"></b></span>`
       + tbBtn('chev', 'Next', 'next', U.cur >= q - 1, 'next');
+  } else if (t === 'dups' && U.nav.id && dupEntry(U.nav.id)) {
+    const es = dupEntries(), k = es.findIndex(e => e.key === U.nav.id), e = es[k];
+    name = 'Compare copies';
+    const both = e.type === 'doc' ? 'Keep both documents' : e.sets[0].kind === 'similar' ? 'Keep both' : 'Keep all, they’re different';
+    inner = tbBtn('prev', 'Previous', 'dupPrev', k === 0) + SEP
+      + icoBtn('zout', 'Zoom out', 'zout', U.view === 'text') + icoBtn('zin', 'Zoom in', 'zin', U.view === 'text') + SEP
+      + tbBtn('checkc', both, 'notDup', false, e.sets[0].kind === 'similar' ? 'primary' : '') + SEP
+      + `<span class="dock-prog"><span>${k + 1} of ${plural(es.length, 'duplicate')}</span><b style="--v:${Math.round((k + 1) / es.length * 100)}%" aria-hidden="true"></b></span>`
+      + tbBtn('chev', 'Next', 'dupNext', k >= es.length - 1, 'next');
   } else if (t === 'settings') {
     const n = changedKeys().length;
     name = 'Settings actions';
@@ -1441,7 +1668,7 @@ function renderMain() {
   // Keep keyboard focus on the dock button that was used, since the view re-renders.
   const fa = document.activeElement;
   const act = fa?.closest?.('.dock') ? fa.dataset.act : null;
-  const views = { inbox: viewInbox, aside: viewAside, doc: viewDoc, folder: viewFolder, search: viewSearch, scan: viewScan, settings: viewSettings, review: () => U.nav.id ? viewReview() : viewReviewList() };
+  const views = { inbox: viewInbox, aside: viewAside, doc: viewDoc, folder: viewFolder, search: viewSearch, scan: viewScan, settings: viewSettings, review: () => U.nav.id ? viewReview() : viewReviewList(), dups: () => U.nav.id && dupEntry(U.nav.id) ? viewDup() : viewDupList() };
   const dk = dock();
   main.innerHTML = views[U.nav.t]() + dk;
   main.classList.toggle('has-dock', !!dk);
@@ -1617,6 +1844,116 @@ function viewReview() {
     <div class="side-tx">${txPanel(s, { pager: '', where, label: 'the page to review', noActs: true })}</div>
   </div>`;
 }
+function dupCard(e) {
+  const x = e.sets[0];
+  const ids = e.type === 'doc' ? e.docs.map(d => D.docs[d].pages[0]) : x.copies;
+  const thumbs = ids.slice(0, 3).map(id => `<span class="pg-img"><img src="${pageImg(id)}" alt="" style="${rotStyle(D.scans[id])}"></span>`).join('');
+  const pick = x.copies.indexOf(suggestKeep(x.copies).best) + 1;
+  let title, what, where;
+  if (e.type === 'doc') {
+    const [a, b] = e.docs.map(d => D.docs[d]);
+    title = `“${a.name}” was scanned twice`;
+    what = `${icon('dup')} The same ${plural(e.sets.length, 'page')} in two documents`;
+    where = `${docHome(a)} · ${docHome(b)}`;
+  } else {
+    title = x.kind === 'same' ? 'The same page, scanned twice' : 'Very similar text';
+    what = x.kind === 'same' ? `${icon('dup')} ${x.score}% of the words match, in the same order` : `${icon('doc')} Close wording: perhaps another draft`;
+    where = x.copies.map(copyWhere).join(' · ');
+  }
+  const sug = x.kind === 'same' && e.type === 'set' ? `<small>${lic()} Lindley suggests keeping copy ${pick}</small>` : '';
+  return `<button class="dcard" data-nav="dups:${e.key}"><span class="dup-thumbs">${thumbs}</span><span><b>${esc(title)}</b><small>${what}</small><small>${esc(where)}</small>${sug}</span></button>`;
+}
+function viewDupList() {
+  const es = dupEntries();
+  const same = es.filter(e => e.sets[0].kind === 'same'), similar = es.filter(e => e.sets[0].kind === 'similar');
+  const sec = (h, ic, list, p) => list.length ? `<section><h2>${icon(ic)}${h}</h2><p class="sub">${p}</p><div class="docs">${list.map(dupCard).join('')}</div></section>` : '';
+  return `
+  <div class="head">
+    <div class="crumbs">Duplicates</div>
+    <div class="title-row"><h1 class="title">${es.length ? `${plural(es.length, 'possible duplicate')} to look at` : 'No duplicates'}</h1></div>
+    <p class="sub">Lindley compares what pages say, so a page scanned twice is found even when the scanner settings were different. Look at the copies side by side and choose what to keep. Copies you don’t keep are set aside, never deleted.</p>
+    <div style="height:6px"></div>
+  </div>
+  <div class="scroll">${es.length ? `<div class="dup-list">
+    ${sec('Scanned more than once', 'dup', same, 'The same pages, scanned again. Keep the better copy.')}
+    ${sec('Very similar text', 'doc', similar, 'The wording is close but not the same: perhaps another draft, or a copy with changes. You may want to keep both.')}
+  </div>` : `<div class="rv-done">${icon('checkc')}<h2>No duplicates</h2><p>Lindley hasn’t found any page scanned more than once.</p><button class="btn primary" data-nav="inbox">Go to the Inbox</button></div>`}</div>`;
+}
+function viewDup() {
+  const e = dupEntry(U.nav.id), doc = e.type === 'doc';
+  const i = doc ? Math.min(U.cur, e.sets.length - 1) : 0, x = e.sets[i];
+  // In a document pair, each column is one document.
+  const ids = doc ? e.docs.map(d => x.copies.find(id => locate(id)?.doc?.id === d)) : x.copies;
+  const { best, why } = suggestKeep(ids);
+  const mode = U.view === 'text' ? 'text' : 'scan';
+  let title, sub;
+  if (doc) {
+    title = `“${D.docs[e.docs[0]].name}” was scanned twice`;
+    sub = `Both documents have the same ${plural(e.sets.length, 'page')}. Compare them page by page (← and → move between pages), then keep one document, or the better scan of each page.`;
+  } else if (x.kind === 'same') {
+    title = 'The same page, scanned twice';
+    sub = `${x.score}% of the words match, in the same order. The scans look different because the scanner settings were. Keep the better copy; the other is set aside. ← and → move between duplicates.`;
+  } else {
+    title = 'Very similar text';
+    sub = 'The wording is close but not the same, so these may be two drafts, or a copy with changes. If you want both, keep both.';
+  }
+  // A document pair: which document reads better on most pages.
+  let docBest = null;
+  if (doc) {
+    const tally = {};
+    e.docs.forEach(d => { tally[d] = wins(e, d); });
+    docBest = e.docs.reduce((a, b) => tally[b] > tally[a] ? b : a);
+  }
+  const banner = doc
+    ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Lindley suggests keeping copy ${e.docs.indexOf(docBest) + 1}, the one ${esc(docHome(D.docs[docBest]).replace(/^./, c => c.toLowerCase()))}.</b> Its scan is the better one on ${wins(e, docBest)} of ${plural(e.sets.length, 'page')}. On this page: ${esc(why.join('. '))}.</div></div></div>`
+    : x.kind === 'similar'
+      ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>These may be two drafts of the same page.</b> If so, keep both. If one is only a copy with mistakes, keep the other.</div></div></div>`
+      : `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Lindley suggests keeping copy ${ids.indexOf(best) + 1}.</b> ${esc(why.join('. '))}.</div></div></div>`;
+  const tabs = [['scan', 'Scans'], ['text', 'Text, differences marked']];
+  const strip = doc && e.sets.length > 1 ? `<div class="strip rv-strip" role="group" aria-label="Pages in both documents">${e.sets.map((s2, k) => `<button data-goto="${k}" aria-current="${k === i}" aria-label="Page ${k + 1}"><span class="pg-img"><img src="${pageImg(s2.copies[0])}" alt="" style="${rotStyle(D.scans[s2.copies[0]])}"></span><span>${k + 1}</span></button>`).join('')}</div>` : '';
+  const col = (id, k) => {
+    const s = D.scans[id], l = locate(id), mine = id === best && x.kind === 'same';
+    const others = ids.filter(o => o !== id);
+    const d = diffMarks(s.text, D.scans[others[0]].text);
+    const homeId = l?.where !== 'doc' && others.find(o => locate(o)?.where === 'doc');
+    const home = homeId && locate(homeId).doc;
+    const note = doc
+      ? 'Keeping this document sets the other one’s matching pages aside.'
+      : home ? `Keeping this one puts it in its place in “${home.name}”, page ${home.pages.indexOf(homeId) + 1}, and sets the other copy aside.`
+        : `Keeping this one sets the other ${others.length === 1 ? 'copy' : 'copies'} aside.`;
+    const keep = doc
+      ? `<button class="btn${l.doc.id === docBest ? ' primary' : ''}" data-act="keepDoc" data-key="${e.key}" data-id="${l.doc.id}">${icon('check')}Keep this document</button><button class="btn" data-act="keepCopy" data-dupset="${x.id}" data-id="${id}">Keep just this page</button>`
+      : `<button class="btn${mine ? ' primary' : ''}" data-act="keepCopy" data-dupset="${x.id}" data-id="${id}">${icon('check')}Keep this one</button>`;
+    return `<section class="dup-col" aria-labelledby="dc${k}">
+      <div class="dup-col-h"><h2 id="dc${k}">Copy ${k + 1}${doc ? `: ${esc(docHome(l.doc))}` : ''}</h2>${mine ? `<span class="chip ai">${lic()}Lindley suggests this one</span>` : ''}${keep}</div>
+      <p class="dup-note">${esc(note)}</p>
+      ${mode === 'scan'
+        ? `<div class="dup-img${U.zoom > 1 ? ' zoomed' : ''}"><img src="${pageImg(id)}" alt="Scan ${s.file}, copy ${k + 1}" style="${rotStyle(s)};--z:${U.zoom}"></div>`
+        : `<div class="dup-tx" role="region" tabindex="0" aria-label="Text of copy ${k + 1}">${d.html}</div>`}
+      <dl class="dup-facts">
+        <dt>File</dt><dd class="mono">${s.file}</dd>
+        <dt>Scanned</dt><dd>${s.scanned.replace('T', ' ')}</dd>
+        <dt>Scan</dt><dd>${s.dpi} dpi, ${s.look?.grey ? 'grey' : 'colour'}</dd>
+        <dt>Read</dt><dd>${s.engine === 'vision' ? 'AI' : 'OCR'}, ${s.conf}%${s.reviewed ? ', checked' : ''}</dd>
+        <dt>Text</dt><dd class="wide">${d.n ? `${plural(d.n, 'word')} the other copy doesn’t have` : 'The same words as the other copy'}</dd>
+        <dt>Where</dt><dd class="wide">${esc(copyWhere(id))}</dd>
+      </dl>
+    </section>`;
+  };
+  return `
+  <div class="head">
+    <div class="crumbs"><button class="crumb" data-nav="dups">Duplicates</button> › ${esc(title)}</div>
+    <div class="title-row"><h1 class="title">${esc(title)}</h1></div>
+    <p class="sub">${esc(sub)}</p>
+    ${banner}
+    <div class="dup-bar"><div class="tabs" role="tablist" aria-label="Compare">${tabs.map(([k, lb]) => `<button class="tab" role="tab" data-view="${k}" aria-selected="${mode === k}" tabindex="${mode === k ? 0 : -1}">${lb}</button>`).join('')}</div>${strip}</div>
+    ${mode === 'text' ? '<p class="sub">Words one copy has and the other doesn’t are <mark>underlined</mark>. Case and punctuation don’t count.</p>' : ''}
+  </div>
+  <div class="dup-cmp" style="--n:${ids.length}">${ids.map(col).join('')}</div>`;
+}
+function wins(e, docId) {
+  return e.sets.filter(s2 => locate(suggestKeep(e.docs.map(d => s2.copies.find(id => locate(id)?.doc?.id === d))).best)?.doc?.id === docId).length;
+}
 // One Inbox or Set aside scan, opened to read and correct before it joins a document.
 function viewScan() {
   const s = D.scans[U.nav.id];
@@ -1628,6 +1965,7 @@ function viewScan() {
     <div class="title-row"><h1 class="title">${s.file}</h1></div>
     <p class="sub">This scan isn't in a document yet. Correct its text here if you like, then start a new document with it or add it to one you already have.</p>
     ${hint ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text">Lindley thinks this belongs in “${esc(hint.name)}”.</div><span class="b-acts"><button class="btn" data-place="${s.id}:${hint.id}">Add it there</button></span></div></div>` : ''}
+    ${aside && s.dupOf ? `<div class="banner ok">${icon('dup')}<div class="b-body"><div class="b-text">This is a copy you set aside. You kept <span class="mono">${D.scans[s.dupOf].file}</span>: ${esc(copyWhere(s.dupOf))}.</div></div></div>` : ''}
     <div style="height:6px"></div>
   </div>
   <div class="side" style="flex:1;min-height:0">
@@ -2288,6 +2626,7 @@ function aiContextLabel() {
   if (d) return (U.view === 'reader' || U.view === 'side') && d.pages.length ? `${d.name}, page ${U.cur + 1}` : d.name;
   if (U.nav.t === 'inbox') return `Inbox, ${plural(D.inbox.length, 'scan')}${U.sel.size ? `, ${U.sel.size} selected` : ''}`;
   if (U.nav.t === 'aside') return 'Set aside';
+  if (U.nav.t === 'dups') return 'Duplicates';
   if (U.nav.t === 'folder') return D.folders[U.nav.id].name;
   if (U.nav.t === 'search') return `Search for “${U.q}”`;
   if (U.nav.t === 'scan') return `${locate(U.nav.id)?.where === 'aside' ? 'Set aside' : 'Inbox'}, ${D.scans[U.nav.id].file}`;
@@ -2555,6 +2894,11 @@ document.addEventListener('click', e => {
     zout: () => { U.zoom = Math.max(.5, +(U.zoom - .25).toFixed(2)); renderMain(); },
     zfit: () => { U.zoom = 1; renderMain(); },
     newFolder: () => newFolder(null),
+    keepCopy: () => keepCopy(a.dataset.dupset, a.dataset.id),
+    keepDoc: () => keepDoc(a.dataset.key, a.dataset.id),
+    notDup: () => notDup(U.nav.id),
+    dupPrev: () => stepDup(-1),
+    dupNext: () => stepDup(1),
     undo,
   };
   A[a.dataset.act]?.();
@@ -2763,6 +3107,11 @@ document.addEventListener('keydown', e => {
   }
   const typing = e.target.closest('input, textarea, select, [contenteditable="true"]');
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); undo(); }
+  // Duplicates: ← and → move between the pages of a document scanned twice, else between duplicates.
+  if (!typing && !e.target.matches('.tab') && U.nav.t === 'dups' && U.nav.id && dupEntry(U.nav.id) && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    const en = dupEntry(U.nav.id), dir = e.key === 'ArrowRight' ? 1 : -1;
+    if (en.type === 'doc') { U.cur = Math.max(0, Math.min(en.sets.length - 1, U.cur + dir)); render(); } else stepDup(dir);
+  }
   if (!typing && !e.target.matches('.tab') && (U.nav.t === 'doc' || U.nav.t === 'review') && curScan()) {
     if (e.key === 'ArrowRight' || e.key === 'PageDown') { U.cur = Math.min(listIds().length - 1, U.cur + 1); render(); }
     if (e.key === 'ArrowLeft' || e.key === 'PageUp') { U.cur = Math.max(0, U.cur - 1); render(); }

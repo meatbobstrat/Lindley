@@ -1,8 +1,9 @@
 """Intake pipeline: each scan runs a series of steps, each recorded in the intake_steps table.
 
-worker.intake does hash, exif and split; Pipeline reads the pages (ocr, vision). The image,
-facts and embed steps come later. See design/database.md for what each step extracts. MATCH is
-not per scan: once new scans have settled, lindley.assembler.assemble runs once for the Inbox.
+worker.intake does hash, exif and split; Pipeline checks each page image (image) and reads it
+(ocr, vision). The facts and embed steps come later. See design/database.md for what each step
+extracts. MATCH is not per scan: once new scans have settled, lindley.assembler.assemble runs once
+for the Inbox.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -18,6 +19,7 @@ from pathlib import Path
 from lindley.config import Settings
 from lindley.providers.base import ProviderError, VisionProvider
 from lindley.providers.registry import get_provider
+from lindley.worker import image as pageimage
 from lindley.worker.ocr.base import OcrEngine, PageResult
 from lindley.worker.ocr.tesseract import TesseractEngine
 from lindley.worker.ocr.vision import VisionEngine
@@ -157,7 +159,57 @@ class Pipeline:
         return "read"
 
     def _read_page(self, conn: sqlite3.Connection, scan_id: int, page_id: int, image: Path) -> None:
+        page = self._page(conn, page_id)
+        if page["blank_score"] is None:  # not checked yet (a retry doesn't check it again)
+            with run_step(
+                conn, scan_id, Step.IMAGE, page_id=page_id, engine_version=pageimage.ENGINE
+            ):
+                self._check_image(conn, page_id, image, page["dpi"])
+            page = self._page(conn, page_id)
+        rotation = (page["detected_rotation"] + page["user_rotation"]) % 360
+        with self._upright(page_id, image, rotation, page["dpi"]) as upright:
+            self._read_upright(conn, scan_id, page_id, upright, page["blank_score"])
+
+    def _page(self, conn: sqlite3.Connection, page_id: int) -> sqlite3.Row:
+        return conn.execute(
+            "SELECT dpi, blank_score, detected_rotation, user_rotation FROM pages WHERE id = ?",
+            (page_id,),
+        ).fetchone()
+
+    def _upright(self, page_id: int, image: Path, rotation: int, dpi: int | None):
+        """The page to read: the image itself, or a turned copy that's removed afterwards."""
+        if not pageimage.needs_turning(image, rotation):
+            return nullcontext(image)
+        work = self.settings.processing_dir / f"page-{page_id}.png"
+        return _removed_after(pageimage.upright_copy(image, work, rotation, dpi))
+
+    def _check_image(
+        self, conn: sqlite3.Connection, page_id: int, image: Path, dpi: int | None
+    ) -> None:
+        """Blank score, paper colour and hash; and, for a page with writing, which way up it is."""
+        info = pageimage.analyse(image)
+        rotation = 0
+        orientation = getattr(self.tesseract, "orientation", None)
+        if orientation and info.blank_score < pageimage.BLANK_AT:
+            with self._upright(page_id, image, 0, dpi) as upright:
+                rotation = orientation(upright) or 0
+        with conn:
+            conn.execute(
+                "UPDATE pages SET phash = ?, paper_color = ?, blank_score = ?,"
+                " detected_rotation = ?, updated_at = datetime('now') WHERE id = ?",
+                (info.phash, info.paper_color, info.blank_score, rotation, page_id),
+            )
+
+    def _read_upright(
+        self,
+        conn: sqlite3.Connection,
+        scan_id: int,
+        page_id: int,
+        image: Path,
+        blank_score: float,
+    ) -> None:
         ocr = self.settings.ocr
+        blank = blank_score >= pageimage.BLANK_AT
         readings: list[tuple[str, str, PageResult]] = []  # (source, engine_model, result)
         if ocr.engine != "vision":
             version = getattr(self.tesseract, "version", self.tesseract.name)
@@ -165,7 +217,17 @@ class Pipeline:
                 readings.append(("tesseract", version, self.tesseract.recognize(image)[0]))
 
         conf = readings[0][2].confidence if readings else None
-        if ocr.engine == "vision" or conf is None or conf < ocr.confidence_threshold:
+        if blank and readings:
+            with conn:
+                record_step(
+                    conn,
+                    scan_id,
+                    Step.VISION,
+                    StepStatus.SKIPPED,
+                    page_id=page_id,
+                    error="The page looks blank",
+                )
+        elif ocr.engine == "vision" or conf is None or conf < ocr.confidence_threshold:
             if self.vision is None:
                 if ocr.engine == "vision":
                     raise RuntimeError("Reading is set to the vision model, but none is set up")
@@ -207,11 +269,22 @@ class Pipeline:
                         int(i == best),
                     ),
                 )
-            if len(ocr.languages) == 1:
-                conn.execute(
-                    "UPDATE pages SET language = ?, updated_at = datetime('now') WHERE id = ?",
-                    (ocr.languages[0], page_id),
-                )
+            tesseract = next((r for source, _, r in readings if source == "tesseract"), None)
+            script = pageimage.classify_script(tesseract and tesseract.words, blank_score)
+            language = ocr.languages[0] if len(ocr.languages) == 1 else None
+            conn.execute(
+                "UPDATE pages SET script = ?, language = coalesce(?, language),"
+                " updated_at = datetime('now') WHERE id = ?",
+                (script, language, page_id),
+            )
+
+
+@contextmanager
+def _removed_after(path: Path) -> Iterator[Path]:
+    try:
+        yield path
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def _preference(reading: tuple[str, str, PageResult]) -> tuple[bool, float]:

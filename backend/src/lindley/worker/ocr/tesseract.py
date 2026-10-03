@@ -126,14 +126,17 @@ class TesseractEngine:
         """
         if not self.exe:
             return None
-        run = subprocess.run(
-            [str(self.exe), str(image_path), "stdout", "--psm", "0"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=TIMEOUT_S,
-            check=False,
-        )
+        try:
+            run = subprocess.run(
+                [str(self.exe), str(image_path), "stdout", "--psm", "0"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=TIMEOUT_S,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None  # the page is still read the way it was scanned
         osd = parse_osd(run.stdout) if run.returncode == 0 else None
         if osd is None or osd[1] < ORIENTATION_MIN_CONF:
             return None

@@ -1,5 +1,5 @@
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from lindley.assembler import assemble
 from lindley.config import Settings
@@ -16,10 +16,19 @@ class StubOcr:
     name = "tesseract"
     version = "tesseract v5.test eng"
 
-    def __init__(self, *readings: tuple[str, float | None] | Exception) -> None:
+    def __init__(
+        self, *readings: tuple[str, float | None] | Exception, rotation: int | None = None
+    ) -> None:
         self.readings = list(readings)
+        self.rotation = rotation
+        self.seen: list[tuple] = []  # (image path, its size) for each page read
+
+    def orientation(self, image_path):
+        return self.rotation
 
     def recognize(self, image_path):
+        with Image.open(image_path) as img:
+            self.seen.append((image_path, img.size))
         r = self.readings.pop(0)
         if isinstance(r, Exception):
             raise r
@@ -43,18 +52,30 @@ def conn(settings: Settings):
     c.close()
 
 
+def written_page(size=(400, 560), lines=8) -> Image.Image:
+    img = Image.new("RGB", size, "white")
+    draw = ImageDraw.Draw(img)
+    for i in range(lines):
+        draw.rectangle([40, 60 + 40 * i, size[0] - 60, 72 + 40 * i], fill="black")
+    return img
+
+
 @pytest.fixture
 def scan(conn, settings, tmp_path):
-    """Import a one-page scan; each call makes a different image so none are duplicates."""
+    """Import a one-page scan with some writing; each differs in size so none are duplicates."""
     made = []
 
-    def make(name="scan_0001.png"):
+    def make(name="scan_0001.png", img=None):
         path = tmp_path / name
-        Image.new("RGB", (100 + len(made), 140), "white").save(path)
+        (img or written_page((400 + len(made), 560))).save(path)
         made.append(path)
         return import_file(conn, settings, path).scan_id
 
     return make
+
+
+def page_row(conn, scan_id):
+    return conn.execute("SELECT * FROM pages WHERE scan_id = ?", (scan_id,)).fetchone()
 
 
 def readings(conn, scan_id):
@@ -152,3 +173,59 @@ def test_read_scans_become_a_lindley_document(conn, settings, scan):
     assert report.documents_created == 1 and report.inbox_left == 0
     doc = conn.execute("SELECT name, origin FROM documents").fetchone()
     assert doc["origin"] == "lindley" and "Will" in doc["name"]
+
+
+def test_the_image_is_checked_before_it_is_read(conn, settings, scan):
+    sid = scan()
+    Pipeline(settings, StubOcr(("Dear Sister, we are well.", 92.0))).process_scan(conn, sid)
+    p = page_row(conn, sid)
+    assert p["blank_score"] < 0.97 and p["paper_color"] == "#ffffff" and len(p["phash"]) == 16
+    assert (p["detected_rotation"], p["script"]) == (0, "printed")
+    assert steps(conn, sid, "image") == [("done", None)]
+
+
+def test_a_sideways_page_is_read_from_an_upright_copy(conn, settings, scan):
+    sid = scan()
+    ocr = StubOcr(("Dear Sister, we are well.", 92.0), rotation=90)
+    assert Pipeline(settings, ocr).process_scan(conn, sid) == "read"
+    assert page_row(conn, sid)["detected_rotation"] == 90
+    [(path, size)] = ocr.seen
+    assert size == (560, 400) and path.parent == settings.processing_dir
+    assert not path.exists()  # the turned copy is removed; the original is untouched
+    original = conn.execute("SELECT image_path FROM pages").fetchone()[0]
+    with Image.open(original) as img:
+        assert img.size == (400, 560)
+
+
+def test_a_turn_set_by_a_person_is_added_to_the_detected_one(conn, settings, scan):
+    sid = scan()
+    conn.execute("UPDATE pages SET user_rotation = 180")
+    conn.commit()
+    ocr = StubOcr(("text", 92.0), rotation=90)
+    Pipeline(settings, ocr).process_scan(conn, sid)
+    assert ocr.seen[0][1] == (560, 400)  # 90 + 180 = 270: still sideways
+
+
+def test_a_blank_page_is_not_sent_to_the_vision_model(conn, settings, scan):
+    sid = scan(img=Image.new("RGB", (400, 560), "white"))
+    pipe = Pipeline(settings, StubOcr(("", None), rotation=90), FakeProvider())
+    assert pipe.process_scan(conn, sid) == "read"
+    assert steps(conn, sid, "vision") == [("skipped", "The page looks blank")]
+    p = page_row(conn, sid)
+    assert (p["blank_score"], p["detected_rotation"], p["script"]) == (1.0, 0, "none")
+    assert [r["source"] for r in readings(conn, sid)] == ["tesseract"]
+
+
+def test_handwriting_is_noticed_from_tesseracts_confidence(conn, settings, scan):
+    sid = scan()
+    Pipeline(settings, StubOcr(("Dcar Sistcr wc arc", 30.0))).process_scan(conn, sid)
+    assert page_row(conn, sid)["script"] == "handwritten"
+
+
+def test_a_retry_does_not_check_the_image_again(conn, settings, tmp_path):
+    imgs = [written_page(), written_page(lines=4)]
+    imgs[0].save(tmp_path / "two.tif", save_all=True, append_images=imgs[1:])
+    sid = import_file(conn, settings, tmp_path / "two.tif").scan_id
+    Pipeline(settings, StubOcr(("one", 90.0), RuntimeError("crashed"))).process_scan(conn, sid)
+    Pipeline(settings, StubOcr(("two", 90.0))).process_scan(conn, sid)
+    assert steps(conn, sid, "image") == [("done", None), ("done", None)]

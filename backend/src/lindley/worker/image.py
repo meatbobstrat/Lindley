@@ -20,6 +20,8 @@ INK_LEVEL = 0.7  # darker than this share of the paper's brightness counts as in
 INK_FULL = 0.02  # this share of inked pixels scores 0; a blank page has well under 0.1%
 BLANK_AT = 0.97  # a blank_score at or above this is a blank page (as the assembler uses)
 DUP_BITS = 4  # hashes this close (out of 64 bits) are the same picture
+HASH_DETAIL = 8  # a hash with fewer set (or unset) bits is a near-empty page; don't compare it
+EXIF_ORIENTATION = 0x0112
 
 # Script: a line Tesseract read with at least LINE_PRINTED mean confidence looks printed, one
 # below LINE_HAND looks handwritten. MOSTLY of the lines decides; SHARE of each kind is mixed.
@@ -43,6 +45,29 @@ def open_upright(path: Path) -> Image.Image:
         if img.mode.startswith("I"):  # 16-bit grey would clip to white in a plain convert
             img = img.convert("I").point(lambda v: v * (1 / 256)).convert("L")
         return ImageOps.exif_transpose(img).convert("RGB")
+
+
+def exif_orientation(img: Image.Image) -> int:
+    """The EXIF Orientation tag: 1 is upright; 5 to 8 mean the picture is shown sideways."""
+    return img.getexif().get(EXIF_ORIENTATION, 1)
+
+
+def needs_turning(path: Path, rotation: int) -> bool:
+    """Whether reading the page needs a turned copy: a rotation, or an EXIF orientation."""
+    if rotation % 360:
+        return True
+    with Image.open(path) as img:
+        return exif_orientation(img) != 1
+
+
+def upright_copy(src: Path, dest: Path, rotation: int, dpi: int | None = None) -> Path:
+    """Save the page turned upright (EXIF orientation, then `rotation` degrees clockwise)."""
+    img = open_upright(src)
+    if rotation % 360:
+        img = img.rotate(-rotation, expand=True)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    img.save(dest, **({"dpi": (dpi, dpi)} if dpi else {}))
+    return dest
 
 
 def analyse(path: Path) -> ImageInfo:
@@ -87,6 +112,14 @@ def hamming(a: str | None, b: str | None) -> int | None:
         return (int(a, 16) ^ int(b, 16)).bit_count()
     except ValueError:
         return None
+
+
+def same_picture(a: str | None, b: str | None) -> bool:
+    """Two hashes of the same picture. Near-empty pages all hash alike, so they never match."""
+    d = hamming(a, b)
+    if d is None or d > DUP_BITS:
+        return False
+    return all(HASH_DETAIL <= int(h, 16).bit_count() <= 64 - HASH_DETAIL for h in (a, b))
 
 
 def classify_script(words: list[dict] | None, blank_score: float | None) -> str | None:

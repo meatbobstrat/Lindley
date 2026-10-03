@@ -42,7 +42,8 @@ class DocEnds:
 
 
 _PAGE_SQL = """
-SELECT p.id, p.scan_id, p.page_index, p.height_px, p.blank_score, p.phash, p.paper_color,
+SELECT p.id, p.scan_id, p.page_index, p.width_px, p.height_px, p.blank_score, p.phash,
+       p.paper_color, p.detected_rotation, p.user_rotation,
        s.original_name, s.scanned_at, s.imported_at, t.text, t.words
 FROM pages p
 JOIN scans s ON s.id = p.scan_id
@@ -60,11 +61,17 @@ def _page(r: sqlite3.Row) -> Page:
         r["scanned_at"],
         r["imported_at"],
         json.loads(r["words"]) if r["words"] else None,
-        r["height_px"],
+        _upright_height(r),
         r["blank_score"],
         r["phash"],
         r["paper_color"],
     )
+
+
+def _upright_height(r: sqlite3.Row) -> int | None:
+    """Word boxes are read from the page turned upright; a quarter turn swaps its sides."""
+    sideways = (r["detected_rotation"] + r["user_rotation"]) % 180 == 90
+    return r["width_px"] if sideways else r["height_px"]
 
 
 def load_inbox(conn: sqlite3.Connection) -> list[Page]:

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Literal
 from PIL import ExifTags, Image
 
 from lindley.config import Settings
+from lindley.worker.image import exif_orientation
 from lindley.worker.pipeline import Step, StepStatus, now, record_step, run_step
 
 if TYPE_CHECKING:
@@ -273,7 +274,10 @@ def _split(
         with Image.open(copy) as img:
             frames = getattr(img, "n_frames", 1)
             if frames == 1:
-                rows.append((0, copy, img.width, img.height, _dpi(img), _color_mode(img.mode)))
+                w, h = img.size  # as a viewer shows it: an EXIF turn of 90° swaps them
+                if exif_orientation(img) in (5, 6, 7, 8):
+                    w, h = h, w
+                rows.append((0, copy, w, h, _dpi(img), _color_mode(img.mode)))
             else:
                 out.mkdir(parents=True, exist_ok=True)
                 for i in range(frames):

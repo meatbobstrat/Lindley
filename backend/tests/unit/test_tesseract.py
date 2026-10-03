@@ -150,3 +150,15 @@ def test_real_tesseract_reads_printed_text(tmp_path: Path):
     [page] = real.recognize(tmp_path / "page.png")
     assert "Sister" in page.text and page.confidence and page.confidence > 50
     assert real.version.startswith("tesseract")
+
+
+def test_an_orientation_check_that_times_out_is_just_unknown(tmp_path, monkeypatch):
+    exe = tmp_path / "tesseract.exe"
+    exe.touch()
+
+    def slow(args, **kw):
+        raise subprocess.TimeoutExpired(args, kw["timeout"])
+
+    monkeypatch.setattr(tesseract.subprocess, "run", slow)
+    engine = TesseractEngine(OcrSettings(tesseract_path=exe))
+    assert engine.orientation(tmp_path / "page.png") is None

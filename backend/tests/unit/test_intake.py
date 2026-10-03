@@ -158,3 +158,12 @@ def test_unsupported_files_are_ignored(conn, settings, inbox):
     assert import_file(conn, settings, src).status == "failed"
     assert conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0] == 0
     assert src.exists() and not settings.quarantine_dir.exists()
+
+
+def test_a_photo_turned_by_exif_is_measured_as_it_is_shown(conn, settings, inbox):
+    exif = Image.Exif()
+    exif[0x0112] = 6  # the camera was held sideways
+    page(size=(300, 200)).save(inbox / "phone.jpg", exif=exif)
+    import_file(conn, settings, inbox / "phone.jpg")
+    p = conn.execute("SELECT width_px, height_px FROM pages").fetchone()
+    assert (p["width_px"], p["height_px"]) == (200, 300)

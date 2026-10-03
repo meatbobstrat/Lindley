@@ -6,7 +6,9 @@ import pytest
 from lindley.assembler import assemble
 from lindley.assembler.ai import refine
 from lindley.assembler.bench import TruePage, load, make_batch, score
+from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page
+from lindley.assembler.run import load_inbox
 from lindley.config import AssemblerSettings
 from lindley.db.database import connect, init_db
 
@@ -274,3 +276,26 @@ def test_bench_rules_only(tmp_path):
         made, wrong = made + s.documents_made, wrong + s.wrong_documents
     assert sum(f1s) / len(f1s) >= 0.9
     assert wrong <= 0.02 * made
+
+
+def test_near_identical_scans_are_linked_as_duplicates():
+    a = Page(1, 1, "scan_0001.jpg", LETTER[1], phash="a2d4b0ccd2c8d0a8")
+    b = Page(2, 2, "scan_0007.jpg", LETTER[1], phash="a2d4b0ccd2c8d0ab")  # 2 bits apart
+    c = Page(3, 3, "scan_0009.jpg", LETTER[1], phash="5d2b4f332d372f57")
+    assert "duplicate" in [lk.relation for lk in pair(a, b).links]
+    assert "duplicate" not in [lk.relation for lk in pair(a, c).links]
+
+
+def test_near_empty_pages_are_not_called_duplicates():
+    # A line or two of writing hashes to almost all zeros, so the hashes say nothing.
+    a = Page(1, 1, "a.jpg", "Received of J. Branson three dollars", phash="a000000000000000")
+    b = Page(2, 2, "b.jpg", "Paid in full, with thanks, T. Hale", phash="a200000000000000")
+    assert "duplicate" not in [lk.relation for lk in pair(a, b).links]
+
+
+def test_a_turned_page_is_measured_upright(conn):
+    load(conn, pages(LETTER[:2]))
+    conn.execute("UPDATE pages SET width_px = 1000, height_px = 1400")
+    conn.execute("UPDATE pages SET detected_rotation = 90 WHERE id = (SELECT min(id) FROM pages)")
+    conn.commit()
+    assert [p.height for p in load_inbox(conn)] == [1000, 1400]

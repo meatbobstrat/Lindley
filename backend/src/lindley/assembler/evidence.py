@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from lindley.assembler.model import Page
+from lindley.worker.image import same_picture
 
 SOURCE = "assembler v1"
 STRONG_KINDS = {"letter", "receipt", "deed", "diary"}
@@ -111,7 +112,7 @@ def pair(a: Page, b: Page, is_adjacent: bool | None = None) -> Pair:
     if ca.kind == cb.kind == "diary":
         p.links.append(Link("similar_text", 0.5, "Both are diary entries"))
         p.score += 0.2
-    if a.phash and a.phash == b.phash:
+    if same_picture(a.phash, b.phash):
         p.links.append(Link("duplicate", 0.95, "The two scans look identical"))
     p.score = max(0.0, min(1.0, p.score))
     return p

@@ -12,6 +12,7 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager, nullcontext
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -47,6 +48,32 @@ class StepStatus(StrEnum):
     SKIPPED = "skipped"
 
 
+WAITING = "Waiting for you to OK the vision model"
+STOP_AFTER_FAILURES = 3  # read_waiting stops after this many vision failures in a row
+
+# Each page's latest vision step.
+_LAST_VISION = (
+    "SELECT s.* FROM intake_steps s WHERE s.step = 'vision' AND s.id ="
+    " (SELECT max(id) FROM intake_steps WHERE page_id = s.page_id AND step = 'vision')"
+)
+
+
+@dataclass
+class WaitingRun:
+    """What read_waiting did."""
+
+    read: int = 0
+    failed: int = 0
+    waiting: int = 0  # pages still waiting afterwards
+    stopped: str | None = None  # why it stopped early, if it did
+
+
+def waiting_for_vision(conn: sqlite3.Connection) -> int:
+    """Pages waiting for a person to OK sending them to the vision model."""
+    sql = f"SELECT COUNT(*) FROM ({_LAST_VISION}) WHERE status = 'queued'"
+    return conn.execute(sql).fetchone()[0]
+
+
 def now() -> str:
     """UTC timestamp in SQLite's datetime('now') format."""
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
@@ -79,17 +106,27 @@ def run_step(
     *,
     page_id: int | None = None,
     engine_version: str | None = None,
+    queued: int | None = None,
 ) -> Iterator[None]:
     """Record a step as running while the block runs, then as done, or failed with the error.
 
-    The block should commit its own writes (`with conn:`) so a failure rolls them back.
+    `queued` is the id of a queued row to run, instead of adding a new one. The block should
+    commit its own writes (`with conn:`) so a failure rolls them back.
     """
     with conn:
-        row = conn.execute(
-            "INSERT INTO intake_steps (scan_id, page_id, step, status, engine_version, started_at)"
-            " VALUES (?, ?, ?, 'running', ?, datetime('now'))",
-            (scan_id, page_id, step, engine_version),
-        ).lastrowid
+        if queued:
+            row = queued
+            conn.execute(
+                "UPDATE intake_steps SET status = 'running', engine_version = ?, error = NULL,"
+                " started_at = datetime('now') WHERE id = ?",
+                (engine_version, row),
+            )
+        else:
+            row = conn.execute(
+                "INSERT INTO intake_steps (scan_id, page_id, step, status, engine_version,"
+                " started_at) VALUES (?, ?, ?, 'running', ?, datetime('now'))",
+                (scan_id, page_id, step, engine_version),
+            ).lastrowid
     try:
         yield
     except Exception as e:
@@ -111,8 +148,13 @@ def run_step(
 class Pipeline:
     """Reads every page of an imported scan (Tesseract, with the vision model for hard pages).
 
-    Every reading is kept; the best one for each page is current. The scan ends `read`, or
-    `failed` with the error, and a failed scan can simply be processed again.
+    Every reading is kept; the best one for each page is current. The scan ends `read`; `queued`
+    if a page has no reading yet because it's waiting for the vision model; or `failed` with the
+    error, and a failed scan can simply be processed again.
+
+    The vision model can cost money, so it's only called on its own in `vision_mode = "auto"`.
+    Otherwise pages wait until a person runs read_waiting. A vision call that failed is never
+    repeated on its own either: that page waits too.
     """
 
     def __init__(
@@ -133,7 +175,7 @@ class Pipeline:
         return cls(settings, TesseractEngine(settings.ocr), vision)
 
     def process_scan(self, conn: sqlite3.Connection, scan_id: int) -> str:
-        """Read the scan's unread pages. Returns the scan's new status: 'read' or 'failed'."""
+        """Read the scan's unread pages. Returns its new status: 'read', 'queued' or 'failed'."""
         with conn:
             conn.execute(
                 "UPDATE scans SET status = 'reading', error = NULL WHERE id = ?", (scan_id,)
@@ -154,9 +196,112 @@ class Pipeline:
                     (str(e) or type(e).__name__, scan_id),
                 )
             return "failed"
+        return self._settle(conn, scan_id)
+
+    def _settle(self, conn: sqlite3.Connection, scan_id: int) -> str:
+        """'read' once every page has a reading; until then 'queued' (waiting for vision)."""
+        unread = conn.execute(
+            "SELECT COUNT(*) FROM pages p WHERE p.scan_id = ? AND NOT EXISTS ("
+            " SELECT 1 FROM transcriptions t WHERE t.page_id = p.id AND t.is_current = 1)",
+            (scan_id,),
+        ).fetchone()[0]
+        status = "queued" if unread else "read"
         with conn:
-            conn.execute("UPDATE scans SET status = 'read' WHERE id = ?", (scan_id,))
-        return "read"
+            conn.execute("UPDATE scans SET status = ? WHERE id = ?", (status, scan_id))
+        return status
+
+    def read_waiting(
+        self,
+        conn: sqlite3.Connection,
+        page_ids: list[int] | None = None,
+        retry_failed: bool = False,
+    ) -> WaitingRun:
+        """Send the pages waiting for the vision model. Only a person starts this.
+
+        Pages whose vision call failed are sent again only with retry_failed. It stops after
+        STOP_AFTER_FAILURES failures in a row, so a broken provider isn't called page after page.
+        A vision reading becomes current if it's better, but never replaces a person's text.
+        """
+        if self.vision is None:
+            raise RuntimeError("No vision model is set up")
+        statuses = ("queued", "failed") if retry_failed else ("queued",)
+        rows = conn.execute(
+            "SELECT v.id, v.status, v.scan_id, v.page_id, p.image_path, p.dpi,"
+            f" p.detected_rotation, p.user_rotation FROM ({_LAST_VISION}) v"
+            " JOIN pages p ON p.id = v.page_id"
+            f" WHERE v.status IN ({', '.join('?' * len(statuses))})"
+            " ORDER BY v.scan_id, p.page_index",
+            statuses,
+        ).fetchall()
+        if page_ids is not None:
+            rows = [r for r in rows if r["page_id"] in set(page_ids)]
+        model = getattr(self.vision, "model", None) or "vision"
+        run = WaitingRun()
+        in_a_row, scans, error = 0, set(), ""
+        for r in rows:
+            if in_a_row >= STOP_AFTER_FAILURES:
+                run.stopped = f"Stopped after {in_a_row} failures in a row: {error}"
+                break
+            rotation = (r["detected_rotation"] + r["user_rotation"]) % 360
+            queued = r["id"] if r["status"] == "queued" else None
+            try:
+                with run_step(
+                    conn,
+                    r["scan_id"],
+                    Step.VISION,
+                    page_id=r["page_id"],
+                    engine_version=model,
+                    queued=queued,
+                ):
+                    image = Path(r["image_path"])
+                    with self._upright(r["page_id"], image, rotation, r["dpi"]) as upright:
+                        result = VisionEngine(self.vision).recognize(upright)[0]
+                    self._add_vision_reading(conn, r["page_id"], model, result)
+            except Exception as e:
+                run.failed += 1
+                in_a_row += 1
+                error = str(e) or type(e).__name__
+                continue
+            run.read += 1
+            in_a_row = 0
+            scans.add(r["scan_id"])
+        for scan_id in scans:
+            status = conn.execute("SELECT status FROM scans WHERE id = ?", (scan_id,)).fetchone()
+            if status[0] == "queued":
+                self._settle(conn, scan_id)
+        run.waiting = waiting_for_vision(conn)
+        return run
+
+    def _add_vision_reading(
+        self, conn: sqlite3.Connection, page_id: int, model: str, result: PageResult
+    ) -> None:
+        current = conn.execute(
+            "SELECT id, source, text, confidence, confirmed_at FROM transcriptions"
+            " WHERE page_id = ? AND is_current = 1",
+            (page_id,),
+        ).fetchone()
+        better = current is None or (
+            current["source"] != "user"
+            and current["confirmed_at"] is None
+            and _preference(("vision", model, result))
+            > _preference(
+                (
+                    current["source"],
+                    "",
+                    PageResult(1, current["text"], current["confidence"], current["source"]),
+                )
+            )
+        )
+        with conn:
+            if better and current:
+                conn.execute(
+                    "UPDATE transcriptions SET is_current = 0 WHERE id = ?", (current["id"],)
+                )
+            conn.execute(
+                "INSERT INTO transcriptions (page_id, source, engine_model, text, confidence,"
+                " is_current) VALUES (?, 'vision', ?, ?, ?, ?)",
+                (page_id, model, result.text, result.confidence, int(better)),
+            )
 
     def _read_page(self, conn: sqlite3.Connection, scan_id: int, page_id: int, image: Path) -> None:
         page = self._page(conn, page_id)
@@ -240,6 +385,15 @@ class Pipeline:
                         page_id=page_id,
                         error="No vision model is set up",
                     )
+            elif _last_vision_status(conn, page_id) in ("queued", "failed"):
+                pass  # already waiting for a person; never sent again on its own
+            elif ocr.vision_mode == "ask":
+                with conn:
+                    conn.execute(
+                        "INSERT INTO intake_steps (scan_id, page_id, step, status, error)"
+                        " VALUES (?, ?, 'vision', 'queued', ?)",
+                        (scan_id, page_id, WAITING),
+                    )
             else:
                 model = getattr(self.vision, "model", None) or "vision"
                 try:
@@ -250,9 +404,10 @@ class Pipeline:
                             ("vision", model, VisionEngine(self.vision).recognize(image)[0])
                         )
                 except Exception:
-                    if ocr.engine == "vision" or not readings:
-                        raise  # nothing else to fall back on
+                    pass  # recorded as failed; the page waits for a person to try again
 
+        if not readings:
+            return  # vision only, and the page is waiting for the vision model
         best = max(range(len(readings)), key=lambda i: _preference(readings[i]))
         with conn:
             for i, (source, model, r) in enumerate(readings):
@@ -277,6 +432,15 @@ class Pipeline:
                 " updated_at = datetime('now') WHERE id = ?",
                 (script, language, page_id),
             )
+
+
+def _last_vision_status(conn: sqlite3.Connection, page_id: int) -> str | None:
+    row = conn.execute(
+        "SELECT status FROM intake_steps WHERE page_id = ? AND step = 'vision'"
+        " ORDER BY id DESC LIMIT 1",
+        (page_id,),
+    ).fetchone()
+    return row[0] if row else None
 
 
 @contextmanager

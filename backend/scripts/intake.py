@@ -75,7 +75,7 @@ def main() -> int:
         f"Reading {len(files)} file{'s' if len(files) != 1 else ''}"
         f" with {MODES[settings.ocr.engine]}{vision}\n"
     )
-    counts = {"new": 0, "duplicate": 0, "failed": 0, "read": 0}
+    counts = {"new": 0, "duplicate": 0, "failed": 0, "read": 0, "queued": 0}
     for f in files:
         r = ingest(conn, settings, pipe, f)
         counts[r.status] += 1
@@ -83,7 +83,7 @@ def main() -> int:
         if r.error:
             line += f" ({r.error})"
         if r.reading:
-            counts["read" if r.reading == "read" else "failed"] += 1
+            counts[r.reading if r.reading in ("read", "queued") else "failed"] += 1
             scan = conn.execute(
                 "SELECT s.error, AVG(t.confidence) AS conf FROM scans s"
                 " LEFT JOIN pages p ON p.scan_id = s.id"

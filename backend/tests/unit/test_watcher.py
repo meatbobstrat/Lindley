@@ -132,3 +132,27 @@ def test_the_app_starts_and_stops_the_watcher(settings, inbox, tmp_path):
         w = app.state.watcher
         assert w._thread and w._thread.is_alive()
     assert not w._thread.is_alive()
+
+
+class CountingVision:
+    model = "paid-vision"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def transcribe(self, image, hints=None):
+        self.calls += 1
+        raise ConnectionError("should not have been called")
+
+
+def test_dropped_scans_never_call_the_vision_model_without_an_ok(settings, inbox):
+    settings.ocr.engine = "vision"  # every page needs the vision model
+    vision = CountingVision()
+    (inbox / "a.png").write_bytes(png_bytes())
+    for _ in range(2):  # a first run, then a restart whose start-up sweep finds it again
+        w = FolderWatcher(settings, Pipeline(settings, StubOcr(), vision), chat=None, settle_s=0)
+        w.sweep([inbox])
+        w.tick()
+        w.tick()
+    assert scans(settings) == [("a.png", "watched", "queued")]
+    assert vision.calls == 0

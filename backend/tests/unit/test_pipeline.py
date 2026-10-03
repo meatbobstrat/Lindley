@@ -7,7 +7,7 @@ from lindley.db.database import connect, init_db
 from lindley.providers.fake import FakeProvider
 from lindley.worker.intake import import_file
 from lindley.worker.ocr.base import PageResult
-from lindley.worker.pipeline import Pipeline
+from lindley.worker.pipeline import Pipeline, waiting_for_vision
 
 
 class StubOcr:
@@ -40,8 +40,21 @@ class StubOcr:
 class BrokenVision:
     model = "broken-vision"
 
+    def __init__(self) -> None:
+        self.calls = 0
+
     def transcribe(self, image, hints=None):
+        self.calls += 1
         raise ConnectionError("vision model not running")
+
+
+class MustNotCall:
+    """A vision model that fails the test if Lindley calls it without a person's OK."""
+
+    model = "paid-vision"
+
+    def transcribe(self, image, hints=None):
+        raise AssertionError("the vision model was called without an OK")
 
 
 @pytest.fixture
@@ -114,6 +127,7 @@ def test_a_clear_page_is_read_by_tesseract_alone(conn, settings, scan):
 
 
 def test_a_hard_page_goes_to_the_vision_model_and_both_readings_are_kept(conn, settings, scan):
+    settings.ocr.vision_mode = "auto"
     sid = scan()
     pipe = Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), FakeProvider())
     assert pipe.process_scan(conn, sid) == "read"
@@ -123,6 +137,7 @@ def test_a_hard_page_goes_to_the_vision_model_and_both_readings_are_kept(conn, s
 
 
 def test_when_the_vision_model_fails_tesseract_still_counts(conn, settings, scan):
+    settings.ocr.vision_mode = "auto"
     sid = scan()
     pipe = Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), BrokenVision())
     assert pipe.process_scan(conn, sid) == "read"
@@ -138,7 +153,7 @@ def test_without_a_vision_model_the_step_is_skipped(conn, settings, scan):
 
 
 def test_vision_only_reading(conn, settings, scan):
-    settings.ocr.engine = "vision"
+    settings.ocr.engine, settings.ocr.vision_mode = "vision", "auto"
     sid = scan()
     assert Pipeline(settings, StubOcr(), FakeProvider()).process_scan(conn, sid) == "read"
     assert [r["source"] for r in readings(conn, sid)] == ["vision"]
@@ -229,3 +244,92 @@ def test_a_retry_does_not_check_the_image_again(conn, settings, tmp_path):
     Pipeline(settings, StubOcr(("one", 90.0), RuntimeError("crashed"))).process_scan(conn, sid)
     Pipeline(settings, StubOcr(("two", 90.0))).process_scan(conn, sid)
     assert steps(conn, sid, "image") == [("done", None), ("done", None)]
+
+
+# ---------------------------------------------------------------- Vision only with a person's OK
+
+
+def test_by_default_a_hard_page_waits_for_an_ok(conn, settings, scan):
+    sid = scan()
+    pipe = Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), MustNotCall())
+    assert pipe.process_scan(conn, sid) == "read"
+    assert [(r["source"], r["is_current"]) for r in readings(conn, sid)] == [("tesseract", 1)]
+    assert steps(conn, sid, "vision") == [("queued", "Waiting for you to OK the vision model")]
+    assert waiting_for_vision(conn) == 1
+
+
+def test_a_waiting_page_is_queued_only_once(conn, settings, scan):
+    settings.ocr.engine = "vision"
+    sid = scan()
+    pipe = Pipeline(settings, StubOcr(), MustNotCall())
+    assert pipe.process_scan(conn, sid) == "queued" and status(conn, sid) == "queued"
+    assert pipe.process_scan(conn, sid) == "queued"  # e.g. the watcher's start-up sweep
+    assert len(steps(conn, sid, "vision")) == 1 and readings(conn, sid) == []
+
+
+def test_read_waiting_sends_the_pages_a_person_oked(conn, settings, scan):
+    sid = scan()
+    Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), MustNotCall()).process_scan(conn, sid)
+    run = Pipeline(settings, StubOcr(), FakeProvider()).read_waiting(conn)
+    assert (run.read, run.failed, run.waiting) == (1, 0, 0)
+    rs = readings(conn, sid)
+    assert [(r["source"], r["is_current"]) for r in rs] == [("tesseract", 0), ("vision", 1)]
+    assert steps(conn, sid, "vision") == [("done", None)]  # the queued step, now run
+
+
+def test_read_waiting_finishes_a_vision_only_scan(conn, settings, scan):
+    settings.ocr.engine = "vision"
+    sid = scan()
+    Pipeline(settings, StubOcr(), MustNotCall()).process_scan(conn, sid)
+    Pipeline(settings, StubOcr(), FakeProvider()).read_waiting(conn)
+    assert status(conn, sid) == "read" and [r["source"] for r in readings(conn, sid)] == ["vision"]
+
+
+def test_a_failed_vision_call_is_only_tried_again_when_asked(conn, settings, scan):
+    sid = scan()
+    Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), MustNotCall()).process_scan(conn, sid)
+    broken = BrokenVision()
+    run = Pipeline(settings, StubOcr(), broken).read_waiting(conn)
+    assert (run.read, run.failed, run.waiting) == (0, 1, 0)
+    assert Pipeline(settings, StubOcr(), broken).read_waiting(conn).failed == 0
+    assert broken.calls == 1
+    run = Pipeline(settings, StubOcr(), FakeProvider()).read_waiting(conn, retry_failed=True)
+    assert run.read == 1
+    assert [s for s, _ in steps(conn, sid, "vision")] == ["failed", "done"]
+
+
+def test_a_failed_vision_only_page_is_not_sent_again_on_its_own(conn, settings, scan):
+    settings.ocr.engine, settings.ocr.vision_mode = "vision", "auto"
+    sid = scan()
+    broken = BrokenVision()
+    assert Pipeline(settings, StubOcr(), broken).process_scan(conn, sid) == "queued"
+    assert Pipeline(settings, StubOcr(), broken).process_scan(conn, sid) == "queued"
+    assert broken.calls == 1
+
+
+def test_read_waiting_stops_when_the_provider_keeps_failing(conn, settings, scan):
+    sids = [scan(f"scan_000{i}.png") for i in range(1, 6)]
+    for sid in sids:
+        Pipeline(settings, StubOcr(("Dcar", 30.0)), MustNotCall()).process_scan(conn, sid)
+    broken = BrokenVision()
+    run = Pipeline(settings, StubOcr(), broken).read_waiting(conn)
+    assert broken.calls == 3 and run.failed == 3 and run.waiting == 2
+    assert run.stopped and "vision model not running" in run.stopped
+
+
+def test_a_vision_reading_never_replaces_a_persons_text(conn, settings, scan):
+    sid = scan()
+    Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), MustNotCall()).process_scan(conn, sid)
+    conn.execute("UPDATE transcriptions SET confirmed_at = datetime('now')")
+    conn.commit()
+    Pipeline(settings, StubOcr(), FakeProvider()).read_waiting(conn)
+    assert [(r["source"], r["is_current"]) for r in readings(conn, sid)] == [
+        ("tesseract", 1),
+        ("vision", 0),
+    ]
+
+
+def test_a_blank_page_never_waits_for_vision(conn, settings, scan):
+    sid = scan(img=Image.new("RGB", (400, 560), "white"))
+    Pipeline(settings, StubOcr(("", None)), MustNotCall()).process_scan(conn, sid)
+    assert waiting_for_vision(conn) == 0

@@ -27,6 +27,7 @@ from pathlib import Path
 from lindley.assembler import assemble
 from lindley.config import load_settings
 from lindley.db.database import connect, init_db
+from lindley.db.progress import REVIEW_BELOW
 from lindley.duplicates import find_duplicates
 from lindley.providers import allowance
 from lindley.providers.base import ProviderError
@@ -35,7 +36,6 @@ from lindley.worker.image import BLANK_AT
 from lindley.worker.intake import ingest, is_supported
 from lindley.worker.pipeline import Pipeline, vision_failures, waiting_for_vision
 
-REVIEW_BELOW = 90  # the review threshold the Settings screen will own
 MODES = {
     "hybrid": "Tesseract, and the vision model for hard pages",
     "tesseract": "Tesseract only",

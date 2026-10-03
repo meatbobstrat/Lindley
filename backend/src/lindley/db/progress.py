@@ -5,6 +5,10 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 
+# A reading below this confidence waits for a person's review: the threshold the Settings screen
+# will own.
+REVIEW_BELOW = 90
+
 
 @dataclass
 class Check:
@@ -37,6 +41,19 @@ def _plural(n: int, word: str) -> str:
     return f"{n} {word}{'' if n == 1 else 's'}"
 
 
+def pages_to_review(conn: sqlite3.Connection, doc_id: int, review_below: float) -> list[int]:
+    """A document's pages whose current reading waits for a person's review, in order."""
+    return [
+        r[0]
+        for r in conn.execute(
+            "SELECT p.id FROM pages p JOIN v_current_text c ON c.page_id = p.id"
+            " WHERE p.document_id = ? AND NOT c.reviewed AND c.confidence < ?"
+            " ORDER BY p.position",
+            (doc_id, review_below),
+        )
+    ]
+
+
 def document_progress(conn: sqlite3.Connection, doc_id: int, review_below: float) -> Progress:
     """Checklist for one document. `review_below` is the review threshold from settings."""
     doc = conn.execute(
@@ -47,8 +64,7 @@ def document_progress(conn: sqlite3.Connection, doc_id: int, review_below: float
 
     pages = conn.execute(
         """
-        SELECT p.id, s.status AS scan_status, c.confidence, c.reviewed,
-               c.page_id IS NOT NULL AS has_text
+        SELECT p.id, s.status AS scan_status, c.page_id IS NOT NULL AS has_text
         FROM pages p
         JOIN scans s ON s.id = p.scan_id
         LEFT JOIN v_current_text c ON c.page_id = p.id
@@ -57,14 +73,7 @@ def document_progress(conn: sqlite3.Connection, doc_id: int, review_below: float
         (doc_id,),
     ).fetchall()
     unread = sum(1 for p in pages if p["scan_status"] != "read" or not p["has_text"])
-    to_review = sum(
-        1
-        for p in pages
-        if p["has_text"]
-        and not p["reviewed"]
-        and p["confidence"] is not None
-        and p["confidence"] < review_below
-    )
+    to_review = len(pages_to_review(conn, doc_id, review_below))
     reorder_open = conn.execute(
         "SELECT COUNT(*) FROM suggestions"
         " WHERE document_id = ? AND kind = 'reorder' AND status = 'open'",

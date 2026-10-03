@@ -17,14 +17,17 @@ class StubOcr:
     version = "tesseract v5.test eng"
 
     def __init__(
-        self, *readings: tuple[str, float | None] | Exception, rotation: int | None = None
+        self,
+        *readings: tuple[str, float | None] | Exception,
+        rotation: int | None = None,
+        sure: float = 9.0,
     ) -> None:
         self.readings = list(readings)
-        self.rotation = rotation
+        self.rotation, self.sure = rotation, sure
         self.seen: list[tuple] = []  # (image path, its size) for each page read
 
     def orientation(self, image_path):
-        return self.rotation
+        return None if self.rotation is None else (self.rotation, self.sure)
 
     def recognize(self, image_path):
         with Image.open(image_path) as img:
@@ -333,3 +336,42 @@ def test_a_blank_page_never_waits_for_vision(conn, settings, scan):
     sid = scan(img=Image.new("RGB", (400, 560), "white"))
     Pipeline(settings, StubOcr(("", None)), MustNotCall()).process_scan(conn, sid)
     assert waiting_for_vision(conn) == 0
+
+
+# ---------------------------------------------------------------- Unsure which way up
+
+
+def current_text(conn, scan_id):
+    return conn.execute(
+        "SELECT t.text FROM transcriptions t JOIN pages p ON p.id = t.page_id"
+        " WHERE p.scan_id = ? AND t.is_current = 1",
+        (scan_id,),
+    ).fetchone()[0]
+
+
+def test_an_unsure_turn_is_kept_when_the_page_reads_clearly_better(conn, settings, scan):
+    sid = scan()
+    ocr = StubOcr(("6&o qno gut", 28.0), ("Dear Sister, we are well.", 60.0), rotation=90, sure=1.1)
+    assert Pipeline(settings, ocr).process_scan(conn, sid) == "read"
+    assert [size for _, size in ocr.seen] == [(400, 560), (560, 400)]
+    assert page_row(conn, sid)["detected_rotation"] == 90
+    assert current_text(conn, sid) == "Dear Sister, we are well."
+    assert [r["source"] for r in readings(conn, sid)] == ["tesseract"]  # the garble isn't kept
+    assert steps(conn, sid, "ocr") == [("done", None), ("done", None)]
+
+
+def test_an_unsure_turn_is_not_tried_on_a_page_that_reads_well(conn, settings, scan):
+    sid = scan()
+    ocr = StubOcr(("Dear Sister, we are well.", 88.0), rotation=180, sure=0.8)
+    Pipeline(settings, ocr).process_scan(conn, sid)
+    assert len(ocr.seen) == 1 and page_row(conn, sid)["detected_rotation"] == 0
+
+
+def test_an_unsure_turn_that_reads_no_better_is_dropped(conn, settings, scan):
+    sid = scan()
+    ocr = StubOcr(
+        ("He had been a mule driver", 61.0), ("fiostoa0 Sf", 26.0), rotation=180, sure=0.8
+    )
+    Pipeline(settings, ocr).process_scan(conn, sid)
+    assert len(ocr.seen) == 2 and page_row(conn, sid)["detected_rotation"] == 0
+    assert current_text(conn, sid) == "He had been a mule driver"

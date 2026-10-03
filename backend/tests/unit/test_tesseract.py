@@ -123,12 +123,10 @@ def fake_tesseract(tmp_path, monkeypatch, code, stdout):
     return TesseractEngine(OcrSettings(tesseract_path=exe)), seen
 
 
-def test_orientation_runs_the_check_and_trusts_only_a_confident_answer(tmp_path, monkeypatch):
+def test_orientation_runs_the_check_and_gives_its_confidence(tmp_path, monkeypatch):
     engine, seen = fake_tesseract(tmp_path, monkeypatch, 0, OSD)
-    assert engine.orientation(tmp_path / "page.png") == 90
+    assert engine.orientation(tmp_path / "page.png") == (90, 6.42)
     assert seen[0][1:] == [str(tmp_path / "page.png"), "stdout", "--psm", "0"]
-    unsure = OSD.replace("6.42", "0.71")
-    assert fake_tesseract(tmp_path, monkeypatch, 0, unsure)[0].orientation(tmp_path / "p") is None
 
 
 def test_orientation_is_unknown_when_tesseract_cannot_tell(tmp_path, monkeypatch):

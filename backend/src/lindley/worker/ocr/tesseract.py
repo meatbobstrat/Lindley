@@ -19,7 +19,7 @@ from lindley.worker.ocr.base import PageResult
 # Where the UB-Mannheim installer puts it when it isn't added to PATH.
 WINDOWS_DEFAULT = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 TIMEOUT_S = 300
-# Tesseract's orientation confidence below which a page is left the way it was scanned.
+# Below this orientation confidence, Tesseract's answer is only a guess (see orientation).
 ORIENTATION_MIN_CONF = 2.0
 
 
@@ -119,10 +119,12 @@ class TesseractEngine:
         text, words, conf = parse_tsv(run.stdout)
         return [PageResult(1, text, conf, self.name, words)]
 
-    def orientation(self, image_path: Path) -> int | None:
-        """Degrees clockwise to turn the page upright, or None if Tesseract can't tell.
+    def orientation(self, image_path: Path) -> tuple[int, float] | None:
+        """(degrees clockwise to turn the page upright, Tesseract's confidence), or None if it
+        can't tell: on pages with little text (often handwriting), or without osd.traineddata.
 
-        It can't on pages with little text (often handwriting), or if osd.traineddata is missing.
+        Below ORIENTATION_MIN_CONF the answer is only a guess, often wrong; the pipeline then
+        lets the reading decide.
         """
         if not self.exe:
             return None
@@ -137,10 +139,7 @@ class TesseractEngine:
             )
         except (OSError, subprocess.TimeoutExpired):
             return None  # the page is still read the way it was scanned
-        osd = parse_osd(run.stdout) if run.returncode == 0 else None
-        if osd is None or osd[1] < ORIENTATION_MIN_CONF:
-            return None
-        return osd[0]
+        return parse_osd(run.stdout) if run.returncode == 0 else None
 
     def missing_help(self) -> str:
         where = self.settings.tesseract_path or "PATH or " + str(WINDOWS_DEFAULT)

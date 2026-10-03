@@ -13,11 +13,13 @@ It's a path cover, the usual cheap way to put pages scanned apart back together.
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 
 from lindley.assembler.clues import MONTH_NAMES
-from lindley.assembler.evidence import Pair, adjacent, pair
+from lindley.assembler.evidence import STRONG_KINDS, Pair, adjacent, pair, score
 from lindley.assembler.model import Group, Page, weigh_terms
+from lindley.assembler.weights import GROUP_WEIGHTS
 
 CUT_BELOW = 0.5  # neighbouring pages scoring below this are split into different documents
 SURE_LINK = 0.7  # a group's order is settled when every step in it scores at least this
@@ -95,9 +97,50 @@ def describe(pages: list[Page]) -> tuple[str | None, str, bool, str | None]:
     return kind, f"Pages starting “{words}…”", True, date
 
 
+# What a group's confidence is fitted on (lindley.assembler.learn, scripts/fit_assembler.py
+# --groups): the chance that these pages, and only these, are one document.
+GROUP_FEATURES = (
+    "bias",
+    "weakest",  # the weakest link inside it, in log-odds (0 for a single page)
+    "edge",  # the strongest link across its ends, in log-odds: how nearly it was longer
+    "single",  # one page
+    "start",  # its first page looks like the first page of a document
+    "end",  # its last page looks like the last page of one
+    "known_kind",  # a letter, receipt, deed or diary
+    "numbered",  # page numbers run in order over two or more of its pages
+    "length",  # how many pages, in log
+)
+
+
+def _logit(p: float) -> float:
+    p = min(max(p, 0.01), 0.99)
+    return math.log(p / (1 - p))
+
+
+def group_features(
+    pages: list[Page], inside: list[Pair], left: Pair | None, right: Pair | None
+) -> dict[str, float]:
+    edge = max(left.score if left else 0.0, right.score if right else 0.0)
+    markers = [p.clues.marker[0] for p in pages if p.clues.marker]
+    return {
+        "bias": 1.0,
+        "weakest": _logit(min(p.score for p in inside)) if inside else 0.0,
+        "edge": _logit(edge),
+        "single": float(len(pages) == 1),
+        "start": float(bool(pages[0].clues.starts_doc)),
+        "end": float(bool(pages[-1].clues.ends_doc)),
+        "known_kind": float(any(p.clues.kind in STRONG_KINDS for p in pages)),
+        "numbered": float(len(markers) >= 2 and markers == sorted(markers)),
+        "length": math.log(len(pages)),
+    }
+
+
 def _confidence(
     pages: list[Page], inside: list[Pair], left: Pair | None, right: Pair | None
 ) -> int:
+    if GROUP_WEIGHTS:
+        p = score(group_features(pages, inside, left, right), GROUP_WEIGHTS)
+        return round(100 * min(p, 0.97))
     within = min((p.score for p in inside), default=1.0)
     edge = 1 - max(left.score if left else 0.0, right.score if right else 0.0)
     conf = min(within, edge)
@@ -174,6 +217,7 @@ def make_group(
         date,
         settled,
     )
+    g.features = group_features(ordered, inside, left, right)
     if len(pages) == 1 and pages[0].clues.kind in ("blank", "notes"):
         g.set_aside = True
         g.reasons = [

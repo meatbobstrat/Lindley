@@ -149,3 +149,15 @@ def test_what_the_scanner_saw_is_evidence():
     assert f["pause_long"] == f["size_differs"] == f["settings_differ"] == 1.0
     assert f["script_differs"] == 1.0
     assert "the sheets are different sizes" in pair(a, other).breaks
+
+
+def test_a_fitted_group_confidence_is_used_when_there_is_one(monkeypatch):
+    from lindley.assembler import segment
+
+    pages = [_sheet(1, "Dear Sister,\n" + BODY), _sheet(2, BODY + "\nYour loving brother\nWill")]
+    weigh_terms(pages)
+    rule = segment.segment(pages)[0][0]
+    assert rule.features["start"] == rule.features["end"] == 1.0
+    monkeypatch.setattr(segment, "GROUP_WEIGHTS", {"bias": -5.0})
+    assert segment.segment(pages)[0][0].confidence == 1  # 1 / (1 + e^5), as a percentage
+    assert rule.confidence > 1

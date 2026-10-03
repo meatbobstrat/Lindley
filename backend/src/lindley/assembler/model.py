@@ -84,6 +84,7 @@ class Group:
     order_settled: bool = True
     set_aside: bool = False  # a blank page or a stray note
     by_ai: bool = False
+    features: dict[str, float] = field(default_factory=dict)  # what its confidence comes from
 
     @property
     def ids(self) -> list[int]:

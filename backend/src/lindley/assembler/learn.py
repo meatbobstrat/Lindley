@@ -62,14 +62,19 @@ def examples(
 
 
 def fit(
-    data: list[Example], l2: float = L2, steps: int = 25, fixed: dict[str, float] | None = None
+    data: list[Example],
+    l2: float = L2,
+    steps: int = 25,
+    fixed: dict[str, float] | None = None,
+    names: tuple[str, ...] = FEATURES,
 ) -> dict[str, float]:
     """Weights that best predict the labels (Newton's method on the penalised log-loss).
-    Weights in `fixed` are kept as they are; only the others are fitted around them."""
-    n = len(FEATURES)
+    Weights in `fixed` are kept as they are; only the others are fitted around them. `names`
+    are the features in each example's order; the first is the bias."""
+    n = len(names)
     fixed = fixed or {}
-    beta = [fixed.get(k, 0.0) for k in FEATURES]
-    held = [k in fixed for k in FEATURES]
+    beta = [fixed.get(k, 0.0) for k in names]
+    held = [k in fixed for k in names]
     for _ in range(steps):
         grad = [0.0] * n
         hess = [[0.0] * n for _ in range(n)]
@@ -84,7 +89,7 @@ def fit(
                     for j, xj in enumerate(e.x):
                         if xj:
                             row[j] += h * xi * xj
-        for i in range(1, n):  # FEATURES[0] is the bias, never pulled towards 0
+        for i in range(1, n):  # names[0] is the bias, never pulled towards 0
             grad[i] += l2 * beta[i]
             hess[i][i] += l2
         hess[0][0] += 1e-6
@@ -99,7 +104,7 @@ def fit(
         beta = [b - s for b, s in zip(beta, step, strict=True)]
         if max(abs(s) for s in step) < 1e-6:
             break
-    return {k: round(b, 3) for k, b in zip(FEATURES, beta, strict=True)}
+    return {k: round(b, 3) for k, b in zip(names, beta, strict=True)}
 
 
 def _solve(a: list[list[float]], b: list[float]) -> list[float]:
@@ -119,11 +124,13 @@ def _solve(a: list[list[float]], b: list[float]) -> list[float]:
     return [m[i][n] / m[i][i] if abs(m[i][i]) >= 1e-12 else 0.0 for i in range(n)]
 
 
-def log_loss(data: list[Example], weights: dict[str, float]) -> float:
+def log_loss(
+    data: list[Example], weights: dict[str, float], names: tuple[str, ...] = FEATURES
+) -> float:
     total = sum(e.w for e in data) or 1.0
     loss = 0.0
     for e in data:
-        p = min(max(score(dict(zip(FEATURES, e.x, strict=True)), weights), 1e-9), 1 - 1e-9)
+        p = min(max(score(dict(zip(names, e.x, strict=True)), weights), 1e-9), 1 - 1e-9)
         loss -= e.w * (math.log(p) if e.y else math.log(1 - p))
     return loss / total
 

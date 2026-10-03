@@ -45,7 +45,7 @@ class Page:
         self.clues = page_clues(
             self.text, self.file_name, self.words, self.height, self.blank_score
         )
-        self.layout = page_layout(text_lines(self.text, self.words), self.width)
+        self.layout = page_layout(text_lines(self.text, self.words))
 
     def scan_key(self) -> tuple:
         """Scanning order: the strongest single hint about which pages go together."""

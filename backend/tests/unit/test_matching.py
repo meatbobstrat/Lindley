@@ -13,7 +13,7 @@ from lindley.assembler.terms import Library, overlap, page_terms, weigh
 WORDS = ["the", "quick", "brown", "fox", "jumps", "over", "lazy", "dogs", "while", "seven"]
 
 
-def typed(lines=12, left=600, spacing=100, char=20, width=2550, chars=60):
+def typed(lines=12, left=600, spacing=100, char=20, chars=60):
     """Word boxes for a typed page: `lines` lines of about `chars` characters each."""
     out, y = [], 800
     for _ in range(lines):
@@ -26,26 +26,27 @@ def typed(lines=12, left=600, spacing=100, char=20, width=2550, chars=60):
             n += len(word) + 1
         out.append(Line(" ".join(w["text"] for w in row), row))
         y += spacing
-    return out, width
+    return out
 
 
 def test_a_layout_is_the_same_whatever_the_scan_resolution():
-    a = page_layout(*typed())
-    b = page_layout(*typed(left=300, spacing=50, char=10, width=1275))  # the page at half size
+    a = page_layout(typed())
+    b = page_layout(typed(left=300, spacing=50, char=10))  # the page at half size
     assert a and b and a.differs(b) < 0.1
+    moved = page_layout(typed(left=1100))  # the sheet laid further over on the glass
+    assert moved and a.differs(moved) < 0.1
     assert round(a.spacing, 1) == 5.0 and 55 <= a.line_chars <= 62
 
 
 def test_pages_set_out_differently_have_different_layouts():
-    double = page_layout(*typed(spacing=100))
-    single = page_layout(*typed(spacing=50))
-    narrow = page_layout(*typed(chars=35))
+    double = page_layout(typed(spacing=100))
+    single = page_layout(typed(spacing=50))
+    narrow = page_layout(typed(chars=35))
     assert double.differs(single) > 2 and double.differs(narrow) > 2
 
 
 def test_too_little_writing_has_no_layout():
-    assert page_layout(*typed(lines=3)) is None
-    assert page_layout(typed()[0], None) is None
+    assert page_layout(typed(lines=3)) is None
 
 
 def test_rare_words_two_pages_share_count_and_common_ones_dont():
@@ -69,12 +70,12 @@ def page(pid, text, words=None, width=None, file_name=None):
 
 
 def test_pages_set_out_differently_are_kept_apart():
-    double, width = typed(spacing=100)
-    single, _ = typed(spacing=50)
+    double = typed(spacing=100)
+    single = typed(spacing=50)
     text = "\n".join(ln.text for ln in double)
-    a = page(1, text, [w for ln in double for w in ln.words], width)
-    b = page(2, text, [w for ln in single for w in ln.words], width)
-    c = page(3, text, [w for ln in double for w in ln.words], width)
+    a = page(1, text, [w for ln in double for w in ln.words], 2550)
+    b = page(2, text, [w for ln in single for w in ln.words], 2550)
+    c = page(3, text, [w for ln in double for w in ln.words], 2550)
     assert pair(a, b).features["layout_differs"] == 1.0
     assert "they're set out differently on the page" in pair(a, b).breaks
     assert pair(a, c, True).score > pair(a, b, True).score + 0.3

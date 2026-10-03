@@ -361,6 +361,10 @@ _HEADINGS = re.compile(
 )
 # "By Lindley C. Branson": an article, a story or a chapter starts here
 _BYLINE = re.compile(r"^[Bb]y\s+(?:[A-Z][a-z]*\.?\s*){1,4}$")
+# "Paid", "Paid. Thank you.", "Paid in full, T. Hale": a short line of its own, not "and paid no
+# attention" in a story
+_PAID = re.compile(r"^\W*paid\b", re.I)
+PAID_LINE = 40
 _DEED_END = re.compile(r"in\s+witness\s+whereof|notary\s+public|signed,?\s+sealed", re.I)
 _DEED_WORDS = re.compile(
     r"\b(grantor|grantee|hereby|premises|acres|conveyed?|indenture|heirs\s+and\s+assigns|deed)\b",
@@ -421,7 +425,7 @@ class PageClues:
             return f"starts with the heading “{self.heading}”"
         if self.letterhead:
             return f"has the letterhead “{self.letterhead}”"
-        if self.marker and self.marker[0] == 1:
+        if self.marker and self.marker_sure and self.marker[0] == 1:
             return "is numbered page 1"
         return None
 
@@ -434,8 +438,9 @@ class PageClues:
             return f"ends with “{self.closing}”"
         if self.ends_form:
             return f"ends with “{self.ends_form}”"
-        if self.marker and self.marker[1] and self.marker[0] == self.marker[1]:
-            return f"is numbered page {self.marker[0]} of {self.marker[1]}"
+        m = self.marker
+        if m and self.marker_sure and m[1] and m[0] == m[1]:
+            return f"is numbered page {m[0]} of {m[1]}"
         return None
 
     def facts(self) -> list[tuple[str, str, str | None, int]]:
@@ -558,9 +563,8 @@ def page_clues(
                 c.signature = sig[-1].rstrip(".,")
                 c.people.add(c.signature)
             break
-    tail = " ".join(body[-3:])
     if not c.closing:
-        if re.search(r"\bpaid\b", tail, re.I):
+        if any(_PAID.match(ln) and len(ln) <= PAID_LINE for ln in body[-3:]):
             c.ends_form = "Paid"
         elif m := _DEED_END.search(" ".join(body[-6:])):
             c.ends_form = m.group(0)

@@ -38,13 +38,17 @@ def pair_scores(pages: list[Page]) -> list[Pair]:
 
 
 def order(pages: list[Page]) -> tuple[list[Page], bool]:
-    """Reading order within a group, and whether the order is settled by clear evidence."""
+    """Reading order within a group, and whether the order is settled by clear evidence.
+
+    Pages keep the order they come in (scan order) unless a clue says otherwise: a page number,
+    a first page, a last page. A page number read with doubt doesn't move a page: a crease or a
+    speck by the edge of the paper is easily read as one."""
     if len(pages) == 1:
         return pages, True
     keys, last = [], 0.0
     for p in pages:
         c = p.clues
-        if c.marker:
+        if c.marker and c.marker_sure:
             k = float(c.marker[0])
         elif c.starts_doc:
             k = 0.5
@@ -57,7 +61,11 @@ def order(pages: list[Page]) -> tuple[list[Page], bool]:
             last = k
     ordered = [p for _, _, p in sorted(zip(keys, range(len(pages)), pages, strict=True))]
     # Settled when at most one page's place is a guess, or every step is backed by evidence.
-    pinned = sum(1 for p in pages if p.clues.marker or p.clues.starts_doc or p.clues.ends_doc)
+    pinned = sum(
+        1
+        for p in pages
+        if (p.clues.marker and p.clues.marker_sure) or p.clues.starts_doc or p.clues.ends_doc
+    )
     chained = all(
         pair(a, b, True).links and any(k.relation == "continues" for k in pair(a, b, True).links)
         for a, b in zip(ordered, ordered[1:], strict=False)

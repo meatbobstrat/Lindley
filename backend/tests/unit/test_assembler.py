@@ -420,6 +420,16 @@ def test_file_numbers_count_only_within_one_folder():
     assert [p.id for p in scan_order([other, third, second, first])] == [1, 2, 4, 3]
 
 
+def test_a_doubtful_page_number_doesnt_move_a_page():
+    from lindley.assembler.segment import order
+
+    stream = [Page(i, i, f"scan_{i:04d}.jpg", LETTER[1]) for i in (1, 2, 3)]
+    stream[0].clues.marker, stream[0].clues.marker_sure = (9, None), False
+    assert [p.id for p in order(stream)[0]] == [1, 2, 3]
+    stream[0].clues.marker_sure = True
+    assert [p.id for p in order(stream)[0]] == [2, 3, 1]
+
+
 def test_a_gap_in_the_page_numbers_says_which_page_is_missing():
     from lindley.assembler.model import Page
     from lindley.assembler.segment import missing_pages

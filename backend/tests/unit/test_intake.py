@@ -183,3 +183,43 @@ def test_a_file_cut_short_doesnt_look_complete(inbox):
         path.write_bytes(data[: len(data) * 2 // 3])
         assert not looks_complete(path), name
     assert looks_complete(make_tiff(inbox / "a.tif"))  # nothing to check: a steady size does
+
+
+def test_a_file_that_fails_again_isnt_quarantined_again(conn, settings, inbox):
+    src = inbox / "broken.jpg"
+    src.write_bytes(b"this is not a picture")
+    for _ in range(3):  # copy mode tries it again each time Lindley starts
+        assert import_file(conn, settings, src).status == "failed"
+    assert [q.name for q in settings.quarantine_dir.iterdir()] == ["broken.jpg"]
+    src.write_bytes(b"another broken file, by the same name")
+    import_file(conn, settings, src)
+    assert len(list(settings.quarantine_dir.iterdir())) == 2
+
+
+def test_move_mode_keeps_going_when_the_original_cant_be_removed(
+    conn, settings, inbox, monkeypatch
+):
+    settings.move_files = True
+    src = make_jpeg(inbox / "a.jpg")
+    unlink = Path.unlink
+
+    def locked(self, *a, **k):
+        if self == src:
+            raise PermissionError("in use by another process")
+        return unlink(self, *a, **k)
+
+    monkeypatch.setattr(Path, "unlink", locked)
+    r = import_file(conn, settings, src)
+    assert r.status == "new" and r.pages == 1 and src.exists()
+    monkeypatch.undo()
+    again = import_file(conn, settings, src)  # seen again once the other program let go
+    assert again.status == "duplicate" and not src.exists()
+
+
+def test_move_mode_removes_a_file_already_in_the_library(conn, settings, inbox):
+    first = make_jpeg(inbox / "a.jpg")
+    import_file(conn, settings, first)  # read in copy mode
+    settings.move_files = True
+    copy = make_jpeg(inbox / "copy of a.jpg")
+    assert import_file(conn, settings, copy).status == "duplicate"
+    assert not copy.exists()

@@ -1,14 +1,18 @@
 """Intake: bring one scan file into Lindley, then split it into pages.
 
 Steps (each recorded in intake_steps): hash, a verified copy into the library, exif, split.
-The original file is never altered. In move mode it is removed only once everything has worked;
-a file that fails is copied (or, in move mode, moved) to the quarantine folder.
+The original file is never altered. In move mode it is removed once its pages are in the
+library (reading works from Lindley's own copy), and a file already there is removed when it
+turns up again. A file that fails is copied (or, in move mode, moved) to the quarantine folder,
+once: the same file failing again isn't copied again.
 """
 
 from __future__ import annotations
 
+import glob
 import hashlib
 import json
+import logging
 import mimetypes
 import shutil
 import sqlite3
@@ -25,6 +29,8 @@ from lindley.worker.pipeline import Step, StepStatus, now, record_step, run_step
 
 if TYPE_CHECKING:
     from lindley.worker.pipeline import Pipeline
+
+log = logging.getLogger(__name__)
 
 SUPPORTED_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp", ".pdf"})
 PDF_DPI = 300
@@ -101,12 +107,16 @@ def import_file(
         return _quarantine(settings, path, ImportResult(path, "failed", error=str(e)))
 
     existing = conn.execute(
-        "SELECT s.id, s.status, (SELECT COUNT(*) FROM pages p WHERE p.scan_id = s.id) AS n"
+        "SELECT s.id, s.status, s.library_path,"
+        " (SELECT COUNT(*) FROM pages p WHERE p.scan_id = s.id) AS n"
         " FROM scans s WHERE s.sha256 = ?",
         (sha,),
     ).fetchone()
     # A file that failed before it was split can be tried again; anything else is a duplicate.
     if existing and not (existing["status"] == "failed" and existing["n"] == 0):
+        lib = existing["library_path"]
+        if settings.move_files and lib and Path(lib).is_file() and sha256_of(Path(lib)) == sha:
+            _remove_original(path)  # it's safe in the library already
         return ImportResult(path, "duplicate", existing["id"], existing["n"])
 
     try:
@@ -156,7 +166,7 @@ def import_file(
         return _quarantine(settings, path, ImportResult(path, "failed", scan_id, error=str(e)))
 
     if settings.move_files:
-        path.unlink()
+        _remove_original(path)
     return ImportResult(path, "new", scan_id, pages)
 
 
@@ -188,22 +198,52 @@ def _library_copy(settings: Settings, path: Path, sha: str) -> Path:
     return dest
 
 
+def _remove_original(path: Path) -> None:
+    """Move mode: remove the original. One another program has open stays for now; it's a
+    duplicate when it's next seen, and removed then."""
+    try:
+        path.unlink()
+    except OSError as e:
+        log.warning("Couldn't remove %s after reading it in: %s", path, e)
+
+
 def _quarantine(settings: Settings, path: Path, result: ImportResult) -> ImportResult:
-    """Put a failed file aside. Copy mode keeps the original where it was."""
+    """Put a failed file aside. Copy mode keeps the original where it was. A file already in
+    quarantine (copy mode tries a failed file again each time Lindley starts) isn't copied
+    again."""
     if not path.exists():
         return result
-    dest = settings.quarantine_dir / path.name
+    folder = settings.quarantine_dir
+    dest = folder / path.name
     if dest.exists():
         dest = dest.with_name(f"{path.stem}-{datetime.now(UTC):%Y%m%d%H%M%S%f}{path.suffix}")
     try:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if settings.move_files:
+        folder.mkdir(parents=True, exist_ok=True)
+        if _in_quarantine(folder, path):
+            if settings.move_files:
+                path.unlink()
+        elif settings.move_files:
             shutil.move(path, dest)
         else:
             shutil.copy2(path, dest)
     except OSError as e:
         result.error = f"{result.error}; also couldn't quarantine it: {e}"
     return result
+
+
+def _in_quarantine(folder: Path, path: Path) -> bool:
+    """A copy of this file is in quarantine already, under its name or a dated one."""
+    stem, suffix = glob.escape(path.stem), glob.escape(path.suffix)
+    try:
+        size, sha = path.stat().st_size, None
+        for q in [folder / path.name, *folder.glob(f"{stem}-*{suffix}")]:
+            if q.is_file() and q.stat().st_size == size:
+                sha = sha or sha256_of(path)
+                if sha256_of(q) == sha:
+                    return True
+    except OSError:
+        pass  # it can't be read: quarantine it anyway
+    return False
 
 
 def _iso(ts: float) -> str:

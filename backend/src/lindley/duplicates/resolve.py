@@ -192,7 +192,7 @@ def suggest_keep(copies: list[Copy]) -> tuple[int, list[str]]:
     best, rest = ranked[0], ranked[1:]
     why: list[str] = []
     if best.where == "document" and all(c.where != "document" for c in rest):
-        why.append(f"It's already in “{best.document_name}”")
+        why.append(f"It's already in {_quoted(best.document_name or '')}")
     if best.corrected and not any(c.corrected for c in rest):
         why.append("You've checked its text")
     others_conf = [c.confidence for c in rest if c.confidence is not None]
@@ -214,6 +214,11 @@ def suggest_keep(copies: list[Copy]) -> tuple[int, list[str]]:
             "Imported first" if _order(best, copies) == 0 else "The copies look equally good"
         )
     return best.page_id, why[:3]
+
+
+def _quoted(name: str) -> str:
+    """A name in quotes, unless it already has some (Lindley's guesses can)."""
+    return name if "“" in name else f"“{name}”"
 
 
 def _order(c: Copy, copies: list[Copy]) -> int:

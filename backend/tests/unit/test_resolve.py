@@ -174,3 +174,10 @@ def test_a_set_must_be_open_and_the_page_one_of_its_copies(conn):
     keep(conn, s.id, a)
     with pytest.raises(LookupError):
         keep(conn, s.id, a)
+
+
+def test_a_document_name_with_quotes_is_not_quoted_again(conn):
+    d = doc(conn, "Pages starting “SKETCH…”")
+    a, b = page(conn, d, 0), page(conn)
+    dup(conn, a, b)
+    assert open_sets(conn)[0].why[0] == "It's already in Pages starting “SKETCH…”"

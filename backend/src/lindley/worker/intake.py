@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from PIL import ExifTags, Image
+from PIL import ExifTags, Image, ImageOps
 
 from lindley.config import Settings
 from lindley.worker.image import exif_orientation
@@ -34,6 +34,9 @@ log = logging.getLogger(__name__)
 
 SUPPORTED_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp", ".pdf"})
 PDF_DPI = 300
+# PDF pages are never rendered bigger than this many pixels (an A3 page at 300 dpi is 17 million).
+MAX_RENDER_PX = 40_000_000
+_PNG_MODES = frozenset({"1", "L", "LA", "I", "I;16", "P", "RGB", "RGBA"})
 _EXIF_IFD = 0x8769
 # EXIF tags that say when the page was scanned, best first.
 _SCAN_TIME_TAGS = (36867, 36868, 306)  # DateTimeOriginal, DateTimeDigitized, DateTime
@@ -150,20 +153,28 @@ def import_file(
         record_step(conn, scan_id, Step.HASH, StepStatus.DONE, started_at=started)
 
     try:
-        with run_step(conn, scan_id, Step.EXIF), conn:
+        started = now()
+        try:
+            exif, exif_error = _exif(copy, mime), None
+        except Exception as e:  # metadata it can't make out doesn't stop the pages being read
+            exif, exif_error = (None, None, None, None), _in_words(e)
+        with conn:
             conn.execute(
                 "UPDATE scans SET file_created_at = ?, file_modified_at = ?, scanner_make = ?,"
                 " scanner_model = ?, scanned_at = ?, exif_json = ? WHERE id = ?",
-                (*_file_times(path), *_exif(copy, mime), scan_id),
+                (*_file_times(path), *exif, scan_id),
             )
+            status = StepStatus.FAILED if exif_error else StepStatus.DONE
+            record_step(conn, scan_id, Step.EXIF, status, started_at=started, error=exif_error)
         with run_step(conn, scan_id, Step.SPLIT):
             pages = _split(conn, settings, scan_id, copy, mime)
     except Exception as e:
+        error = _in_words(e)
         with conn:
             conn.execute(
-                "UPDATE scans SET status = 'failed', error = ? WHERE id = ?", (str(e), scan_id)
+                "UPDATE scans SET status = 'failed', error = ? WHERE id = ?", (error, scan_id)
             )
-        return _quarantine(settings, path, ImportResult(path, "failed", scan_id, error=str(e)))
+        return _quarantine(settings, path, ImportResult(path, "failed", scan_id, error=error))
 
     if settings.move_files:
         _remove_original(path)
@@ -320,6 +331,56 @@ def _dpi(img: Image.Image) -> int | None:
     return round(float(dpi[0])) if dpi and dpi[0] else None
 
 
+def _png_ready(img: Image.Image) -> Image.Image:
+    """The image in a mode PNG can store: CMYK and the like become RGB."""
+    if img.mode in _PNG_MODES:
+        return img
+    try:
+        return img.convert("RGBA" if "A" in img.mode else "RGB")
+    except ValueError:  # no direct conversion, e.g. 32-bit float
+        return img.convert("L").convert("RGB")
+
+
+def _pdf_scale(page) -> float:
+    """How much to enlarge a PDF page (in points, 1/72 inch) to render it.
+
+    PDF_DPI, unless that makes the picture enormous: a scan put into a PDF at 72 dpi has a page
+    four feet tall. Then the scan's own resolution (nothing it holds is lost), or failing that
+    whatever fits MAX_RENDER_PX.
+    """
+    w, h = page.get_size()
+    area = max(w * h, 1.0)
+    scale = PDF_DPI / 72
+    if area * scale**2 <= MAX_RENDER_PX:
+        return scale
+    native = _scan_scale(page)
+    if native and area * native**2 <= MAX_RENDER_PX:
+        return native
+    return 0.999 * (MAX_RENDER_PX / area) ** 0.5  # rendering rounds the sides up
+
+
+def _scan_scale(page) -> float | None:
+    """Pixels per point of the biggest picture on a PDF page: a scanned page is one picture."""
+    import pypdfium2.raw as pdfium_c
+
+    best, scale = 0.0, None
+    for obj in page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3):
+        left, bottom, right, top = obj.get_bounds()
+        shown = (right - left) * (top - bottom)
+        if shown > best:
+            best, scale = shown, max(obj.get_px_size()) / max(right - left, top - bottom)
+    return scale
+
+
+def _in_words(e: Exception) -> str:
+    if isinstance(e, Image.DecompressionBombError):
+        return (
+            "The picture is too big to read safely on this computer"
+            f" (over {Image.MAX_IMAGE_PIXELS * 2 // 1_000_000} million pixels)"
+        )
+    return str(e) or type(e).__name__
+
+
 def _split(
     conn: sqlite3.Connection, settings: Settings, scan_id: int, copy: Path, mime: str | None
 ) -> int:
@@ -333,10 +394,12 @@ def _split(
         try:
             out.mkdir(parents=True, exist_ok=True)
             for i in range(len(pdf)):
-                img = pdf[i].render(scale=PDF_DPI / 72).to_pil()
+                scale = _pdf_scale(pdf[i])
+                img = pdf[i].render(scale=scale).to_pil()
                 dest = out / f"{i:04d}.png"
-                img.save(dest, dpi=(PDF_DPI, PDF_DPI))
-                rows.append((i, dest, img.width, img.height, PDF_DPI, _color_mode(img.mode)))
+                dpi = round(scale * 72)
+                img.save(dest, dpi=(dpi, dpi))
+                rows.append((i, dest, img.width, img.height, dpi, _color_mode(img.mode)))
         finally:
             pdf.close()
     else:
@@ -353,8 +416,10 @@ def _split(
                     img.seek(i)
                     dest = out / f"{i:04d}.png"
                     dpi = _dpi(img)
-                    img.save(dest, **({"dpi": (dpi, dpi)} if dpi else {}))
-                    rows.append((i, dest, img.width, img.height, dpi, _color_mode(img.mode)))
+                    # Each page saved upright, as a viewer shows it: a PNG keeps no orientation.
+                    frame = _png_ready(ImageOps.exif_transpose(img))
+                    frame.save(dest, **({"dpi": (dpi, dpi)} if dpi else {}))
+                    rows.append((i, dest, frame.width, frame.height, dpi, _color_mode(frame.mode)))
     if not rows:
         raise ValueError("The file has no pages")
     with conn:

@@ -223,3 +223,64 @@ def test_move_mode_removes_a_file_already_in_the_library(conn, settings, inbox):
     copy = make_jpeg(inbox / "copy of a.jpg")
     assert import_file(conn, settings, copy).status == "duplicate"
     assert not copy.exists()
+
+
+def test_a_scan_put_in_a_pdf_at_72_dpi_isnt_rendered_enormous(conn, settings, inbox):
+    src = inbox / "big.pdf"
+    page(size=(2480, 3508)).save(src, "PDF")  # an A4 scan at 300 dpi, on a 34 x 49 inch page
+    r = import_file(conn, settings, src)
+    p = conn.execute("SELECT width_px, height_px, dpi FROM pages").fetchone()
+    assert r.status == "new" and (p["width_px"], p["height_px"], p["dpi"]) == (2480, 3508, 72)
+
+
+def test_a_huge_pdf_page_without_a_scan_is_rendered_within_the_limit(conn, settings, inbox):
+    import pypdfium2 as pdfium
+
+    from lindley.worker import intake
+
+    pdf = pdfium.PdfDocument.new()
+    pdf.new_page(72 * 40, 72 * 60)  # a 40 x 60 inch drawing, nothing in it but lines
+    pdf.save(inbox / "plan.pdf")
+    pdf.close()
+    import_file(conn, settings, inbox / "plan.pdf")
+    p = conn.execute("SELECT width_px, height_px FROM pages").fetchone()
+    assert p["width_px"] * p["height_px"] <= intake.MAX_RENDER_PX
+
+
+def test_tiff_pages_in_cmyk_are_kept_as_rgb(conn, settings, inbox):
+    imgs = [Image.new("CMYK", (200, 300)) for _ in range(2)]
+    imgs[0].save(inbox / "print.tif", save_all=True, append_images=imgs[1:])
+    r = import_file(conn, settings, inbox / "print.tif")
+    assert r.status == "new" and r.pages == 2
+    for (path,) in conn.execute("SELECT image_path FROM pages"):
+        with Image.open(path) as img:
+            assert img.mode == "RGB"
+
+
+def test_tiff_pages_turned_by_their_orientation_are_saved_upright(conn, settings, inbox):
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    imgs = [page(size=(300, 200)) for _ in range(2)]
+    imgs[0].save(inbox / "turned.tif", save_all=True, append_images=imgs[1:], exif=exif)
+    import_file(conn, settings, inbox / "turned.tif")
+    for p in conn.execute("SELECT image_path, width_px, height_px FROM pages"):
+        assert (p["width_px"], p["height_px"]) == (200, 300)
+        with Image.open(p["image_path"]) as img:
+            assert img.size == (200, 300)
+
+
+def test_exif_it_cant_make_out_doesnt_stop_the_pages(conn, settings, inbox, monkeypatch):
+    from lindley.worker import intake
+
+    monkeypatch.setattr(intake, "_exif", lambda *a: (_ for _ in ()).throw(SyntaxError("bad")))
+    r = import_file(conn, settings, make_jpeg(inbox / "a.jpg"))
+    assert r.status == "new" and r.pages == 1
+    assert ("exif", "failed") in steps(conn, r.scan_id) and ("split", "done") in steps(
+        conn, r.scan_id
+    )
+
+
+def test_a_picture_too_big_to_read_safely_says_so(conn, settings, inbox, monkeypatch):
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1000)
+    r = import_file(conn, settings, make_jpeg(inbox / "a.jpg"))
+    assert r.status == "failed" and "too big to read safely" in r.error

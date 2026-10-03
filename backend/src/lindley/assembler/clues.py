@@ -51,20 +51,196 @@ def parse_marker(line: str) -> tuple[int, int | None] | None:
     return None
 
 
-def _marker_from_words(words: list[dict], height: int) -> tuple[int, int | None] | None:
-    """A page number alone in the top or bottom 12% of the page, using word positions."""
-    band = 0.12 * height
-    rows: dict[int, list[dict]] = {}
-    for w in words:
-        x, y, _, h = w["bbox"]
+# OCR slips inside a page number: "1l" is 11, "2O" is 20. Only read this way next to a real
+# digit, so a lone "I" or "O" is never taken for a number.
+_SLIPS = str.maketrans(
+    {"l": "1", "I": "1", "i": "1", "|": "1", "!": "1", "O": "0", "o": "0", "Q": "0", "D": "0"}
+    | {"S": "5", "s": "5", "Z": "2", "z": "2", "B": "8"}
+)
+_NUMBER_EDGES = "-–—~()[]{}.,:;'\"‘’“”/\\*_«»#"
+MARKER_EDGE = 0.12  # page numbers sit in the top or bottom 12% of the page
+MARKER_MIN_CONF = 20  # an OCR guess below this is a speck, not a number
+
+
+def read_number(token: str) -> tuple[int, bool] | None:
+    """A page number in one OCR word: (number, whether an OCR slip was corrected)."""
+    t = token.strip(_NUMBER_EDGES)
+    if not t or len(t) > 3:
+        return None
+    if t.isdigit():
+        n, slipped = int(t), False
+    elif any(ch.isdigit() for ch in t) and (fixed := t.translate(_SLIPS)).isdigit():
+        n, slipped = int(fixed), True
+    else:
+        return None
+    return (n, slipped) if 0 < n <= 300 else None
+
+
+def is_junk(w: dict) -> bool:
+    """An OCR word that's a speck, a smudge or the edge of the paper rather than writing."""
+    text, conf = w["text"], w.get("conf", 100)
+    letters = sum(ch.isalpha() for ch in text)
+    if not letters and not any(ch.isdigit() for ch in text):
+        return True  # only marks: | — ~ =
+    if conf < 40:
+        return True
+    # An uncertain word counts as writing if it has a few letters and is mostly letters, like
+    # "L.C.Branson". Uncertain "oa", "re" and "(Gi" are usually smudges read as letters.
+    return conf < 70 and (letters <= 2 or letters < len(text) / 2)
+
+
+def rows(words: list[dict]) -> list[list[dict]]:
+    """Words grouped into rows by their height on the page, top to bottom, each left to right."""
+    out: list[tuple[float, float, list[dict]]] = []  # (centre, height, words)
+    for w in sorted(words, key=lambda w: w["bbox"][1] + w["bbox"][3] / 2):
+        _, y, _, h = w["bbox"]
         cy = y + h / 2
-        if cy < band or cy > height - band:
-            rows.setdefault(int(cy // max(h, 1)), []).append(w)
-    for row in rows.values():
-        marker = parse_marker(" ".join(w["text"] for w in sorted(row, key=lambda w: w["bbox"][0])))
-        if marker:
-            return marker
+        if out and abs(cy - out[-1][0]) <= 0.6 * max(out[-1][1], h, 1):
+            c, hh, ws = out[-1]
+            ws.append(w)
+            out[-1] = ((c * (len(ws) - 1) + cy) / len(ws), max(hh, h), ws)
+        else:
+            out.append((cy, h, [w]))
+    return [sorted(ws, key=lambda w: w["bbox"][0]) for _, _, ws in out]
+
+
+@dataclass
+class Marker:
+    number: int
+    total: int | None
+    sure: bool  # read cleanly, not guessed past OCR slips or a low-confidence reading
+    words: list[dict] = field(default_factory=list)  # the words it was read from
+
+
+def _marker_from_words(words: list[dict], height: int) -> Marker | None:
+    """A page number on a row of its own near the top or bottom of the page, using word
+    positions. Specks and smudges on the same row don't count against it."""
+    edge = MARKER_EDGE * height
+    rs = rows(words)
+    near = [r for r in rs if _centre(r[0]) < edge] + [
+        r for r in reversed(rs) if _centre(r[0]) > height - edge
+    ]
+    for row in near:
+        writing = [w for w in row if not is_junk(w)]
+        text = " ".join(w["text"] for w in row)
+        if m := parse_marker(text):
+            return Marker(m[0], m[1], min(w.get("conf", 100) for w in row) >= 60, row)
+        numbers = [
+            (n, w)
+            for w in row
+            if (n := read_number(w["text"])) and w.get("conf", 100) >= MARKER_MIN_CONF
+        ]
+        # A clear number beside doubtful ones: "95" read at 94% next to a "25" at 51%
+        clear = [x for x in numbers if x[1].get("conf", 100) >= 80]
+        if (
+            len(numbers) > 1
+            and len(clear) == 1
+            and all(x[1].get("conf", 100) < 60 for x in numbers if x is not clear[0])
+        ):
+            numbers = clear
+            writing = [w for w in writing if read_number(w["text"]) is None or w is clear[0][1]]
+        if len(numbers) == 1 and all(w is numbers[0][1] for w in writing):
+            (n, slipped), w = numbers[0]
+            return Marker(n, None, not slipped and w.get("conf", 100) >= 60, row)
     return None
+
+
+def _centre(w: dict) -> float:
+    return w["bbox"][1] + w["bbox"][3] / 2
+
+
+# ---------------------------------------------------------------- Lines and noise
+
+NOISE_LINES = 3  # at most this many noise lines are dropped from each end of a page
+
+
+@dataclass
+class Line:
+    text: str
+    words: list[dict] = field(default_factory=list)  # empty when the reading has no word boxes
+
+
+def text_lines(text: str, words: list[dict] | None = None) -> list[Line]:
+    """The reading's lines, each with its OCR words when the words match the text (Tesseract
+    writes each line as its words joined by spaces; a person's correction won't match)."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not words or sum(len(ln.split()) for ln in lines) != len(words):
+        return [Line(ln) for ln in lines]
+    out, i = [], 0
+    for ln in lines:
+        n = len(ln.split())
+        out.append(Line(ln, words[i : i + n]))
+        i += n
+    return _on_the_page(out)
+
+
+def _span(ws: list[dict]) -> tuple[float, float]:
+    return min(w["bbox"][1] for w in ws), max(w["bbox"][1] + w["bbox"][3] for w in ws)
+
+
+def _on_the_page(lines: list[Line]) -> list[Line]:
+    """Lines top to bottom as they sit on the page. Tesseract sometimes reads a word or two of
+    a line as a line of its own, out of order ("stage" before "Fellow passengers were"); a
+    scrap like that is put back into the line it sits beside."""
+    out = [Line(ln.text, list(ln.words)) for ln in lines]
+    for ln in [o for o in out if len(o.words) <= 3]:
+        lo, hi = _span(ln.words)
+        mid = (lo + hi) / 2
+        left, right = min(w["bbox"][0] for w in ln.words), max(_right(w) for w in ln.words)
+        home = next(
+            (
+                o
+                for o in out
+                if len(o.words) > 3
+                and _span(o.words)[0] <= mid <= _span(o.words)[1]
+                and not any(w["bbox"][0] < right and left < _right(w) for w in o.words)
+            ),
+            None,
+        )
+        if home:
+            home.words = sorted(home.words + ln.words, key=lambda w: w["bbox"][0])
+            home.text = " ".join(w["text"] for w in home.words)
+            out.remove(ln)
+    return sorted(out, key=lambda ln: sum(_span(ln.words)) / 2)  # stable: ties keep their order
+
+
+def _right(w: dict) -> float:
+    return w["bbox"][0] + w["bbox"][2]
+
+
+def is_noise(line: Line) -> bool:
+    """A line of specks and smudges: the edge of the paper, a hole punch, show-through."""
+    if not line.words:
+        return not re.search(r"[A-Za-z]{3}|\d", line.text)
+    real = [w for w in line.words if not is_junk(w)]
+    if not real or (len(real) <= 2 and len(real) < len(line.words) / 2):
+        return True
+    # A scrap of a few letters read with doubt: the cut-off edge of a line ("id", "on", "Tale")
+    letters = sum(ch.isalpha() for w in line.words for ch in w["text"])
+    return letters < 6 and sum(w.get("conf", 100) for w in line.words) / len(line.words) < 75
+
+
+def trim_noise(lines: list[Line]) -> list[Line]:
+    """Drop noise lines from the top and bottom of a page, and specks before the first word
+    and after the last, so the page's real first and last lines show."""
+    out = list(lines)
+    for _ in range(NOISE_LINES):
+        if out and is_noise(out[0]):
+            out.pop(0)
+    for _ in range(NOISE_LINES):
+        if out and is_noise(out[-1]):
+            out.pop()
+    if out and out[0].words:
+        ws = out[0].words
+        while len(ws) > 1 and is_junk(ws[0]):
+            ws = ws[1:]
+        out[0] = Line(" ".join(w["text"] for w in ws), ws)
+    if out and out[-1].words:
+        ws = out[-1].words
+        while len(ws) > 1 and is_junk(ws[-1]):
+            ws = ws[:-1]
+        out[-1] = Line(" ".join(w["text"] for w in ws), ws)
+    return out
 
 
 # ---------------------------------------------------------------- Dates
@@ -211,6 +387,7 @@ _MID_START = re.compile(r"^[a-z]")
 @dataclass
 class PageClues:
     marker: tuple[int, int | None] | None = None  # (page number, total)
+    marker_sure: bool = False  # read cleanly: no OCR slips, good confidence
     salutation: str | None = None
     letterhead: str | None = None
     heading: str | None = None
@@ -261,7 +438,14 @@ class PageClues:
         out: list[tuple[str, str, str | None, int]] = []
         if self.marker:
             n, total = self.marker
-            out.append(("page_marker", f"{n}" + (f" of {total}" if total else ""), str(n), 85))
+            out.append(
+                (
+                    "page_marker",
+                    f"{n}" + (f" of {total}" if total else ""),
+                    str(n),
+                    85 if self.marker_sure else 55,
+                )
+            )
         for kind, val in (
             ("salutation", self.salutation),
             ("letterhead", self.letterhead),
@@ -316,19 +500,23 @@ def page_clues(
     else:
         c.file_prefix = stem.lower()
 
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     stripped = re.sub(r"\s+", "", text)
     if (blank_score is not None and blank_score >= 0.97) or len(stripped) < 15:
         c.kind = "blank"
         return c
 
     # A page number is a number with nothing else on its line, at the very top or bottom.
-    if words and height:
-        c.marker = _marker_from_words(words, height)
-    body = list(lines)
+    lines = text_lines(text, words)
+    if words and height and (found := _marker_from_words(words, height)):
+        c.marker, c.marker_sure = (found.number, found.total), found.sure
+        taken = {id(w) for w in found.words}
+        lines = [ln for ln in lines if not (ln.words and all(id(w) in taken for w in ln.words))]
+    lines = trim_noise(lines)
+    body = [ln.text for ln in lines]
     for i in (0, -1):
         if body and (m := parse_marker(body[i])):
-            c.marker = c.marker or m
+            if not c.marker:
+                c.marker, c.marker_sure = m, True
             body.pop(i)
     if not body:
         c.kind = "blank"

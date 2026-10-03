@@ -37,8 +37,8 @@ from lindley.db.database import connect, init_db
 from lindley.providers.registry import get_provider
 
 
-def show(conn, truth, s: Score, label: str, calls: int) -> None:
-    print(f"{label}: {s.row()}  (AI calls {calls})")
+def show(conn, truth, s: Score, label: str, calls: int, asks: tuple[int, int]) -> None:
+    print(f"{label}: {s.row()}  (AI calls {calls}, left for it {asks[0]} windows {asks[1]} pages)")
     for r in conn.execute(
         "SELECT d.name, d.grouping_confidence, GROUP_CONCAT(p.id) ids FROM documents d"
         " JOIN pages p ON p.document_id = d.id GROUP BY d.id"
@@ -50,7 +50,9 @@ def show(conn, truth, s: Score, label: str, calls: int) -> None:
         )
 
 
-def run(seed: int, ai: str, verbose: bool, real=None, order: str = "") -> tuple[Score, int, tuple]:
+def run(
+    seed: int, ai: str, verbose: bool, real=None, order: str = ""
+) -> tuple[Score, int, tuple, tuple[int, int]]:
     with tempfile.TemporaryDirectory() as tmp:
         db = Path(tmp) / "bench.db"
         init_db(db)
@@ -69,21 +71,30 @@ def run(seed: int, ai: str, verbose: bool, real=None, order: str = "") -> tuple[
             chat = OracleChat(truth)
         elif ai == "settings":
             chat = get_provider(settings.ai, "assemble")
-        calls = assemble(conn, settings.assembler, chat).ai_calls
+        r = assemble(conn, settings.assembler, chat)
+        calls, asks = r.ai_calls, (r.ai_windows, r.ai_pages)
         if batch and batch.late:
             late = load(conn, batch.late, start_seq=len(batch.pages) + 50)
             truth |= late
             if isinstance(chat, OracleChat):
                 chat.truth = truth
-            calls += assemble(conn, settings.assembler, chat).ai_calls
+            r = assemble(conn, settings.assembler, chat)
+            calls += r.ai_calls
+            asks = (asks[0] + r.ai_windows, asks[1] + r.ai_pages)
         s = score(conn, truth)
         if verbose:
-            show(conn, truth, s, f"{order or 'seed'} {seed:3d}", calls)
+            show(conn, truth, s, f"{order or 'seed'} {seed:3d}", calls, asks)
         conn.close()
-        return s, calls, proposal
+        return s, calls, proposal, asks
 
 
-def report(label: str, scores: list[Score], calls: list[int], proposals: list[tuple]) -> None:
+def report(
+    label: str,
+    scores: list[Score],
+    calls: list[int],
+    proposals: list[tuple],
+    asks: list[tuple[int, int]],
+) -> None:
     n = len(scores)
     mean = lambda f: sum(getattr(s, f) for s in scores) / n  # noqa: E731
     made, wrong = sum(s.documents_made for s in scores), sum(s.wrong_documents for s in scores)
@@ -97,6 +108,7 @@ def report(label: str, scores: list[Score], calls: list[int], proposals: list[tu
         f"  rebuilt exactly {mean('exact'):.1%}, of those in the right order {mean('ordered'):.1%}"
     )
     print(f"  pages left in the Inbox {mean('inbox_left'):.1%}   AI calls {sum(calls)}")
+    print(f"  left for the AI: {sum(a[0] for a in asks)} windows, {sum(a[1] for a in asks)} pages")
     pr, rc, f1, ex, od = (sum(x[i] for x in proposals) / n for i in range(5))
     print(
         f"  proposed (before confidence): precision {pr:.3f}  recall {rc:.3f}  F1 {f1:.3f}"
@@ -117,16 +129,16 @@ def main() -> None:
         docs = pdf_answers(src)
         print(f"{len(docs)} documents, {sum(map(len, docs))} pages, from {a.real}  AI: {a.ai}")
         for order in a.orders.split(","):
-            scores, calls, proposals = zip(
+            scores, calls, proposals, asks = zip(
                 *(run(s, a.ai, a.verbose, (src, docs), order) for s in range(a.seeds or 10)),
                 strict=True,
             )
-            report(order, list(scores), list(calls), list(proposals))
+            report(order, list(scores), list(calls), list(proposals), list(asks))
         return
-    scores, calls, proposals = zip(
+    scores, calls, proposals, asks = zip(
         *(run(s, a.ai, a.verbose) for s in range(a.seeds or 30)), strict=True
     )
-    report(f"made-up batches, AI: {a.ai}", list(scores), list(calls), list(proposals))
+    report(f"made-up batches, AI: {a.ai}", list(scores), list(calls), list(proposals), list(asks))
 
 
 if __name__ == "__main__":

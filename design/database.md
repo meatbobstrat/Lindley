@@ -197,6 +197,15 @@ The rules were written knowing what the bench generates, so these numbers are a 
 
 Almost none of it becomes a document yet. A group of pages that's no kind the rules know (letter, receipt, deed, diary) can't reach `group_at`, so typescripts stay in the Inbox. Shuffled pages have little to go on but page numbers, which few of these pages show.
 
+**What's left for the AI.** Paid AI should be the last resort, so the bench also counts what the rules leave for it: the windows `ai.refine` would be asked about, and their pages, whether or not an AI is connected (`RunReport.ai_windows`, `ai_pages`). Every change to the assembler should lower these without building fewer documents right.
+
+| Bench | Windows | Pages | Pages fed in |
+|---|---|---|---|
+| Made-up, 30 batches | 88 | 242 | 603 |
+| Real, in order, 10 runs | 57 | 440 | 450 |
+| Real, some swapped | 54 | 435 | 450 |
+| Real, shuffled | 61 | 393 | 450 |
+
 **Fitting the weights.** `scripts/fit_assembler.py` fits the weights to made-up batches and real PDFs (`learn.py`: Newton steps on the L2-penalised log-loss, in plain Python), and tests each real document left out in turn. Fitted weights predicted single pairs much better (89% right on documents left out, against 65%) but built worse documents on both benches, so the shipped weights are hand-set and checked on both. Shared rare words stay at 0: in the made-up batches, whose letters share one pool of sentences, they joined a late page to the wrong letter. With more labelled documents (for example, documents people confirm), fitting is the way to set them.
 
 ## Duplicates

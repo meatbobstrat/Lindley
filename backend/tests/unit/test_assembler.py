@@ -201,6 +201,8 @@ def test_without_ai_the_same_pages_wait_in_the_inbox(conn):
     load(conn, pages(AMBIGUOUS))
     report = assemble(conn)
     assert report.ai_calls == 0 and report.documents_created == 0 and report.inbox_left == 2
+    # What the AI would have been asked about is still counted, to measure the rules by
+    assert report.ai_windows == 1 and report.ai_pages == 2
 
 
 def _pages():

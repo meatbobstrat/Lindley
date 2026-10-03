@@ -28,6 +28,9 @@ class RunReport:
     hints: int = 0
     set_aside_hints: int = 0
     ai_calls: int = 0
+    # What the rules left for the AI, whether or not one was asked: windows and their pages
+    ai_windows: int = 0
+    ai_pages: int = 0
     ai_rejected: list[str] = field(default_factory=list)
     inbox_left: int = 0
 
@@ -208,8 +211,11 @@ def assemble(
     groups, pairs, ordered = segment(pages)
 
     # The AI looks only at what the rules couldn't settle.
+    windows = _ai_windows(groups, pairs, ordered, cfg.ai_band)
+    report.ai_windows = len(windows)
+    report.ai_pages = sum(len(g.pages) for w in windows for g in w)
     if chat:
-        for window in _ai_windows(groups, pairs, ordered, cfg.ai_band):
+        for window in windows:
             if not ai_left():
                 break
             report.ai_calls += 1

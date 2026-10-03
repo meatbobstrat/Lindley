@@ -49,7 +49,7 @@
       "openai": {
         "type": "openai",
         "label": "OpenAI",
-        "model": "gpt-4o",
+        "model": "gpt-6.1-sol",
         "api_key_env": "OPENAI_API_KEY",
         "allow": "ask",
         "daily_limit": 50,
@@ -60,7 +60,7 @@
       "gemini": {
         "type": "google",
         "label": "Gemini",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.8-flash",
         "allow": "ask",
         "daily_limit": 50,
         "monthly_limit": 1000,

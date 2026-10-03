@@ -9,7 +9,10 @@
     `registry.get_provider(ai, job)` builds the one settings give a job (`vision`, `assemble`,
     `chat`, `embed`), wrapped in its connection's throttle (`throttle.py`). Connectors are files
     in `providers/connectors/`, found at start-up: `local`, `anthropic`, `openai`, `google`,
-    `openai_compat` and `fake` (for tests); `_openai_wire.py` and `_http.py` are shared helpers.
+    `openai_compat` and `fake` (for tests). Each calls its AI through the company's own library
+    (`anthropic`, `openai`, `google-genai`), as its docs recommend: never hand-written HTTP.
+    `_openai_chat.py` (Chat Completions, for OpenAI-compatible servers) and `_common.py` (errors
+    in words, images) are shared helpers.
     `keys.py`: API keys in the system credential store (keyring)
   - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
     `pipeline.py` (step records, Tesseract/vision reading), `ocr/` engines
@@ -35,6 +38,8 @@
   API keys live in the credential store (`providers/keys.py`), or the env var named by a
   provider's `api_key_env`. Tests use an in-memory keyring (conftest).
 - Tests use `FakeProvider` and temp dirs. They never touch real providers or the network:
-  connector tests run on `httpx.MockTransport`.
+  connector tests run on `httpx2.MockTransport` (Anthropic, OpenAI) or `httpx.MockTransport`
+  (Google).
 - Local AI and ML must run on an ordinary laptop: no GPU, no heavy ML packages.
 - Make one commit per logical step, after tests and lint pass, and push to `origin main`.
+- Do web searches when neccessary to confirm you are using up to date best practices when planning and coding.

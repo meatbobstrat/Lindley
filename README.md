@@ -28,7 +28,7 @@ Lindley is in early development and isn't usable end to end yet.
 | Database | Schema v5 designed and tested ([design/database.md](design/database.md)) |
 | Assembler (Inbox pages → documents) | Built; scored on synthetic batches and on real assembled typescripts |
 | Intake (hash, EXIF, split) and Tesseract reading | Built; try it on your scans with `scripts/intake.py` |
-| AI connections (a local AI, Anthropic, OpenAI, Google) | Built: one file per connector, a connection per job, limits and throttling, keys in Windows Credential Manager. Tried against made-up servers; not yet on real scans with each AI |
+| AI connections (a local AI, Anthropic, OpenAI, Google) | Built: one file per connector, each calling its AI through the company's own library; a connection per job, limits and throttling, keys in Windows Credential Manager. Tried against made-up servers; not yet on real scans with each AI |
 | Vision model reading (handwriting) | Built into intake, through any AI connection that can read pages |
 | Folder watcher | Built; runs with the backend |
 | Image checks (blank pages, rotation, handwriting or print) | Built, and tried on a first sample of real typewritten scans |
@@ -103,7 +103,8 @@ watched folders ─► watcher ─► intake ───────────�
   - Every call is recorded: which AI, what for, and whether you OKed it.
   - Pages are reduced before they're sent (2000 px on the longer side, as JPEG).
   - A call that failed is never repeated on its own. The one exception: when the AI says it's
-    busy, Lindley waits as long as it asks (at most a minute) and tries again, at most twice.
+    busy, the AI company's library waits as long as it asks and tries again, a few times.
+  - Cloud AIs are asked not to keep what's sent (OpenAI and Google keep it unless asked).
 - **Runs on an ordinary laptop.** Matching pages uses rules and a small model in plain Python,
   with no graphics card and no heavy machine-learning packages. A local AI is optional.
 - **Private by default.** Lindley works with an AI on your own computer (Ollama, LM Studio).
@@ -270,9 +271,23 @@ every file there is found when Lindley starts. To add one, drop in a module that
   jobs need (`chat` and `chat_stream`, `transcribe`, `embed`), plus `check()`, which Test
   connection uses.
 
-A service that speaks the OpenAI API needs only `INFO` and a subclass of `OpenAIWire` (see
-`google.py`). Test it against a made-up server with `httpx.MockTransport`, as
-`tests/unit/test_connectors.py` does. Settings and first-run setup list it with no other change.
+Call the AI through its company's own Python library, the way the company's documentation
+shows, rather than writing the HTTP requests by hand. The library keeps up with changes to the
+AI's API (updating it is usually all a change needs) and tries again when the AI is busy.
+`_common.py` turns its errors into messages a person can read. Each built-in connector follows
+its company's advice:
+
+| Connector | Library | API |
+| --- | --- | --- |
+| `anthropic` | `anthropic` | Messages, with refusal fallbacks on the models that have them |
+| `openai` | `openai` | Responses (embeddings: Embeddings), `store=False` |
+| `google` | `google-genai` | Interactions (embeddings: `embed_content`), `store=False` |
+| `local`, `openai_compat` | `openai`, at the server's address | Chat Completions, which Ollama, LM Studio and vLLM all support |
+
+A service that speaks the OpenAI API needs only `INFO` and a subclass of `OpenAIChat` (see
+`local.py`). Test it against a made-up server, as `tests/unit/test_connectors.py` does:
+`httpx2.MockTransport` for the Anthropic and OpenAI libraries, `httpx.MockTransport` for
+Google's. Settings and first-run setup list it with no other change.
 
 ## Tests
 
@@ -312,7 +327,9 @@ folders.
 - [ ] Settings in the app, built from the mockup
 - [ ] Advanced settings (hidden from standard users): an interface for creating custom connectors. They're files too, built the same way as the built-in ones
 - [x] When each AI may be used: ask first or automatic, with a daily and a monthly limit; every call recorded
-- [x] Throttling each AI: calls a minute and at once, and waiting when it's busy
+- [x] Throttling each AI: calls a minute and at once
+- [ ] Settings lists the models each AI offers (each library can list them), so the defaults
+  can't go out of date
 - [ ] AI spending: a monthly limit, and the cost of each call
 - [ ] Suggest groups of pages Lindley isn't sure of (typescripts, notes) for a person to confirm
 - [ ] One-click installer (Windows/Mac), with Tesseract included

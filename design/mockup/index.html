@@ -2210,9 +2210,9 @@ const CONNECTORS = {
   anthropic: { label: 'Anthropic (Claude)', short: 'Claude', where: 'cloud', company: 'Anthropic', jobs: ['vision', 'assemble', 'chat'], url: '', needsKey: true,
     models: { vision: 'claude-opus-5', assemble: 'claude-opus-5', chat: 'claude-opus-5' } },
   openai: { label: 'OpenAI', short: 'OpenAI', where: 'cloud', company: 'OpenAI', jobs: ALL_JOBS, url: '', needsKey: true,
-    models: { vision: 'gpt-4o', assemble: 'gpt-4o', chat: 'gpt-4o', embed: 'text-embedding-3-small' } },
+    models: { vision: 'gpt-6.1-sol', assemble: 'gpt-6.1-sol', chat: 'gpt-6.1-sol', embed: 'text-embedding-3-small' } },
   google: { label: 'Google (Gemini)', short: 'Gemini', where: 'cloud', company: 'Google', jobs: ALL_JOBS, url: '', needsKey: true,
-    models: { vision: 'gemini-2.5-flash', assemble: 'gemini-2.5-flash', chat: 'gemini-2.5-flash', embed: 'gemini-embedding-001' } },
+    models: { vision: 'gemini-3.8-flash', assemble: 'gemini-3.8-flash', chat: 'gemini-3.8-flash', embed: 'gemini-embedding-2' } },
   openai_compat: { label: 'Another OpenAI-compatible service', short: 'Cloud AI', where: 'cloud', company: '', jobs: ALL_JOBS, url: 'https://', needsKey: true, models: {} },
 };
 const canDo = (c, job) => !!CONNECTORS[c.vendor]?.jobs.includes(job);

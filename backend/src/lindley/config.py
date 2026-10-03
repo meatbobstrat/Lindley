@@ -27,7 +27,8 @@ class OcrSettings(BaseModel):
 
 
 class ProviderConfig(BaseModel):
-    type: Literal["anthropic", "openai_compat", "fake"]
+    # The connector's id: a file in providers/connectors/, e.g. "local", "anthropic", "google".
+    type: str
     base_url: str | None = None
     model: str | None = None
     # Name of the environment variable holding the API key; keys never live in settings.json.

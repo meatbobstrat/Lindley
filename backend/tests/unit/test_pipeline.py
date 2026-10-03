@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw
 from lindley.assembler import assemble
 from lindley.config import Settings
 from lindley.db.database import connect, init_db
-from lindley.providers.fake import FakeProvider
+from lindley.providers.connectors.fake import FakeProvider
 from lindley.worker.intake import import_file
 from lindley.worker.ocr.base import PageResult
 from lindley.worker.pipeline import Pipeline, waiting_for_vision

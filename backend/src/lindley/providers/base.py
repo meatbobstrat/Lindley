@@ -1,14 +1,18 @@
 """Provider-neutral interfaces for AI models used by chat, OCR and search.
 
-Concrete adapters (Anthropic, OpenAI-compatible, fake) implement these so the rest of
-the app never depends on a specific vendor SDK or on local-vs-hosted models.
+Connectors (one file each in `connectors/`) implement these so the rest of the app never
+depends on a specific vendor's API or on local-vs-hosted models.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, runtime_checkable
+
+# The jobs Lindley gives an AI. They match ai_calls.purpose in the database.
+Job = Literal["vision", "assemble", "chat", "embed"]
+JOBS: tuple[Job, ...] = ("vision", "assemble", "chat", "embed")
 
 
 @dataclass(frozen=True)
@@ -42,5 +46,29 @@ class EmbeddingProvider(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
+@dataclass(frozen=True)
+class ConnectorInfo:
+    """What a connector is, for settings and the UI. Each connector file defines one as INFO."""
+
+    id: str  # the provider's `type` in settings.json
+    label: str  # e.g. "Anthropic (Claude)"
+    where: Literal["local", "cloud"]  # local: runs on computers you control
+    jobs: frozenset[Job]  # the jobs it can do
+    default_models: Mapping[Job, str] = field(default_factory=dict)
+    company: str | None = None  # who sees your pages; None when it runs on your own computers
+    default_base_url: str | None = None
+    needs_key: bool = False
+    key_url: str | None = None  # where to get a key
+    hidden: bool = False  # not offered in the UI (the fake connector for tests)
+
+
 class ProviderError(RuntimeError):
     """Raised when a provider is misconfigured or a call fails."""
+
+
+class ProviderBusy(ProviderError):
+    """The AI said it's busy (HTTP 429, 503 or 529): try again after `retry_after` seconds."""
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after

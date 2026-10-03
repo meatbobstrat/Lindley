@@ -24,11 +24,14 @@ HASH_DETAIL = 8  # a hash with fewer set (or unset) bits is a near-empty page; d
 EXIF_ORIENTATION = 0x0112
 
 # Script: a line Tesseract read with at least LINE_PRINTED mean confidence looks printed, one
-# below LINE_HAND looks handwritten. MOSTLY of the lines decides; SHARE of each kind is mixed.
+# below LINE_HAND looks handwritten; typewriting on old paper often lands in between. MOSTLY of
+# the lines handwritten decides; SHARE of each kind is mixed; with few handwritten lines, a page
+# is printed if PRINTED_SHARE of its lines clearly look it.
 LINE_PRINTED = 75
 LINE_HAND = 50
 MOSTLY = 0.7
 SHARE = 0.2
+PRINTED_SHARE = 0.4
 
 
 @dataclass(frozen=True)
@@ -126,8 +129,9 @@ def classify_script(words: list[dict] | None, blank_score: float | None) -> str 
     """'none', 'printed', 'handwritten' or 'mixed' from Tesseract's words; None when unsure.
 
     Tesseract reads print with high confidence and handwriting poorly, so confidence line by
-    line is a fair first guess. A printed letterhead over a handwritten letter is 'handwritten'
-    unless the print makes up a real share of the lines. Typed and printed aren't told apart.
+    line is a fair first guess. A typed page with a few handwritten corrections is 'printed';
+    once the handwriting is a real share of the lines it's 'mixed'. A printed letterhead over a
+    handwritten letter is 'handwritten'. Typed and printed aren't told apart.
     """
     if blank_score is not None and blank_score >= BLANK_AT:
         return "none"
@@ -136,13 +140,11 @@ def classify_script(words: list[dict] | None, blank_score: float | None) -> str 
         return None  # ink Tesseract couldn't read: handwriting, a drawing or a picture
     printed = sum(c >= LINE_PRINTED for c in lines) / len(lines)
     hand = sum(c < LINE_HAND for c in lines) / len(lines)
-    if printed >= MOSTLY:
-        return "printed"
     if hand >= MOSTLY:
         return "handwritten"
-    if printed >= SHARE and hand >= SHARE:
-        return "mixed"
-    return None
+    if hand >= SHARE:
+        return "mixed" if printed >= SHARE else None
+    return "printed" if printed >= PRINTED_SHARE else None
 
 
 def _line_confidences(words: list[dict]) -> list[float]:

@@ -117,6 +117,17 @@ def line(y, confs, h=20):
         (line(10, [20, 35]) + line(40, [12, 40]) + line(70, [30]), 0.7, "handwritten"),
         (line(10, [92, 96]) + line(40, [20, 15]) + line(70, [30, 25]), 0.7, "mixed"),
         (line(10, [60, 65]) + line(40, [62]), 0.7, None),
+        # Typewriting on old paper: many middling lines, one handwritten correction.
+        (
+            line(10, [80])
+            + line(40, [85])
+            + line(70, [66])
+            + line(100, [70])
+            + line(130, [90])
+            + line(160, [30]),
+            0.6,
+            "printed",
+        ),
         ([], 0.5, None),
     ],
 )

@@ -21,6 +21,7 @@ class Page:
     blank_score: float | None = None
     phash: str | None = None
     paper_color: str | None = None
+    copies: frozenset[int] = frozenset()  # pages that look like this page scanned again
     clues: PageClues = field(init=False)
 
     def __post_init__(self) -> None:

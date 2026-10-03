@@ -302,3 +302,36 @@ def test_a_turned_page_is_measured_upright(conn):
     conn.execute("UPDATE pages SET detected_rotation = 90 WHERE id = (SELECT min(id) FROM pages)")
     conn.commit()
     assert [p.height for p in load_inbox(conn)] == [1000, 1400]
+
+
+# ---------------------------------------------------------------- Copies of a page
+
+
+def test_a_page_scanned_twice_never_shares_a_document_with_its_copy(conn):
+    ids = list(load(conn, pages([LETTER[0], LETTER[1], LETTER[1], LETTER[2], LAST])))
+    conn.execute(
+        "INSERT INTO duplicates (page_a, page_b, kind, score) VALUES (?, ?, 'same_page', 95)",
+        (ids[1], ids[2]),
+    )
+    conn.commit()
+    assemble(conn)
+    docs = {r[0]: r[1] for r in conn.execute("SELECT id, document_id FROM pages")}
+    assert docs[ids[1]] is None or docs[ids[1]] != docs[ids[2]]
+
+
+def test_copies_are_a_hard_break():
+    a = Page(1, 1, "scan_0001.jpg", LETTER[0], copies=frozenset({2}))
+    b = Page(2, 1, "scan_0001.jpg", LETTER[1], page_index=1)
+    p = pair(a, b)
+    assert p.score == 0 and p.breaks == ["the two scans are copies of the same page"]
+
+
+def test_a_page_is_not_added_to_a_document_holding_its_copy():
+    from lindley.assembler.run import DocEnds, _best_match
+
+    first, last = Page(1, 1, "a.jpg", LETTER[0]), Page(2, 2, "b.jpg", LETTER[1])
+    doc = DocEnds(9, "Letter", first, last, False, frozenset({1, 2}))
+    late = Page(3, 3, "c.jpg", LETTER[2], copies=frozenset({2}))
+    assert _best_match(Group([late], 60), [doc]) is None
+    stranger = Page(4, 4, "d.jpg", LETTER[2])
+    assert _best_match(Group([stranger], 60), [doc]) is not None

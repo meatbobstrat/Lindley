@@ -52,6 +52,8 @@ def _hex_close(a: str | None, b: str | None) -> bool:
 def pair(a: Page, b: Page, is_adjacent: bool | None = None) -> Pair:
     """How likely it is that page b follows page a in the same document."""
     ca, cb = a.clues, b.clues
+    if b.id in a.copies or a.id in b.copies:
+        return Pair(0.0, breaks=["the two scans are copies of the same page"])
     adj = adjacent(a, b) if is_adjacent is None else is_adjacent
     p = Pair(0.62 if adj else 0.3)
     if adj:

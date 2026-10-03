@@ -39,6 +39,7 @@ class DocEnds:
     first: Page
     last: Page
     touched: bool  # a person has named, changed or reviewed it: Lindley only suggests
+    page_ids: frozenset[int] = frozenset()
 
 
 _PAGE_SQL = """
@@ -51,7 +52,18 @@ JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1
 """
 
 
-def _page(r: sqlite3.Row) -> Page:
+def _copies(conn: sqlite3.Connection) -> dict[int, frozenset[int]]:
+    """For each page, the pages that look like it scanned again (open same-page duplicates)."""
+    out: dict[int, set[int]] = {}
+    for a, b in conn.execute(
+        "SELECT page_a, page_b FROM duplicates WHERE status = 'open' AND kind = 'same_page'"
+    ):
+        out.setdefault(a, set()).add(b)
+        out.setdefault(b, set()).add(a)
+    return {k: frozenset(v) for k, v in out.items()}
+
+
+def _page(r: sqlite3.Row, copies: dict[int, frozenset[int]] | None = None) -> Page:
     return Page(
         r["id"],
         r["scan_id"],
@@ -65,6 +77,7 @@ def _page(r: sqlite3.Row) -> Page:
         r["blank_score"],
         r["phash"],
         r["paper_color"],
+        (copies or {}).get(r["id"], frozenset()),
     )
 
 
@@ -78,11 +91,13 @@ def load_inbox(conn: sqlite3.Connection) -> list[Page]:
     rows = conn.execute(
         _PAGE_SQL + " WHERE p.document_id IS NULL AND p.set_aside_at IS NULL AND s.status = 'read'"
     ).fetchall()
-    return [_page(r) for r in rows]
+    copies = _copies(conn)
+    return [_page(r, copies) for r in rows]
 
 
 def load_open_documents(conn: sqlite3.Connection) -> list[DocEnds]:
     docs = []
+    copies = _copies(conn)
     for d in conn.execute(
         """SELECT d.id, d.name, (d.origin = 'user' OR d.name_source = 'user' OR EXISTS (
                SELECT 1 FROM history h WHERE h.actor = 'user' AND h.target_type = 'document'
@@ -94,7 +109,14 @@ def load_open_documents(conn: sqlite3.Connection) -> list[DocEnds]:
         ).fetchall()
         if rows:
             docs.append(
-                DocEnds(d["id"], d["name"], _page(rows[0]), _page(rows[-1]), bool(d["touched"]))
+                DocEnds(
+                    d["id"],
+                    d["name"],
+                    _page(rows[0], copies),
+                    _page(rows[-1], copies),
+                    bool(d["touched"]),
+                    frozenset(r["id"] for r in rows),
+                )
             )
     return docs
 
@@ -133,6 +155,8 @@ def _best_match(g: Group, docs: list[DocEnds]) -> tuple[DocEnds, bool, int, list
     Returns (document, whether the group goes at its end, score 0-100, reasons)."""
     best = None
     for d in docs:
+        if any(p.copies & d.page_ids for p in g.pages):
+            continue  # the document already holds a copy of one of these pages
         tries = []
         if not g.pages[0].clues.starts_doc and not d.last.clues.ends_doc:
             tries.append((True, pair(d.last, g.pages[0])))

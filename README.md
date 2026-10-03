@@ -274,6 +274,8 @@ every file there is found when Lindley starts. To add one, drop in a module that
 Call the AI through its company's own Python library, the way the company's documentation
 shows, rather than writing the HTTP requests by hand. The library keeps up with changes to the
 AI's API (updating it is usually all a change needs) and tries again when the AI is busy.
+Dependabot (`.github/dependabot.yml`) opens a pull request each week a library has a new
+release, and CI tests it; a new major version comes in a pull request of its own.
 `_common.py` turns its errors into messages a person can read. Each built-in connector follows
 its company's advice:
 

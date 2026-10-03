@@ -1,0 +1,23 @@
+# Keeps the AI companies' libraries current: a pull request when one has a new release, which CI
+# then tests against the connectors' made-up servers.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-name: anthropic
+      - dependency-name: openai
+      - dependency-name: google-genai
+    # Raise the lowest version in pyproject.toml, so each release gets its own pull request and
+    # CI run, even when it's already inside the allowed range.
+    versioning-strategy: increase
+    groups:
+      # New features and fixes together; a new major version, which can break things, on its own
+      ai-libraries:
+        patterns: [anthropic, openai, google-genai]
+        update-types: [minor, patch]
+    # Wait a few days after a release, in case it's pulled or found to be bad
+    cooldown:
+      default-days: 3

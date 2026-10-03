@@ -237,6 +237,53 @@ def test_a_failing_ai_leaves_the_rules_in_charge(conn):
     assert report.documents_created == 1
 
 
+def _farm_notes(req):
+    a, b = (p["id"] for p in req["pages"])
+    return {
+        "documents": [{"pages": [a, b], "name": "Farm notes", "confidence": 60}],
+        "unplaced": [],
+    }
+
+
+def test_the_same_question_is_never_paid_for_twice(conn):
+    load(conn, pages(AMBIGUOUS))
+    ai = Scripted(lambda req: json.dumps(_farm_notes(req)))
+    first = assemble(conn, AI_ON, chat=ai)
+    assert first.ai_calls == 1 and ai.calls == 1
+    # Not confident enough to make a document, so the pages wait in the Inbox; the next run
+    # uses the AI's earlier answer instead of asking again, even with no AI allowed now.
+    for again in (assemble(conn, AI_ON, chat=ai), assemble(conn)):
+        assert again.ai_calls == 0 and again.ai_reused == 1
+    assert ai.calls == 1
+    assert conn.execute("SELECT purpose FROM ai_answers").fetchall()[0][0] == "assemble"
+
+
+def test_a_page_read_again_is_a_new_question(conn):
+    a, _ = load(conn, pages(AMBIGUOUS))
+    ai = Scripted(lambda req: json.dumps(_farm_notes(req)))
+    assemble(conn, AI_ON, chat=ai)
+    conn.execute(
+        "UPDATE transcriptions SET text = text || ' Wheat was dear.' WHERE page_id = ?", (a,)
+    )
+    assert assemble(conn, AI_ON, chat=ai).ai_calls == 1 and ai.calls == 2
+
+
+def test_a_rejected_reply_is_kept_but_a_failed_call_is_not(conn):
+    load(conn, pages(AMBIGUOUS))
+    ai = Scripted("Sure! These pages go together.")
+    assemble(conn, AI_ON, chat=ai)
+    assert assemble(conn, AI_ON, chat=ai).ai_reused == 1 and ai.calls == 1
+
+    conn.execute("DELETE FROM ai_answers")
+
+    class Broken:
+        def chat(self, messages):
+            raise ConnectionError("no route to host")
+
+    assert assemble(conn, AI_ON, chat=Broken()).ai_calls == 1
+    assert not conn.execute("SELECT 1 FROM ai_answers").fetchone()
+
+
 def test_the_ai_is_asked_no_more_than_it_may_be(conn):
     load(conn, pages(AMBIGUOUS))
     ai = Scripted("{}")

@@ -241,7 +241,23 @@ def test_v4_database_gains_the_ai_call_record(tmp_path):
     init_db(db)
     c = connect(db)
     assert "ai_calls" in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
-    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 5
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    c.close()
+
+
+def test_v5_database_gains_the_kept_ai_answers(tmp_path):
+    from importlib.resources import files
+
+    db = tmp_path / "v5.db"
+    schema = files("lindley.db").joinpath("schema.sql").read_text(encoding="utf-8")
+    c = sqlite3.connect(db)
+    c.executescript(schema.split("-- " + "-" * 64 + " AI answers")[0] + "PRAGMA user_version = 5;")
+    assert "ai_answers" not in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
+    c.close()
+    init_db(db)
+    c = connect(db)
+    assert "ai_answers" in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 6
     c.close()
 
 

@@ -2,7 +2,8 @@
 
 The AI only ever sees page text and the rules' clues, never images, and only for pages the
 rules couldn't settle. Its reply is checked strictly; anything off and the rules' answer stands.
-The AI never writes to the database.
+The AI never writes to the database. With `answers` (lindley.assembler.answers), a question asked
+before is answered from the earlier reply, with no call.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import json
 import re
 from dataclasses import dataclass
 
+from lindley.assembler.answers import Answers
 from lindley.assembler.model import Group, Page
 from lindley.providers.base import ChatMessage, ChatProvider
 
@@ -36,8 +38,8 @@ For each document you get its id and the start of its text. Reply with JSON only
 
 @dataclass
 class AiResult:
-    groups: list[Group] | None  # None: the reply was rejected
-    problem: str = ""
+    groups: list[Group] | None  # None: the reply was rejected, or there was none
+    problem: str = ""  # why it was rejected; empty when the AI wasn't asked
 
 
 def _page_json(p: Page) -> dict:
@@ -88,17 +90,38 @@ def _clean_reasons(v: object) -> list[str]:
     )
 
 
-def refine(chat: ChatProvider, pages: list[Page], proposal: list[Group]) -> AiResult:
-    """Ask the AI to group and order these pages. Checks the reply before trusting it."""
+def _ask(
+    chat: ChatProvider | None,
+    answers: Answers | None,
+    purpose: str,
+    system: str,
+    question: dict,
+    extra: dict,
+    page_ids: list[int],
+) -> str | None:
+    messages = [ChatMessage("system", system), ChatMessage("user", json.dumps(question | extra))]
+    if answers:
+        return answers.ask(chat, purpose, messages, question, page_ids)
+    return chat.chat(messages) if chat else None
+
+
+def refine(
+    chat: ChatProvider | None,
+    pages: list[Page],
+    proposal: list[Group],
+    answers: Answers | None = None,
+) -> AiResult:
+    """Ask the AI to group and order these pages. Checks the reply before trusting it.
+    Without `chat`, only an earlier reply in `answers` is used."""
     by_id = {p.id: p for p in pages}
-    request = {
-        "pages": [_page_json(p) for p in pages],
-        "rules_proposal": [{"pages": g.ids, "confidence": g.confidence} for g in proposal],
-    }
+    question = {"pages": [_page_json(p) for p in pages]}
+    proposed = {"rules_proposal": [{"pages": g.ids, "confidence": g.confidence} for g in proposal]}
     try:
-        reply = chat.chat([ChatMessage("system", SYSTEM), ChatMessage("user", json.dumps(request))])
+        reply = _ask(chat, answers, "assemble", SYSTEM, question, proposed, list(by_id))
     except Exception as e:  # noqa: BLE001 - any provider failure means "use the rules"
         return AiResult(None, f"the AI call failed: {e}")
+    if reply is None:
+        return AiResult(None)
     data = _parse(reply)
     if not data or not isinstance(data.get("documents"), list):
         return AiResult(None, "the reply wasn't the JSON asked for")
@@ -145,20 +168,22 @@ def refine(chat: ChatProvider, pages: list[Page], proposal: list[Group]) -> AiRe
     return AiResult(groups)
 
 
-def suggest_names(chat: ChatProvider, groups: list[Group]) -> dict[int, str]:
-    """Better names for groups whose rules-made name is only a placeholder. Index -> name."""
-    request = {
+def suggest_names(
+    chat: ChatProvider | None, groups: list[Group], answers: Answers | None = None
+) -> dict[int, str]:
+    """Better names for groups whose rules-made name is only a placeholder. Index -> name.
+    Without `chat`, only an earlier reply in `answers` is used."""
+    question = {
         "documents": [
             {"id": i, "start": g.pages[0].text.strip()[:400]} for i, g in enumerate(groups)
         ]
     }
+    ids = [p.id for g in groups for p in g.pages]
     try:
-        reply = chat.chat(
-            [ChatMessage("system", NAME_SYSTEM), ChatMessage("user", json.dumps(request))]
-        )
+        reply = _ask(chat, answers, "name", NAME_SYSTEM, question, {}, ids)
     except Exception:  # noqa: BLE001
         return {}
-    data = _parse(reply) or {}
+    data = _parse(reply or "") or {}
     names = data.get("names") if isinstance(data.get("names"), dict) else {}
     out = {}
     for k, v in names.items():

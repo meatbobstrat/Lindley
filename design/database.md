@@ -47,6 +47,7 @@ erDiagram
 | `duplicates` | page pair | Two pages that look like the same page scanned again (`same_page`), or that have very similar text (`similar`), with the evidence and a person's decision. |
 | `duplicate_checks`, `text_sketch` | page | Which reading each page was checked for duplicates with, and the page's text sketch for finding candidates. |
 | `ai_calls` | call to an AI | Which connection, what for (reading a page, sorting pages), whether Lindley made it on its own or a person OKed it, and whether it worked. Keeps the daily and monthly limits and shows what was sent where. |
+| `ai_answers` | question to an AI | The AI's reply about some pages, known by what it was shown, so the same question is never paid for twice. |
 
 Settings stay in `settings.json`. API keys stay in Windows Credential Manager and never go in the database.
 
@@ -161,6 +162,7 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
 4. **AI** (`ai.py`), only when the chat AI may be used: its connection's `allow` is `auto` and today's limit isn't used up, or a person OKed it. The AI is asked only about breaks scoring 35–75 and groups whose order isn't settled. It gets page text and clues, never images.
    - Its reply must use every page given exactly once, and no others. Anything else is rejected and the rules' answer stands.
    - It also suggests names where the rules could only guess.
+   - **Every reply is kept** (`answers.py`, table `ai_answers`), known by what the AI was shown: the pages' ids, text and clues, and the instructions. The rules' proposal is left out, since it shifts as new scans arrive beside the pages. Pages the AI looked at but that still wait in the Inbox are answered from that reply on later runs, with no call, even when the AI may not be called now. A reply that was rejected is kept too; a call that failed isn't. Change a page's reading and it's a new question.
 5. **Saving** (`apply.py`), in one transaction:
 
    | Situation | What Lindley does |

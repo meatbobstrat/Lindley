@@ -10,6 +10,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from lindley.assembler import ai, apply
+from lindley.assembler.answers import Answers
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page, weigh_terms
 from lindley.assembler.segment import segment
@@ -28,6 +29,7 @@ class RunReport:
     hints: int = 0
     set_aside_hints: int = 0
     ai_calls: int = 0
+    ai_reused: int = 0  # questions answered from the AI's earlier replies, with no call
     # What the rules left for the AI, whether or not one was asked: windows and their pages
     ai_windows: int = 0
     ai_pages: int = 0
@@ -194,11 +196,15 @@ def assemble(
 ) -> RunReport:
     """Sort the Inbox. With `chat`, the AI is asked about what the rules couldn't settle:
     passing it is the OK to call it (see lindley.providers.allowance), at most `max_ai_calls`
-    times if given. Without it, the rules decide alone."""
+    times if given. Without it, the rules decide alone, helped only by what the AI already said
+    about the same pages (lindley.assembler.answers), which costs nothing."""
     cfg = cfg or AssemblerSettings()
+    answers = Answers(conn)
 
-    def ai_left() -> bool:
-        return chat is not None and (max_ai_calls is None or report.ai_calls < max_ai_calls)
+    def may_ask() -> ChatProvider | None:
+        if chat is not None and (max_ai_calls is None or answers.calls < max_ai_calls):
+            return chat
+        return None
 
     report = RunReport()
     pages = load_inbox(conn)
@@ -214,17 +220,14 @@ def assemble(
     windows = _ai_windows(groups, pairs, ordered, cfg.ai_band)
     report.ai_windows = len(windows)
     report.ai_pages = sum(len(g.pages) for w in windows for g in w)
-    if chat:
-        for window in windows:
-            if not ai_left():
-                break
-            report.ai_calls += 1
-            result = ai.refine(chat, [p for g in window for p in g.pages], window)
-            if result.groups is None:
+    for window in windows:
+        result = ai.refine(may_ask(), [p for g in window for p in g.pages], window, answers)
+        if result.groups is None:
+            if result.problem:
                 report.ai_rejected.append(result.problem)
-                continue
-            gone = {id(g) for g in window}
-            groups = [g for g in groups if id(g) not in gone] + result.groups
+            continue
+        gone = {id(g) for g in window}
+        groups = [g for g in groups if id(g) not in gone] + result.groups
 
     links = [
         (a.id, b.id, k)
@@ -276,9 +279,8 @@ def assemble(
                 waiting.append(g)
         new = [g for g in waiting if g.confidence >= cfg.group_at]
         made = {id(g) for g in new}
-        if ai_left() and (guess := [g for g in new if g.name_is_guess]):
-            report.ai_calls += 1
-            for i, name in ai.suggest_names(chat, guess).items():
+        if guess := [g for g in new if g.name_is_guess]:
+            for i, name in ai.suggest_names(may_ask(), guess, answers).items():
                 guess[i].name, guess[i].name_is_guess = name, False
         for g in new:
             doc_id = apply.create_document(conn, g)
@@ -292,4 +294,5 @@ def assemble(
         apply.save_links(conn, [p.id for p in pages], links)
         apply.mark_matched(conn, {p.scan_id for p in pages})
     report.inbox_left = report.considered - report.pages_grouped - report.pages_added
+    report.ai_calls, report.ai_reused = answers.calls, answers.reused
     return report

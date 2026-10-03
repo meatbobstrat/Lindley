@@ -318,3 +318,16 @@ CREATE TABLE IF NOT EXISTS ai_calls (
     at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_ai_calls_provider ON ai_calls(provider, at);
+
+-- ---------------------------------------------------------------- AI answers
+
+-- The AI's replies about pages, so the same question is never paid for twice
+-- (lindley.assembler.answers). A question is known by what the AI was shown; change a page's
+-- reading and it's a new question.
+CREATE TABLE IF NOT EXISTS ai_answers (
+    key        TEXT PRIMARY KEY,                    -- sha256 of the question
+    purpose    TEXT NOT NULL CHECK (purpose IN ('assemble', 'name')),
+    page_ids   TEXT NOT NULL,                       -- JSON list of the pages it was about
+    reply      TEXT NOT NULL,                       -- as the AI gave it, checked again on use
+    at         TEXT NOT NULL DEFAULT (datetime('now'))
+);

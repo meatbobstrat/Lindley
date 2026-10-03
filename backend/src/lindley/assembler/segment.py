@@ -123,6 +123,8 @@ def _reasons(pages: list[Page], inside: list[Pair]) -> list[str]:
     markers = [p.clues.marker[0] for p in pages if p.clues.marker]
     if len(markers) >= 2 and markers == sorted(markers):
         out.append(f"Page numbers {markers[0]}–{markers[-1]} run in order")
+        if missing := missing_pages(pages):
+            out.append(missing)
     if first.starts_doc:
         out.append(f"The first page {first.starts_doc}")
     if last.ends_doc and len(pages) > 1:
@@ -143,6 +145,20 @@ def _reasons(pages: list[Page], inside: list[Pair]) -> list[str]:
     ):
         out.append("They were scanned one after another with nothing to suggest a break")
     return out[:5]
+
+
+def missing_pages(pages: list[Page]) -> str | None:
+    """Pages the page numbers say are missing: 'Page 4 seems to be missing'. Only when every
+    page is numbered, so a page whose number didn't read isn't taken for a missing one."""
+    numbers = [p.clues.marker[0] for p in pages if p.clues.marker]
+    if len(numbers) != len(pages) or len(numbers) < 2 or numbers != sorted(set(numbers)):
+        return None
+    gaps = sorted(set(range(numbers[0], numbers[-1] + 1)) - set(numbers))
+    if not gaps or len(gaps) > 3:
+        return None
+    if len(gaps) == 1:
+        return f"Page {gaps[0]} seems to be missing"
+    return f"Pages {', '.join(map(str, gaps[:-1]))} and {gaps[-1]} seem to be missing"
 
 
 def make_group(

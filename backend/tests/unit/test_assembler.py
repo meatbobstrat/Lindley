@@ -339,3 +339,15 @@ def test_a_page_is_not_added_to_a_document_holding_its_copy():
     assert _best_match(Group([late], 60), [doc]) is None
     stranger = Page(4, 4, "d.jpg", LETTER[2])
     assert _best_match(Group([stranger], 60), [doc]) is not None
+
+
+def test_a_gap_in_the_page_numbers_says_which_page_is_missing():
+    from lindley.assembler.model import Page
+    from lindley.assembler.segment import missing_pages
+
+    def numbered(n):
+        return Page(n, n, f"scan_{n:04d}.jpg", f"{n}\nand so the story went on and on.")
+
+    assert missing_pages([numbered(1), numbered(2), numbered(4)]) == "Page 3 seems to be missing"
+    assert missing_pages([numbered(1), numbered(4)]) == "Pages 2 and 3 seem to be missing"
+    assert missing_pages([numbered(1), numbered(2), numbered(3)]) is None

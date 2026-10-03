@@ -400,3 +400,35 @@ def test_a_gap_in_the_page_numbers_says_which_page_is_missing():
     assert missing_pages([numbered(1), numbered(2), numbered(4)]) == "Page 3 seems to be missing"
     assert missing_pages([numbered(1), numbered(4)]) == "Pages 2 and 3 seem to be missing"
     assert missing_pages([numbered(1), numbered(2), numbered(3)]) is None
+
+
+# ---------------------------------------------------------------- Linking pages scanned apart
+
+RECEIPT = (
+    "BELLBROOK MERCANTILE\nSold to J. Hale\n2 bu. seed oats .......... 1.20\n"
+    "TOTAL ...... 1.20\nPaid"
+)
+
+
+def _stream(texts):
+    return [Page(i, i, f"scan_{i:04d}.jpg", t) for i, t in enumerate(texts, 1)]
+
+
+def test_parts_of_a_letter_scanned_apart_are_joined():
+    from lindley.assembler.segment import segment
+
+    first = LETTER[0] + "\n- 1 -"  # numbered, and ends mid-sentence: page 2 clearly follows
+    groups, _, _ = segment(_stream([first, RECEIPT, LETTER[1], LETTER[2], LAST]))
+    letter = next(g for g in groups if 1 in g.ids)
+    assert letter.ids == [1, 3, 4, 5]
+    assert "Parts scanned apart were joined" in letter.reasons
+
+
+def test_a_page_two_that_could_follow_either_page_one_joins_neither():
+    from lindley.assembler.segment import segment
+
+    body = "The road ran north over the summit and down the long grade toward the camp"
+    one = body + "\nand the wagons came on over the"
+    two = "- 2 -\nlong bridge at noon and went on.\n" + body
+    groups, _, _ = segment(_stream([one, RECEIPT, one + " old", RECEIPT, two, RECEIPT, two]))
+    assert not any(len([p for p in g.pages if "summit" in p.text]) > 1 for g in groups)

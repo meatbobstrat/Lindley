@@ -3,6 +3,12 @@
 This is "page stream segmentation": pages usually arrive in the order they were scanned, and
 documents are usually scanned one after another, so the job is mostly deciding where one
 document ends and the next begins.
+
+Pages are linked to the page that follows them (`link`): each page has at most one page after it
+and one before, and no loop, and the chains are the documents in reading order. Neighbours in scan
+order are linked first, since scan order is the strongest single hint. Then loose ends are joined
+over the whole Inbox, best links first, and only where the link is clear and has no close rival.
+It's a path cover, the usual cheap way to put pages scanned apart back together.
 """
 
 from __future__ import annotations
@@ -14,6 +20,10 @@ from lindley.assembler.evidence import Pair, adjacent, pair
 from lindley.assembler.model import Group, Page, weigh_terms
 
 CUT_BELOW = 0.5  # neighbouring pages scoring below this are split into different documents
+SURE_LINK = 0.7  # a group's order is settled when every step in it scores at least this
+JOIN_AT = 0.75  # pages scanned apart are joined when one continues the other this clearly
+SWAPPED_AT = 0.6  # the same for two pages fed through the scanner the wrong way round
+MARGIN = 0.1  # ... and nothing else comes this close for either of them
 
 
 def scan_order(pages: list[Page]) -> list[Page]:
@@ -23,18 +33,6 @@ def scan_order(pages: list[Page]) -> list[Page]:
 def pair_scores(pages: list[Page]) -> list[Pair]:
     """Scores between each page and the next, in scan order."""
     return [pair(a, b) for a, b in zip(pages, pages[1:], strict=False)]
-
-
-def split(pages: list[Page], pairs: list[Pair]) -> list[tuple[int, int]]:
-    """(start, end) index ranges of each run of pages that belong together."""
-    runs, start = [], 0
-    for i, p in enumerate(pairs):
-        if p.score < CUT_BELOW:
-            runs.append((start, i + 1))
-            start = i + 1
-    if pages:
-        runs.append((start, len(pages)))
-    return runs
 
 
 def order(pages: list[Page]) -> tuple[list[Page], bool]:
@@ -187,51 +185,103 @@ def make_group(
 
 
 def segment(pages: list[Page]) -> tuple[list[Group], list[Pair], list[Page]]:
-    """Groups of pages in scan order, with the neighbour scores and the scan order used."""
+    """Groups of pages, with the neighbour scores and the scan order used."""
     if not any(p.terms for p in pages):
         weigh_terms(pages)
     ordered = scan_order(pages)
     pairs = pair_scores(ordered)
+    return linked_groups(ordered, pairs), pairs, ordered
+
+
+# ---------------------------------------------------------------- Linking over the whole Inbox
+
+
+def link(ordered: list[Page], pairs: list[Pair]) -> tuple[list[list[int]], dict]:
+    """Chains of page indexes, each in reading order, and the links joining pages scanned apart.
+
+    1. Neighbours in scan order are linked wherever they score CUT_BELOW or more.
+    2. Loose ends are joined, best first: a chain that doesn't end to one that doesn't start,
+       when one clearly continues the other (JOIN_AT; SWAPPED_AT for two pages fed through the
+       wrong way round) and nothing else comes within MARGIN for either end. Page numbers alone
+       don't do it when several documents have a page 4 to follow a page 3."""
+    n = len(ordered)
+    after: list[int | None] = [None] * n
+    before: list[int | None] = [None] * n
+    root = list(range(n))
+
+    def find(i: int) -> int:
+        while root[i] != i:
+            root[i] = root[root[i]]
+            i = root[i]
+        return i
+
+    def join(i: int, j: int) -> None:
+        after[i], before[j] = j, i
+        root[find(i)] = find(j)
+
+    for i, p in enumerate(pairs):
+        if p.score >= CUT_BELOW:
+            join(i, i + 1)
+
+    tails = [i for i in range(n) if after[i] is None and not ordered[i].clues.ends_doc]
+    heads = [j for j in range(n) if before[j] is None and not ordered[j].clues.starts_doc]
+    edges: dict[tuple[int, int], Pair] = {}
+    for i in tails:
+        for j in heads:
+            if find(i) != find(j):
+                a, b = ordered[i], ordered[j]
+                swapped = j == i - 1  # b was scanned just before a
+                edges[(i, j)] = pair(a, b, swapped or adjacent(a, b))
+    ranked = sorted(edges.items(), key=lambda e: (-e[1].score, e[0]))
+
+    def bar(i: int, j: int) -> float:
+        return SWAPPED_AT if j == i - 1 else JOIN_AT
+
+    for (i, j), p in ranked:
+        if p.score < min(JOIN_AT, SWAPPED_AT):
+            break
+        if p.score < bar(i, j) or after[i] is not None or before[j] is not None:
+            continue
+        if find(i) == find(j):
+            continue
+        rivals = [
+            q.score
+            for (x, y), q in edges.items()
+            if (x, y) != (i, j)
+            and (x == i or y == j)
+            and after[x] is None
+            and before[y] is None
+            and find(x) != find(y)
+        ]
+        if max(rivals, default=0.0) > p.score - MARGIN:
+            continue
+        join(i, j)
+
+    chains = []
+    for i in range(n):
+        if before[i] is None:
+            chain = [i]
+            while (k := after[chain[-1]]) is not None:
+                chain.append(k)
+            chains.append(chain)
+    return sorted(chains, key=min), edges
+
+
+def linked_groups(ordered: list[Page], pairs: list[Pair]) -> list[Group]:
+    chains, edges = link(ordered, pairs)
     groups = []
-    for s, e in split(ordered, pairs):
-        groups.append(
-            make_group(
-                ordered[s:e],
-                pairs[s : e - 1],
-                pairs[s - 1] if s > 0 else None,
-                pairs[e - 1] if e - 1 < len(pairs) else None,
-            )
-        )
-    return stitch(groups), pairs, ordered
-
-
-def stitch(groups: list[Group]) -> list[Group]:
-    """Join a group missing its end to a later group missing its start, when one clearly continues
-    the other. This catches pages of one document that weren't scanned next to each other."""
-    out = list(groups)
-    changed = True
-    while changed:
-        changed = False
-        for i, g in enumerate(out):
-            if g.set_aside or g.pages[-1].clues.ends_doc:
-                continue
-            for j, h in enumerate(out):
-                if j == i or h.set_aside or h.pages[0].clues.starts_doc:
-                    continue
-                a, b = g.pages[-1], h.pages[0]
-                # b scanned just before a is the usual sign of two pages fed through swapped.
-                swapped = adjacent(b, a)
-                link = pair(a, b, is_adjacent=swapped or adjacent(a, b))
-                if link.score >= (0.6 if swapped else 0.75):
-                    inside = [
-                        pair(a, b, True)
-                        for a, b in zip(g.pages + h.pages, (g.pages + h.pages)[1:], strict=False)
-                    ]
-                    merged = make_group(g.pages + h.pages, inside, None, None)
-                    merged.reasons.append("Two parts scanned apart were joined")
-                    out = [x for k, x in enumerate(out) if k not in (i, j)] + [merged]
-                    changed = True
-                    break
-            if changed:
-                break
-    return out
+    for chain in chains:
+        steps = list(zip(chain, chain[1:], strict=False))
+        inside = [pairs[i] if j == i + 1 else edges[(i, j)] for i, j in steps]
+        members = set(chain)
+        # How sure the breaks around it are: its neighbours in scan order, unless they're in it
+        first, last = chain[0], chain[-1]
+        left = pairs[first - 1] if first > 0 and first - 1 not in members else None
+        right = pairs[last] if last < len(pairs) and last + 1 not in members else None
+        g = make_group([ordered[i] for i in chain], inside, left, right)
+        if any(j != i + 1 for i, j in steps):
+            g.reasons.append("Parts scanned apart were joined")
+        if not g.order_settled and [p.id for p in g.pages] == [ordered[i].id for i in chain]:
+            g.order_settled = all(p.score >= SURE_LINK for p in inside)
+        groups.append(g)
+    return groups

@@ -157,9 +157,10 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    - what the scanner saw: a pause of over ten minutes between two scans (the EXIF time, else the file's), sheets differing by more than half an inch, another resolution or colour mode, handwriting beside typing. These are measured but weighed at nothing until there are scans to set them by: the real scans so far were all scanned alike, and pauses fall mid-document as often as between documents (one archive's 178 scans took 45–90 seconds a page, and many pauses of 2–25 minutes came before a page that starts mid-sentence).
 
    A reason is shown to a person only when its evidence counts towards the pages going together. Each is saved in `page_links` with a readable note (`same_writer` for layout, `similar_text` for shared words).
-3. **Grouping** (`segment.py`). Pages are put in scan order and cut wherever the score falls below 0.5.
-   - **Order within a group:** page numbers first, then greeting first and signature last, then scan order.
-   - **Rejoining parts scanned apart:** a group that lacks its end is joined to a group that lacks its start when one clearly continues the other. This catches two pages fed through the scanner swapped.
+3. **Grouping** (`segment.py`). Each page is linked to the page that follows it, and the chains of links are the documents: each page has at most one page after it and one before, and there are no loops (a path cover).
+   - **Scan order first.** Neighbours in scan order are linked wherever they score 0.5 or more. Scan order is the strongest single hint.
+   - **Then loose ends, over the whole Inbox, best first.** A chain that doesn't end is joined to one that doesn't start when one clearly continues the other (0.75; 0.6 for two pages fed through the scanner the wrong way round), and no other loose end comes within 0.1 of it, for either page. Without that last rule, page 3 of one typescript was joined to page 4 of another: typescripts by one author share page numbers, and nearly every page ends mid-sentence.
+   - **Order within a group:** page numbers first, then greeting first and signature last, then the chain. The order counts as settled, so the AI isn't asked about it, when every link in the chain scores 0.7 or more.
    - **Confidence:** each group gets one (0–100), based on how sure the breaks inside and around it are. It drops when the group has no clear start or end (a page may be missing), except for diaries.
 4. **AI** (`ai.py`), only when the chat AI may be used: its connection's `allow` is `auto` and today's limit isn't used up, or a person OKed it. The AI is asked only about breaks scoring 35–75 and groups whose order isn't settled. It gets page text and clues, never images.
    - Its reply must use every page given exactly once, and no others. Anything else is rejected and the rules' answer stands.
@@ -203,12 +204,12 @@ Almost none of it becomes a document yet. A group of pages that's no kind the ru
 
 **What's left for the AI.** Paid AI should be the last resort, so the bench also counts what the rules leave for it: the windows `ai.refine` would be asked about, and their pages, whether or not an AI is connected (`RunReport.ai_windows`, `ai_pages`). Every change to the assembler should lower these without building fewer documents right.
 
-| Bench | Windows | Pages | Pages fed in |
+| Bench | Pages fed in | Pages left for the AI: at first | linking chains |
 |---|---|---|---|
-| Made-up, 30 batches | 88 | 242 | 603 |
-| Real, in order, 10 runs | 57 | 440 | 450 |
-| Real, some swapped | 54 | 435 | 450 |
-| Real, shuffled | 61 | 393 | 450 |
+| Made-up, 30 batches | 603 | 242 (88 windows) | 204 (73) |
+| Real, in order, 10 runs | 450 | 440 (57) | 440 (57) |
+| Real, some swapped | 450 | 435 (54) | 435 (54) |
+| Real, shuffled | 450 | 393 (61) | 392 (59) |
 
 **Fitting the weights.** `scripts/fit_assembler.py` fits the weights to made-up batches and real PDFs (`learn.py`: Newton steps on the L2-penalised log-loss, in plain Python), and tests each real document left out in turn. Fitted weights predicted single pairs much better (89% right on documents left out, against 65%) but built worse documents on both benches, so the shipped weights are hand-set and checked on both. Shared rare words stay at 0: in the made-up batches, whose letters share one pool of sentences, they joined a late page to the wrong letter. With more labelled documents (for example, documents people confirm), fitting is the way to set them.
 

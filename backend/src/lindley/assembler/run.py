@@ -249,6 +249,15 @@ def assemble(
         for a, b, p in zip(ordered, ordered[1:], pairs, strict=False)
         for k in p.links
     ]
+    # And what joins pages of one group that weren't scanned one after the other
+    scanned_next = {(a.id, b.id) for a, b in zip(ordered, ordered[1:], strict=False)}
+    links += [
+        (a.id, b.id, k)
+        for g in groups
+        for a, b in zip(g.pages, g.pages[1:], strict=False)
+        if (a.id, b.id) not in scanned_next
+        for k in pair(a, b).links
+    ]
 
     with conn:
         apply.save_clues(conn, pages)

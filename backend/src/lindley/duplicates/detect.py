@@ -14,8 +14,14 @@ Pages with too little text (a note, a drawing, unread handwriting) are compared 
 picture of their contents instead (worker.image.image_signature). That's never certain, so a
 match is only ever "similar".
 
-On a sample of 17 real typewritten scans: re-scans J 0.45 and 0.39, R 0.79 and 0.67; two drafts
-of one passage J 0.17, C 0.45; unrelated pages J 0.07 and R 0.29 at most.
+Two texts can be much alike yet not the same page: a sheet and a piece of it scanned on its own,
+or a page and a retyped version with a paragraph added. Then their lengths differ, so the same
+page also needs texts about as long (SAME_LENGTH); otherwise the pair is only "similar".
+
+On 178 real typewritten scans: re-scans had J 0.35 to 0.59, R 0.64 to 0.83 and length ratios
+of 0.96 or more. A page and part of it, or a longer version, had length ratios of 0.48 to 0.77.
+Drafts and pasted-up pages sharing paragraphs had C 0.30 to 0.45. Unrelated pages had C 0.21
+at most.
 """
 
 from __future__ import annotations
@@ -37,8 +43,9 @@ GRAM = 8  # letters per gram
 SKETCH = 64  # hashes kept per page
 MIN_SHARED = 4  # sketch hashes two pages must share to be compared in full
 MIN_LETTERS = 200  # fewer than this and the text says too little; the image is compared
-SAME_J, SAME_R = 0.30, 0.60  # either: the same page
-SIMILAR_J, SIMILAR_C = 0.15, 0.35  # either: very similar text
+SAME_J, SAME_R = 0.30, 0.60  # either: the same page...
+SAME_LENGTH = 0.85  # ...if the texts are about as long; otherwise one holds part of the other
+SIMILAR_J, SIMILAR_C = 0.15, 0.30  # either: very similar text
 IMAGE_SIMILAR = 0.90  # signature likeness for pages with little text
 
 
@@ -86,16 +93,25 @@ def compare_text(a: str, b: str) -> Match | None:
     j = shared / len(ga | gb)
     c = shared / min(len(ga), len(gb))
     r = SequenceMatcher(None, _words(a), _words(b), autojunk=False).ratio()
+    length = min(len(letters(a)), len(letters(b))) / max(len(letters(a)), len(letters(b)))
     measures = {
         "letters_shared": round(j, 3),
         "contained": round(c, 3),
         "words_in_order": round(r, 3),
+        "length_ratio": round(length, 3),
     }
-    if j >= SAME_J or r >= SAME_R:
+    alike = j >= SAME_J or r >= SAME_R
+    if alike and length >= SAME_LENGTH:
         reasons = [f"{round(r * 100)}% of the words match, in the same order"]
         if c >= 0.5:
             reasons.append(f"{round(c * 100)}% of the text appears on both")
         return Match("same_page", round(100 * max(r, c)), {**measures, "reasons": reasons})
+    if alike:  # much the same words, but one page has a lot more
+        reasons = [
+            f"{round(c * 100)}% of the shorter page's text is also on the other, which has more",
+            "The shorter page may be part of the other, or an earlier or later version",
+        ]
+        return Match("similar", round(100 * c), {**measures, "reasons": reasons})
     if j >= SIMILAR_J or c >= SIMILAR_C:
         reasons = [
             f"{round(c * 100)}% of the shorter page's text is also on the other",

@@ -108,6 +108,15 @@ def test_another_draft_is_very_similar(conn):
     assert pairs(conn) == {(a, b): "similar"}
 
 
+def test_a_page_and_a_longer_version_of_it_are_only_similar(conn):
+    # The same words, but one page has a lot more: part of it, or a retyped page with more added.
+    a = add(conn, " ".join(SENTENCES[:7]))
+    b = add(conn, ocr_noise(" ".join(SENTENCES)))
+    report = find_duplicates(conn)
+    assert pairs(conn) == {(a, b): "similar"}
+    assert "shorter page may be part of the other" in report.found[0][2].evidence["reasons"][1]
+
+
 def test_unrelated_pages_are_not_duplicates(conn):
     add(conn, PAGE)
     add(conn, " ".join(OTHER * 2))

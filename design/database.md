@@ -190,11 +190,16 @@ The same page is often scanned more than once, sometimes with different settings
 
 1. **Candidates.** Text is reduced to its letters (a–z). Each page keeps the hashes of its 64 smallest letter 8-grams in `text_sketch`. Pages sharing at least 4 of them are compared in full, so there is no all-pairs comparison.
 2. **Confirmation.** For each candidate, three measures: how many letter 8-grams the texts share (J), how much of the shorter text is in the longer (C), and how many words match in order (R).
-   - `same_page`: J ≥ 0.30 or R ≥ 0.60.
-   - `similar`: J ≥ 0.15 or C ≥ 0.35.
+   - `same_page`: J ≥ 0.30 or R ≥ 0.60, and the texts are about as long (the shorter at least 0.85 of the longer).
+   - `similar`: as alike as that but of quite different lengths (a sheet and a piece of it, or a page and a longer version), or J ≥ 0.15, or C ≥ 0.30.
    - Both pages need at least 200 letters.
    - OCR errors on old paper keep J well below 1 even for the same page, so the bars are modest; unrelated pages share almost nothing.
-   - On a 17-page real sample: re-scans had J 0.45 and 0.39 and R 0.79 and 0.67. Two drafts of one passage had J 0.17 and C 0.45. Unrelated pages had J 0.07 and R 0.29 at most.
+   - On 178 real typewritten scans:
+     - re-scans had J 0.35–0.59, R 0.64–0.83 and length ratios of 0.96 or more
+     - a page and part of it, or a longer version, had length ratios of 0.48–0.77
+     - drafts and pasted-up pages sharing paragraphs had C 0.30–0.45
+     - unrelated pages had C 0.21 at most
+     - checking all 178 pages took 11 seconds
 3. **Little text.** Notes, drawings and unread handwriting are compared by a small picture of their contents instead (`worker.image.image_signature`: grey, contrast evened out, cropped to the ink, 32×32). A match at 0.90 correlation or above is only ever `similar`.
 
 Blank pages are never compared, and copies already set aside as duplicates are left out. A page is checked again whenever its current reading changes, such as after a vision reading or a person's correction.

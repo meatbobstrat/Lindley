@@ -3,6 +3,11 @@
 Tesseract's TSV output gives each word with its box and confidence; the words are what the
 assembler uses to find page numbers standing alone at the top or bottom of a page. Its
 orientation check (--psm 0) says which way up a page is.
+
+Tesseract turns a page black and white with one threshold for the whole page. A scan laid on a
+white page (a PDF made from scans often does this) can fool it: the threshold falls between the
+white edge and the tan paper, and faint typing vanishes. When a reading finds next to nothing,
+the page is read again with a threshold that adapts across the page, and the fuller reading kept.
 """
 
 from __future__ import annotations
@@ -21,6 +26,9 @@ WINDOWS_DEFAULT = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 TIMEOUT_S = 300
 # Below this orientation confidence, Tesseract's answer is only a guess (see orientation).
 ORIENTATION_MIN_CONF = 2.0
+# A reading with fewer words than this is tried again with an adaptive threshold.
+FEW_WORDS = 20
+ADAPTIVE = ["-c", "thresholding_method=1"]  # Leptonica's adaptive Otsu
 
 
 class TesseractNotFound(RuntimeError):
@@ -105,8 +113,17 @@ class TesseractEngine:
     def recognize(self, image_path: Path) -> list[PageResult]:
         if not self.exe:
             raise TesseractNotFound(self.missing_help())
+        text, words, conf = self._read(image_path)
+        if len(words) < FEW_WORDS:
+            again = self._read(image_path, ADAPTIVE)
+            if len(again[1]) > len(words):
+                text, words, conf = again
+        return [PageResult(1, text, conf, self.name, words)]
+
+    def _read(self, image_path: Path, extra: list[str] | None = None):
         run = subprocess.run(
             [str(self.exe), str(image_path), "stdout", "-l", "+".join(self.settings.languages)]
+            + (extra or [])
             + ["tsv"],
             capture_output=True,
             text=True,
@@ -116,8 +133,7 @@ class TesseractEngine:
         )
         if run.returncode != 0:
             raise RuntimeError(f"Tesseract couldn't read {image_path.name}: {run.stderr.strip()}")
-        text, words, conf = parse_tsv(run.stdout)
-        return [PageResult(1, text, conf, self.name, words)]
+        return parse_tsv(run.stdout)
 
     def orientation(self, image_path: Path) -> tuple[int, float] | None:
         """(degrees clockwise to turn the page upright, Tesseract's confidence), or None if it

@@ -83,6 +83,23 @@ def test_recognize_runs_tesseract_and_parses_its_output(tmp_path, monkeypatch):
     assert page.words and page.confidence and page.confidence > 80
 
 
+def test_a_page_read_as_almost_nothing_is_read_again_with_an_adaptive_threshold(
+    tmp_path, monkeypatch
+):
+    exe = tmp_path / "tesseract.exe"
+    exe.touch()
+    seen = []
+
+    def fake_run(args, **kw):
+        seen.append(args)
+        adaptive = "thresholding_method=1" in args
+        return subprocess.CompletedProcess(args, 0, stdout=TSV if adaptive else "", stderr="")
+
+    monkeypatch.setattr(tesseract.subprocess, "run", fake_run)
+    [page] = TesseractEngine(OcrSettings(tesseract_path=exe)).recognize(tmp_path / "page.png")
+    assert len(seen) == 2 and page.text.startswith("Dear Sister,")
+
+
 def test_a_tesseract_error_is_reported(tmp_path, monkeypatch):
     exe = tmp_path / "tesseract.exe"
     exe.touch()

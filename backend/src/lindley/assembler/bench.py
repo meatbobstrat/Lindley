@@ -350,3 +350,131 @@ class OracleChat:
 
     def chat_stream(self, messages: list[ChatMessage]):
         yield self.chat(messages)
+
+
+# ---------------------------------------------------------------- Real scans
+
+# How the pages of real documents are fed to the assembler. The documents always come in a
+# random order; "in_order" keeps each one's pages in reading order, as if scanned one document
+# at a time, "swapped" also feeds two neighbouring pages through the wrong way round here and
+# there, and "shuffled" mixes every page, so only what's on the pages can put them together.
+ORDERS = ("in_order", "swapped", "shuffled")
+
+
+def pdf_answers(conn: sqlite3.Connection) -> list[list[int]]:
+    """An answer key from assembled PDFs: each read PDF of two or more pages is one document,
+    its pages in the PDF's order."""
+    docs = []
+    for (scan,) in conn.execute(
+        "SELECT id FROM scans WHERE mime_type = 'application/pdf' AND status = 'read' ORDER BY id"
+    ).fetchall():
+        ids = [
+            r[0]
+            for r in conn.execute(
+                "SELECT p.id FROM pages p"
+                " JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
+                " WHERE p.scan_id = ? ORDER BY p.page_index",
+                (scan,),
+            )
+        ]
+        if len(ids) >= 2:
+            docs.append(ids)
+    return docs
+
+
+def arrange(docs: list[list[int]], order: str, seed: int) -> list[tuple[int, int, int]]:
+    """(page id, document number, position in it) in the order the pages are fed in."""
+    r = random.Random(seed)
+    numbered = list(enumerate(docs))
+    r.shuffle(numbered)
+    out = [(pid, d, i) for d, ids in numbered for i, pid in enumerate(ids)]
+    if order == "swapped":
+        i = 0
+        while i < len(out) - 1:
+            if out[i][1] == out[i + 1][1] and r.random() < 0.2:
+                out[i], out[i + 1] = out[i + 1], out[i]
+                i += 1
+            i += 1
+    elif order == "shuffled":
+        r.shuffle(out)
+    return out
+
+
+def load_real(
+    conn: sqlite3.Connection, src: sqlite3.Connection, arranged: list[tuple[int, int, int]]
+) -> dict[int, TruePage]:
+    """Copy real pages, with their readings and image checks, into a bench database as loose
+    scans named scan_0001.jpg, scan_0002.jpg... in the arranged order."""
+    truth = {}
+    with conn:
+        for n, (pid, doc, index) in enumerate(arranged, 1):
+            p = src.execute(
+                "SELECT p.*, t.text, t.words, t.confidence FROM pages p"
+                " JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1 WHERE p.id = ?",
+                (pid,),
+            ).fetchone()
+            name = f"scan_{n:04d}.jpg"
+            scan = conn.execute(
+                "INSERT INTO scans (sha256, original_name, source_path, origin, import_mode,"
+                " status, page_count, imported_at)"
+                " VALUES (?, ?, ?, 'watched', 'copy', 'read', 1, datetime('now', ?))",
+                (f"real:{pid}:{n}", name, f"D:/Scans/{name}", f"+{n} seconds"),
+            ).lastrowid
+            page = conn.execute(
+                "INSERT INTO pages (scan_id, width_px, height_px, dpi, color_mode, phash,"
+                " paper_color, blank_score, detected_rotation, user_rotation, script)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    scan,
+                    *(
+                        p[k]
+                        for k in (
+                            "width_px",
+                            "height_px",
+                            "dpi",
+                            "color_mode",
+                            "phash",
+                            "paper_color",
+                            "blank_score",
+                            "detected_rotation",
+                            "user_rotation",
+                            "script",
+                        )
+                    ),
+                ),
+            ).lastrowid
+            conn.execute(
+                "INSERT INTO transcriptions (page_id, source, text, confidence, words, is_current)"
+                " VALUES (?, 'tesseract', ?, ?, ?, 1)",
+                (page, p["text"], p["confidence"], p["words"]),
+            )
+            truth[page] = TruePage(p["text"], f"real{doc}", index, "page")
+    return truth
+
+
+def score_groups(groups, truth: dict[int, TruePage]) -> tuple[float, float, float, float, float]:
+    """How good the rules' proposal is before any confidence threshold: pair precision, recall
+    and F1, the share of true documents proposed exactly, and of those the share in order."""
+    pred = {p.id: i for i, g in enumerate(groups) if not g.set_aside for p in g.pages}
+    real = {pid: tp.doc for pid, tp in truth.items() if tp.kind not in ("blank", "notes")}
+    ids = sorted(real)
+    t_pairs = {(a, b) for a, b in combinations(ids, 2) if real[a] == real[b]}
+    p_pairs = {
+        (a, b) for a, b in combinations(ids, 2) if a in pred and b in pred and pred[a] == pred[b]
+    }
+    hit = len(t_pairs & p_pairs)
+    precision = hit / len(p_pairs) if p_pairs else 1.0
+    recall = hit / len(t_pairs) if t_pairs else 1.0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    docs: dict[str, list[int]] = {}
+    for pid in ids:
+        docs.setdefault(real[pid], []).append(pid)
+    exact = ordered = 0
+    for members in docs.values():
+        g = next((g for g in groups if members[0] in [p.id for p in g.pages]), None)
+        if g and sorted(p.id for p in g.pages) == sorted(members):
+            exact += 1
+            ordered += [truth[p.id].index for p in g.pages] == sorted(
+                truth[i].index for i in members
+            )
+    return precision, recall, f1, exact / max(1, len(docs)), ordered / max(1, exact)

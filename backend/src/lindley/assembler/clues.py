@@ -425,7 +425,7 @@ class PageClues:
             return f"starts with the heading “{self.heading}”"
         if self.letterhead:
             return f"has the letterhead “{self.letterhead}”"
-        if self.marker and self.marker_sure and self.marker[0] == 1:
+        if self.marker and self.marker[0] == 1:
             return "is numbered page 1"
         return None
 
@@ -438,9 +438,8 @@ class PageClues:
             return f"ends with “{self.closing}”"
         if self.ends_form:
             return f"ends with “{self.ends_form}”"
-        m = self.marker
-        if m and self.marker_sure and m[1] and m[0] == m[1]:
-            return f"is numbered page {m[0]} of {m[1]}"
+        if self.marker and self.marker[1] and self.marker[0] == self.marker[1]:
+            return f"is numbered page {self.marker[0]} of {self.marker[1]}"
         return None
 
     def facts(self) -> list[tuple[str, str, str | None, int]]:

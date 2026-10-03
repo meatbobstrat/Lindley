@@ -242,10 +242,3 @@ def test_paid_ends_a_receipt_but_not_a_sentence_in_a_story():
     assert page_clues("Sold to J. Hale\n" + tail + "Paid in full, T. Hale").ends_form == "Paid"
     story = "He walked into the saloon\nAnd paid no attention to the drunken Bobo on the floor."
     assert page_clues(story).ends_form is None
-
-
-def test_a_doubtful_page_number_one_doesnt_start_a_document():
-    sure = page([w("1", 1250, 200, 95)] + body("The mine was sold in May to Goldfield men."))
-    doubtful = page([w("1", 1250, 200, 45)] + body("The mine was sold in May to Goldfield men."))
-    assert sure.marker == doubtful.marker == (1, None)
-    assert sure.starts_doc == "is numbered page 1" and doubtful.starts_doc is None

@@ -125,6 +125,12 @@ def test_a_clear_number_beside_a_doubtful_one_is_the_page_number():
     assert page(words).marker == (95, None)
 
 
+def test_a_byline_starts_a_document():
+    c = page_clues("By Lindley C.Branson\nThey had adventures in the rough in the old days.")
+    assert c.starts_doc and "By Lindley" in c.starts_doc
+    assert not page_clues("by the river we sat down and wept.\nIt was cold.").starts_doc
+
+
 def test_noise_lines_at_the_edges_are_dropped():
     lines = [
         Line("te | ae", [w("te", 200, 100, 34), w("|", 260, 100, 44), w("ae", 300, 100, 30)]),

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 from lindley.assembler import ai, apply
 from lindley.assembler.evidence import pair
-from lindley.assembler.model import Group, Page
+from lindley.assembler.model import Group, Page, weigh_terms
 from lindley.assembler.segment import segment
 from lindley.config import AssemblerSettings
 from lindley.providers.base import ChatProvider
@@ -78,13 +78,21 @@ def _page(r: sqlite3.Row, copies: dict[int, frozenset[int]] | None = None) -> Pa
         r["phash"],
         r["paper_color"],
         (copies or {}).get(r["id"], frozenset()),
+        _upright_width(r),
     )
 
 
-def _upright_height(r: sqlite3.Row) -> int | None:
+def _sideways(r: sqlite3.Row) -> bool:
     """Word boxes are read from the page turned upright; a quarter turn swaps its sides."""
-    sideways = (r["detected_rotation"] + r["user_rotation"]) % 180 == 90
-    return r["width_px"] if sideways else r["height_px"]
+    return (r["detected_rotation"] + r["user_rotation"]) % 180 == 90
+
+
+def _upright_height(r: sqlite3.Row) -> int | None:
+    return r["width_px"] if _sideways(r) else r["height_px"]
+
+
+def _upright_width(r: sqlite3.Row) -> int | None:
+    return r["height_px"] if _sideways(r) else r["width_px"]
 
 
 def load_inbox(conn: sqlite3.Connection) -> list[Page]:
@@ -185,6 +193,8 @@ def assemble(
     if not pages:
         return report
 
+    docs = load_open_documents(conn)
+    weigh_terms(pages + list({id(p): p for d in docs for p in (d.first, d.last)}.values()))
     groups, pairs, ordered = segment(pages)
 
     # The AI looks only at what the rules couldn't settle.
@@ -198,7 +208,6 @@ def assemble(
             gone = {id(g) for g in window}
             groups = [g for g in groups if id(g) not in gone] + result.groups
 
-    docs = load_open_documents(conn)
     links = [
         (a.id, b.id, k)
         for a, b, p in zip(ordered, ordered[1:], pairs, strict=False)

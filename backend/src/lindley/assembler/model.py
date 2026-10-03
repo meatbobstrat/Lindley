@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from lindley.assembler.clues import PageClues, page_clues
+from lindley.assembler.clues import PageClues, page_clues, text_lines
+from lindley.assembler.layout import Layout, page_layout
+from lindley.assembler.terms import page_terms, weigh
 
 
 @dataclass
@@ -22,12 +24,17 @@ class Page:
     phash: str | None = None
     paper_color: str | None = None
     copies: frozenset[int] = frozenset()  # pages that look like this page scanned again
+    width: int | None = None
     clues: PageClues = field(init=False)
+    layout: Layout | None = field(init=False)
+    # Rare words, weighed against the other pages being sorted (see weigh_terms)
+    terms: dict[str, float] = field(init=False, default_factory=dict)
 
     def __post_init__(self) -> None:
         self.clues = page_clues(
             self.text, self.file_name, self.words, self.height, self.blank_score
         )
+        self.layout = page_layout(text_lines(self.text, self.words), self.width)
 
     def scan_key(self) -> tuple:
         """Scanning order: the strongest single hint about which pages go together."""
@@ -39,6 +46,12 @@ class Page:
             self.scan_id,
             self.page_index,
         )
+
+
+def weigh_terms(pages: list[Page]) -> None:
+    """Weigh each page's words by how rare they are among these pages."""
+    for p, v in zip(pages, weigh([page_terms(p.text) for p in pages]), strict=True):
+        p.terms = v
 
 
 @dataclass

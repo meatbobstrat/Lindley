@@ -359,6 +359,8 @@ _HEADINGS = re.compile(
     r"^(know\s+all\s+men|this\s+indenture|receipt|invoice|inventory|last\s+will|certificate|deed\b)",
     re.I,
 )
+# "By Lindley C. Branson": an article, a story or a chapter starts here
+_BYLINE = re.compile(r"^[Bb]y\s+(?:[A-Z][a-z]*\.?\s*){1,4}$")
 _DEED_END = re.compile(r"in\s+witness\s+whereof|notary\s+public|signed,?\s+sealed", re.I)
 _DEED_WORDS = re.compile(
     r"\b(grantor|grantee|hereby|premises|acres|conveyed?|indenture|heirs\s+and\s+assigns|deed)\b",
@@ -527,6 +529,10 @@ def page_clues(
         if _SALUTE.match(ln) and (ln.rstrip().endswith((",", ":")) or len(ln) <= 25):
             c.salutation = ln.rstrip(",:").strip()
             c.people |= _names_after_salutation(ln)
+            break
+    for ln in body[:3]:
+        if _BYLINE.match(ln.replace(".", ". ").strip()) and not c.heading:
+            c.heading = ln.rstrip(".,:")
             break
     for ln in body[:2]:
         if _HEADINGS.match(ln):

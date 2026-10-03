@@ -11,7 +11,7 @@ from collections import Counter
 
 from lindley.assembler.clues import MONTH_NAMES
 from lindley.assembler.evidence import Pair, adjacent, pair
-from lindley.assembler.model import Group, Page
+from lindley.assembler.model import Group, Page, weigh_terms
 
 CUT_BELOW = 0.5  # neighbouring pages scoring below this are split into different documents
 
@@ -172,6 +172,8 @@ def make_group(
 
 def segment(pages: list[Page]) -> tuple[list[Group], list[Pair], list[Page]]:
     """Groups of pages in scan order, with the neighbour scores and the scan order used."""
+    if not any(p.terms for p in pages):
+        weigh_terms(pages)
     ordered = scan_order(pages)
     pairs = pair_scores(ordered)
     groups = []

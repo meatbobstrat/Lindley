@@ -383,6 +383,7 @@ _SOLD_TO = re.compile(
 _AMOUNT = re.compile(r"\$?\b\d+\.\d\d\b")
 _REFNO = re.compile(r"\b(?:Book|Vol\.?|Lot|No\.)\s+\d+\b")
 _FILE_SEQ = re.compile(r"(\d+)(?!.*\d)")
+_FILE_COPY = re.compile(r"\s*\((\d+)\)$")  # Windows numbers files of one name: "Image (2)"
 _MID_START = re.compile(r"^[a-z]")
 # A word broken at the end of a line. Tesseract often reads a typewriter's hyphen as "=".
 HYPHENS = ("-", "=", "¬")
@@ -489,6 +490,17 @@ def _names_after_salutation(line: str) -> set[str]:
     }
 
 
+def file_series(file_name: str) -> tuple[str, int | None]:
+    """(series, number in it) from a scan's file name: scan_0042 is 42 of "scan_".
+
+    Scanners and file managers often number only the files after the first: Image, Image (2),
+    Image (3) on Windows; Image, Image 2 on a Mac. So a name without a number is number 1."""
+    stem = PurePath(file_name).stem
+    if m := _FILE_COPY.search(stem) or _FILE_SEQ.search(stem):
+        return (stem[: m.start()] + stem[m.end() :]).rstrip().lower(), int(m.group(1))
+    return stem.strip().lower(), 1 if stem.strip() else None
+
+
 def page_clues(
     text: str,
     file_name: str = "",
@@ -497,12 +509,7 @@ def page_clues(
     blank_score: float | None = None,
 ) -> PageClues:
     c = PageClues()
-    stem = PurePath(file_name).stem
-    if m := _FILE_SEQ.search(stem):
-        c.file_seq = int(m.group(1))
-        c.file_prefix = (stem[: m.start()] + stem[m.end() :]).lower()
-    else:
-        c.file_prefix = stem.lower()
+    c.file_prefix, c.file_seq = file_series(file_name)
 
     stripped = re.sub(r"\s+", "", text)
     if (blank_score is not None and blank_score >= 0.97) or len(stripped) < 15:

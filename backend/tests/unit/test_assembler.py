@@ -391,6 +391,20 @@ def test_a_page_is_not_added_to_a_document_holding_its_copy():
     assert _best_match(Group([stranger], 60), [doc]) is not None
 
 
+def test_file_numbers_count_only_within_one_folder():
+    from lindley.assembler.evidence import adjacent
+    from lindley.assembler.segment import scan_order
+
+    def scan(pid, name, folder):
+        return Page(pid, pid, name, LETTER[1], folder=folder)
+
+    first, second = scan(1, "Image.jpg", "D:/Scans/Abe"), scan(2, "Image (2).jpg", "D:/Scans/Abe")
+    other = scan(3, "Image (2).jpg", "D:/Scans/Burbanks")
+    assert adjacent(first, second) and not adjacent(first, other)
+    third = scan(4, "Image (3).jpg", "D:/Scans/Abe")
+    assert [p.id for p in scan_order([other, third, second, first])] == [1, 2, 4, 3]
+
+
 def test_a_gap_in_the_page_numbers_says_which_page_is_missing():
     from lindley.assembler.model import Page
     from lindley.assembler.segment import missing_pages

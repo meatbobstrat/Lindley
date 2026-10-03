@@ -80,7 +80,8 @@ def adjacent(a: Page, b: Page) -> bool:
         return b.page_index == a.page_index + 1
     ca, cb = a.clues, b.clues
     return (
-        ca.file_seq is not None
+        a.folder == b.folder
+        and ca.file_seq is not None
         and cb.file_seq is not None
         and ca.file_prefix == cb.file_prefix
         and cb.file_seq == ca.file_seq + 1

@@ -10,6 +10,7 @@ import sqlite3
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import PurePath
 
 from lindley.assembler import ai, apply, evidence, relearn
 from lindley.assembler.answers import Answers
@@ -56,7 +57,7 @@ _PAGE_SQL = """
 SELECT p.id, p.scan_id, p.page_index, p.width_px, p.height_px, p.blank_score, p.phash,
        p.paper_color, p.detected_rotation, p.user_rotation, p.dpi, p.color_mode, p.script,
        p.created_at AS added_at,
-       s.original_name, s.scanned_at, s.file_modified_at, s.imported_at,
+       s.original_name, s.source_path, s.scanned_at, s.file_modified_at, s.imported_at,
        t.text, t.words, t.confidence
 FROM pages p
 JOIN scans s ON s.id = p.scan_id
@@ -97,6 +98,7 @@ def _page(r: sqlite3.Row, copies: dict[int, frozenset[int]] | None = None) -> Pa
         r["confidence"],
         r["file_modified_at"],
         r["added_at"],
+        str(PurePath(r["source_path"]).parent),
     )
 
 

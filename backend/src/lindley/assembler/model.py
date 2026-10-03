@@ -32,6 +32,9 @@ class Page:
     ocr_conf: float | None = None  # the reading's confidence, 0-100
     modified_at: str | None = None  # the file's time: when it was scanned, if EXIF didn't say
     added_at: str | None = None  # when the page came into Lindley (UTC, as SQLite writes it)
+    # The folder the scan was found in. File numbers only count within one folder: every
+    # folder a scanner writes to may have its own Image (2).
+    folder: str = ""
     clues: PageClues = field(init=False)
     layout: Layout | None = field(init=False)
     # Rare words, weighed against the other pages being sorted (see weigh_terms)
@@ -48,6 +51,7 @@ class Page:
         """Scanning order: the strongest single hint about which pages go together."""
         c = self.clues
         return (
+            self.folder,
             c.file_prefix,
             c.file_seq if c.file_seq is not None else 10**9,
             self.scanned_at or self.modified_at or self.imported_at,

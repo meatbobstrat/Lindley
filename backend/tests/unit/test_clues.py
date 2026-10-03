@@ -2,6 +2,7 @@ import pytest
 
 from lindley.assembler.clues import (
     Line,
+    file_series,
     find_dates,
     is_noise,
     page_clues,
@@ -221,6 +222,16 @@ def test_receipts_deeds_diaries_notes_and_blanks():
     assert page_clues("Lots of text here", blank_score=0.99).kind == "blank"
 
 
-def test_file_sequence_numbers():
-    c = page_clues("x" * 40, "scan_0042.jpg")
-    assert c.file_seq == 42 and c.file_prefix == "scan_"
+@pytest.mark.parametrize(
+    ("name", "series"),
+    [
+        ("Image.jpg", ("image", 1)),  # Windows numbers only the files after the first
+        ("Image (2).jpg", ("image", 2)),
+        ("Image 3.jpg", ("image", 3)),  # the same on a Mac
+        ("scan_0042.tif", ("scan_", 42)),
+        ("Letter to Clara.jpg", ("letter to clara", 1)),
+        ("", ("", None)),
+    ],
+)
+def test_a_file_name_gives_its_series_and_number(name, series):
+    assert file_series(name) == series

@@ -171,6 +171,38 @@ def test_page_links_are_stored_once_per_pair(conn):
         conn.execute(sql, (a, b))
 
 
+def test_a_duplicate_pair_is_stored_once(conn):
+    a, b = add_page(conn, add_scan(conn)), add_page(conn, add_scan(conn, "scan_0002.jpg"))
+    sql = "INSERT INTO duplicates (page_a, page_b, kind, score) VALUES (?, ?, 'same_page', 90)"
+    conn.execute(sql, (a, b))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(sql, (b, a))  # smallest id first
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(sql, (a, b))  # a decided pair is never raised again
+    row = conn.execute("SELECT status, kept_page FROM duplicates").fetchone()
+    assert tuple(row) == ("open", None)
+
+
+def test_v2_database_gains_the_duplicate_tables(tmp_path):
+    from importlib.resources import files
+
+    schema = files("lindley.db").joinpath("schema.sql").read_text(encoding="utf-8")
+    rule = "-- " + "-" * 64
+    before, after = schema.split(rule + " Duplicates")
+    v2 = before + after[after.index(rule) :]  # the schema without the Duplicates section
+    db = tmp_path / "v2.db"
+    c = sqlite3.connect(db)
+    c.executescript(v2 + "\nPRAGMA user_version = 2;")
+    assert "duplicates" not in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
+    c.close()
+    init_db(db)
+    c = connect(db)
+    names = {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
+    assert {"duplicates", "duplicate_checks", "text_sketch"} <= names
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 3
+    c.close()
+
+
 def test_suggestion_reasons_round_trip(conn):
     page = add_page(conn, add_scan(conn))
     doc = add_doc(conn)

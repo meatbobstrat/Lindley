@@ -10,7 +10,7 @@ from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page
 from lindley.assembler.run import load_inbox
 from lindley.config import AssemblerSettings
-from lindley.db.database import connect, init_db
+from lindley.db.database import SCHEMA_VERSION, connect, init_db
 
 LETTER = [
     "Xenia, O., March 4 1892\nDear Sister,\nWe are all well and the river came up over the",
@@ -257,7 +257,7 @@ def test_v1_database_gains_documents_reasons(tmp_path):
     init_db(db)
     c = connect(db)
     assert "reasons" in {r["name"] for r in c.execute("PRAGMA table_info(documents)")}
-    assert c.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     c.close()
 
 

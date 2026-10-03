@@ -6,12 +6,13 @@ import sqlite3
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}.
 # schema.sql always describes the latest version, for new databases.
 MIGRATIONS: dict[int, str] = {
     2: "ALTER TABLE documents ADD COLUMN reasons TEXT;",
+    3: "",  # new tables only (duplicates, duplicate_checks, text_sketch): schema.sql adds them
 }
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.

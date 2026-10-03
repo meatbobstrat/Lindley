@@ -1,4 +1,4 @@
--- Lindley schema, version 2 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
+-- Lindley schema, version 3 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
 -- Applied idempotently at startup by lindley.db.database.init_db.
 -- Design notes: design/database.md.
 --
@@ -129,6 +129,45 @@ CREATE TABLE IF NOT EXISTS page_links (
     UNIQUE (page_a, page_b, relation, source)
 );
 CREATE INDEX IF NOT EXISTS idx_page_links_b ON page_links(page_b);
+
+-- ---------------------------------------------------------------- Duplicates
+
+-- Two pages that look like the same page scanned twice (same_page), or that have very similar
+-- text, perhaps another draft (similar). A person decides; a pair is never raised again once
+-- they have. This is a queue to work through, not a place: the pages stay where they are.
+CREATE TABLE IF NOT EXISTS duplicates (
+    id           INTEGER PRIMARY KEY,
+    page_a       INTEGER NOT NULL REFERENCES pages(id),
+    page_b       INTEGER NOT NULL REFERENCES pages(id),
+    kind         TEXT NOT NULL CHECK (kind IN ('same_page', 'similar')),
+    score        REAL NOT NULL,                     -- 0-100
+    evidence     TEXT,                              -- JSON: the measures, and reasons a person can read
+    status       TEXT NOT NULL DEFAULT 'open'
+                 CHECK (status IN ('open', 'resolved', 'not_duplicate')),
+    kept_page    INTEGER REFERENCES pages(id),      -- resolved: the copy a person kept
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at  TEXT,
+    CHECK (page_a < page_b),
+    UNIQUE (page_a, page_b)
+);
+CREATE INDEX IF NOT EXISTS idx_duplicates_status ON duplicates(status);
+CREATE INDEX IF NOT EXISTS idx_duplicates_b ON duplicates(page_b);
+
+-- Which reading each page was checked for duplicates with; a new current reading checks it again.
+CREATE TABLE IF NOT EXISTS duplicate_checks (
+    page_id           INTEGER PRIMARY KEY REFERENCES pages(id),
+    transcription_id  INTEGER REFERENCES transcriptions(id),
+    image_sig         BLOB,                         -- pages with little text: see worker.image
+    checked_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Each page's smallest letter 8-gram hashes: pages sharing several are compared in full.
+CREATE TABLE IF NOT EXISTS text_sketch (
+    page_id  INTEGER NOT NULL REFERENCES pages(id),
+    h        INTEGER NOT NULL,
+    PRIMARY KEY (page_id, h)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_text_sketch_h ON text_sketch(h);
 
 -- ---------------------------------------------------------------- Organising
 

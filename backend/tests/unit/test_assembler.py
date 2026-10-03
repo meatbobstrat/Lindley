@@ -20,7 +20,7 @@ LETTER = [
 ]
 LAST = "- 4 -\nPlease write soon.\nYour loving brother\nWill"
 
-AI_ON = AssemblerSettings(use_ai=True)  # a person has turned the AI step on
+AI_ON = AssemblerSettings()  # passing a chat AI to assemble() is the OK to call it
 
 
 @pytest.fixture
@@ -235,12 +235,12 @@ def test_a_failing_ai_leaves_the_rules_in_charge(conn):
     assert report.documents_created == 1
 
 
-def test_the_ai_is_not_asked_unless_a_person_turned_it_on(conn):
+def test_the_ai_is_asked_no_more_than_it_may_be(conn):
     load(conn, pages(AMBIGUOUS))
     ai = Scripted("{}")
-    assemble(conn, chat=ai)
-    assemble(conn, AssemblerSettings(use_ai=False), chat=ai)
+    assert assemble(conn, chat=ai, max_ai_calls=0).ai_calls == 0
     assert ai.calls == 0
+    assert assemble(conn).ai_calls == 0  # no chat AI given: the rules decide alone
 
 
 # ---------------------------------------------------------------- Schema and bench

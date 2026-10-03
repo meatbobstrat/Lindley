@@ -55,9 +55,7 @@ def run(seed: int, ai: str, verbose: bool, real=None, order: str = "") -> tuple[
         db = Path(tmp) / "bench.db"
         init_db(db)
         conn = connect(db)
-        settings = load_settings()
-        # Asking for --ai is the OK to call it, whatever settings.json says.
-        settings.assembler.use_ai = ai != "none"
+        settings = load_settings()  # asking for --ai is the OK to call it, whatever its "allow"
         if real:
             src, docs = real
             truth = load_real(conn, src, arrange(docs, order, seed))

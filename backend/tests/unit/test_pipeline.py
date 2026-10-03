@@ -130,7 +130,7 @@ def test_a_clear_page_is_read_by_tesseract_alone(conn, settings, scan):
 
 
 def test_a_hard_page_goes_to_the_vision_model_and_both_readings_are_kept(conn, settings, scan):
-    settings.ocr.vision_mode = "auto"
+    settings.ai.providers["local"].allow = "auto"
     sid = scan()
     pipe = Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), FakeProvider())
     assert pipe.process_scan(conn, sid) == "read"
@@ -139,8 +139,25 @@ def test_a_hard_page_goes_to_the_vision_model_and_both_readings_are_kept(conn, s
     assert steps(conn, sid, "vision") == [("done", None)]
 
 
+def test_automatic_vision_calls_are_recorded_and_stop_at_the_daily_limit(conn, settings, scan):
+    cfg = settings.ai.providers["local"]
+    cfg.allow, cfg.daily_limit = "auto", 1
+    first, second = scan("a.png"), scan("b.png")
+    pipe = Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0), ("Dcar Sistcr", 41.0)), FakeProvider())
+    assert pipe.process_scan(conn, first) == "read"
+    assert pipe.process_scan(conn, second) == "read"  # Tesseract's reading, for now
+    assert steps(conn, first, "vision") == [("done", None)]
+    [(status, why)] = steps(conn, second, "vision")
+    assert status == "queued" and "1 automatic calls are used up" in why
+    calls = conn.execute("SELECT provider, purpose, automatic, ok FROM ai_calls").fetchall()
+    assert [tuple(c) for c in calls] == [("local", "vision", 1, 1)]
+    pipe.read_waiting(conn)  # a person's OK: sent, recorded, not counted against the limit
+    calls = conn.execute("SELECT automatic FROM ai_calls ORDER BY id").fetchall()
+    assert [c[0] for c in calls] == [1, 0]
+
+
 def test_when_the_vision_model_fails_tesseract_still_counts(conn, settings, scan):
-    settings.ocr.vision_mode = "auto"
+    settings.ai.providers["local"].allow = "auto"
     sid = scan()
     pipe = Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), BrokenVision())
     assert pipe.process_scan(conn, sid) == "read"
@@ -156,7 +173,8 @@ def test_without_a_vision_model_the_step_is_skipped(conn, settings, scan):
 
 
 def test_vision_only_reading(conn, settings, scan):
-    settings.ocr.engine, settings.ocr.vision_mode = "vision", "auto"
+    settings.ocr.engine = "vision"
+    settings.ai.providers["local"].allow = "auto"
     sid = scan()
     assert Pipeline(settings, StubOcr(), FakeProvider()).process_scan(conn, sid) == "read"
     assert [r["source"] for r in readings(conn, sid)] == ["vision"]
@@ -302,7 +320,8 @@ def test_a_failed_vision_call_is_only_tried_again_when_asked(conn, settings, sca
 
 
 def test_a_failed_vision_only_page_is_not_sent_again_on_its_own(conn, settings, scan):
-    settings.ocr.engine, settings.ocr.vision_mode = "vision", "auto"
+    settings.ocr.engine = "vision"
+    settings.ai.providers["local"].allow = "auto"
     sid = scan()
     broken = BrokenVision()
     assert Pipeline(settings, StubOcr(), broken).process_scan(conn, sid) == "queued"

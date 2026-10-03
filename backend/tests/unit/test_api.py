@@ -21,3 +21,20 @@ def test_settings_get_and_put(client, tmp_path):
 def test_stub_endpoints_return_501(client):
     for path in ("/api/documents", "/api/search", "/api/chat"):
         assert client.get(path).status_code == 501
+
+
+def test_settings_say_when_each_ai_may_run_and_how_much_it_has_today(client, settings):
+    current = client.get("/api/settings").json()
+    assert current["ai"]["providers"]["local"]["allow"] == "ask"
+    current["ai"]["providers"]["local"] |= {"allow": "auto", "daily_limit": 50}
+    assert client.put("/api/settings", json=current).status_code == 200
+    usage = client.get("/api/settings/ai-calls").json()["providers"]["local"]
+    assert usage == {
+        "allow": "auto",
+        "daily_limit": 50,
+        "automatic_today": 0,
+        "oked_today": 0,
+        "automatic_left": 50,
+    }
+    current["ai"]["providers"]["local"]["daily_limit"] = 0
+    assert client.put("/api/settings", json=current).status_code == 422  # at least 1, or none

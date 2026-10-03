@@ -1,6 +1,6 @@
 """Read scan files into Lindley and group them into documents, the way the watcher will.
 
-    python scripts/intake.py PATH... [--settings settings.json] [--no-assemble] [--no-ai]
+    python scripts/intake.py PATH... [--settings settings.json] [--no-assemble] [--no-ai] [--ai]
 
     python scripts/intake.py [PATH...] --vision [--retry-failed]
 
@@ -11,7 +11,9 @@ are skipped, and scans that failed are tried again.
 
 Pages Tesseract struggles with wait for the vision model, because it can cost money. --vision
 is your OK to send them (and, with --retry-failed, the ones whose vision call failed before).
-With ocr.vision_mode = "auto" in settings, they're sent without asking.
+If the vision provider's "allow" is "auto" in settings, they're sent without asking, up to its
+daily_limit. Sorting pages into documents works the same way with the chat provider: --ai is
+your OK for it to help this time; without it, it only helps if allowed to run on its own.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from lindley.assembler import assemble
 from lindley.config import load_settings
 from lindley.db.database import connect, init_db
 from lindley.duplicates import find_duplicates
+from lindley.providers import allowance
 from lindley.providers.base import ProviderError
 from lindley.providers.registry import get_provider
 from lindley.worker.image import BLANK_AT
@@ -78,14 +81,17 @@ def main() -> int:
     ap.add_argument("--no-assemble", action="store_true", help="read only; don't group pages")
     ap.add_argument("--no-ai", action="store_true", help="rules and Tesseract only")
     ap.add_argument(
+        "--ai", action="store_true", help="OK the chat AI to help sort pages into documents"
+    )
+    ap.add_argument(
         "--vision", action="store_true", help="send the pages waiting for the vision model"
     )
     ap.add_argument(
         "--retry-failed", action="store_true", help="with --vision: retry failed vision calls"
     )
     a = ap.parse_args()
-    if a.vision and a.no_ai:
-        ap.error("--vision and --no-ai don't go together")
+    if (a.vision or a.ai) and a.no_ai:
+        ap.error("--vision and --ai don't go with --no-ai")
     if not (a.paths or a.vision):
         ap.error("give scan files or folders to read, or --vision")
 
@@ -103,7 +109,8 @@ def main() -> int:
     conn = connect(settings.db_path)
     print(f"Database: {settings.db_path.resolve()}")
     if files:
-        mode = settings.ocr.vision_mode if pipe.vision else "off"
+        cfg = allowance.provider_config(settings, settings.ocr.vision_provider)
+        mode = ("automatic" if cfg and cfg.allow == "auto" else "ask") if pipe.vision else "off"
         vision = "" if settings.ocr.engine == "tesseract" else f" (vision: {mode})"
         print(
             f"Reading {len(files)} file{'s' if len(files) != 1 else ''}"
@@ -194,13 +201,18 @@ def main() -> int:
         print(f"{waiting_dups} possible duplicate pair(s) are waiting for you to decide.")
 
     if not a.no_assemble:
+        name = settings.ai.chat_provider
+        left = 0 if a.no_ai else None if a.ai else allowance.automatic_left(conn, settings, name)
         chat = None
-        if not a.no_ai and settings.assembler.use_ai:
+        if left is None or left > 0:
             try:
-                chat = get_provider(settings.ai, settings.ai.chat_provider)
+                chat = get_provider(settings.ai, name)
             except ProviderError:
                 chat = None
-        report = assemble(conn, settings.assembler, chat)
+        report = assemble(conn, settings.assembler, chat, left)
+        if report.ai_calls:
+            with conn:
+                allowance.record(conn, name, "assemble", not a.ai, count=report.ai_calls)
         print(
             f"\nAssembler: {report.considered} Inbox pages, {report.documents_created} new"
             f" documents, {report.pages_added} pages added to one, {report.hints} hints."

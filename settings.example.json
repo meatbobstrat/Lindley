@@ -11,14 +11,12 @@
     "languages": ["eng"],
     "confidence_threshold": 70,
     "vision_provider": "local",
-    "vision_mode": "ask",
     "vision_max_side": 2000
   },
   "assembler": {
     "group_at": 75,
     "hint_at": 45,
-    "ai_band": [35, 75],
-    "use_ai": false
+    "ai_band": [35, 75]
   },
   "ai": {
     "chat_provider": "local",
@@ -28,19 +26,25 @@
         "type": "openai_compat",
         "base_url": "http://localhost:11434/v1",
         "model": "llama3.1",
-        "api_key_env": null
+        "api_key_env": null,
+        "allow": "ask",
+        "daily_limit": null
       },
       "claude": {
         "type": "anthropic",
         "base_url": null,
         "model": "claude-sonnet-5",
-        "api_key_env": "ANTHROPIC_API_KEY"
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "allow": "ask",
+        "daily_limit": 50
       },
       "openai": {
         "type": "openai_compat",
         "base_url": "https://api.openai.com/v1",
         "model": "gpt-4o",
-        "api_key_env": "OPENAI_API_KEY"
+        "api_key_env": "OPENAI_API_KEY",
+        "allow": "ask",
+        "daily_limit": 50
       }
     }
   }

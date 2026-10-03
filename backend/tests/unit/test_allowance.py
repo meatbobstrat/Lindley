@@ -1,0 +1,45 @@
+"""When Lindley may call an AI on its own, and the record of the calls it makes."""
+
+import pytest
+
+from lindley.db.database import connect, init_db
+from lindley.providers import allowance
+
+
+@pytest.fixture
+def conn(settings):
+    init_db(settings.db_path)
+    c = connect(settings.db_path)
+    yield c
+    c.close()
+
+
+def test_by_default_every_ai_waits_for_an_ok(conn, settings):
+    assert allowance.automatic_left(conn, settings, "local") == 0
+    assert not allowance.may_call(conn, settings, "local")
+    assert not allowance.may_call(conn, settings, "not set up")
+    assert not allowance.may_call(conn, settings, None)
+
+
+def test_an_ai_allowed_to_run_on_its_own_keeps_to_its_daily_limit(conn, settings):
+    cfg = settings.ai.providers["local"]
+    cfg.allow = "auto"
+    assert allowance.automatic_left(conn, settings, "local") is None  # no limit
+    cfg.daily_limit = 2
+    assert allowance.automatic_left(conn, settings, "local") == 2
+    allowance.record(conn, "local", "vision", True)
+    allowance.record(conn, "local", "vision", False, count=5)  # OKed by a person: not counted
+    assert allowance.automatic_left(conn, settings, "local") == 1
+    allowance.record(conn, "local", "assemble", True)
+    assert not allowance.may_call(conn, settings, "local")
+    assert "2 automatic calls are used up" in allowance.why_waiting(settings, "local")
+    conn.execute("UPDATE ai_calls SET at = datetime('now', '-2 days')")
+    assert allowance.automatic_left(conn, settings, "local") == 2  # a new day
+
+
+def test_the_calls_are_recorded_with_what_they_were_for(conn):
+    allowance.record(conn, "local", "vision", True, ok=False)
+    allowance.record(conn, "local", "assemble", False, count=2)
+    rows = conn.execute("SELECT purpose, automatic, ok FROM ai_calls ORDER BY id").fetchall()
+    assert [tuple(r) for r in rows] == [("vision", 1, 0), ("assemble", 0, 1), ("assemble", 0, 1)]
+    assert allowance.calls_today(conn, "local", automatic=False) == 2

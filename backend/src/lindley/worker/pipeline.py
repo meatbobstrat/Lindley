@@ -18,6 +18,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from lindley.config import Settings
+from lindley.providers import allowance
 from lindley.providers.base import ProviderError, VisionProvider
 from lindley.providers.registry import get_provider
 from lindley.worker import image as pageimage
@@ -48,7 +49,6 @@ class StepStatus(StrEnum):
     SKIPPED = "skipped"
 
 
-WAITING = "Waiting for you to OK the vision model"
 STOP_AFTER_FAILURES = 3  # read_waiting stops after this many vision failures in a row
 # When Tesseract is unsure which way up a page is, the turned reading must beat this many points.
 TURN_MARGIN = 10
@@ -161,9 +161,9 @@ class Pipeline:
     if a page has no reading yet because it's waiting for the vision model; or `failed` with the
     error, and a failed scan can simply be processed again.
 
-    The vision model can cost money, so it's only called on its own in `vision_mode = "auto"`.
-    Otherwise pages wait until a person runs read_waiting. A vision call that failed is never
-    repeated on its own either: that page waits too.
+    The vision model can cost money, so it's only called on its own when its provider's `allow`
+    is "auto", within its daily limit; otherwise pages wait until a person runs read_waiting.
+    A vision call that failed is never repeated on its own either: that page waits too.
     """
 
     def __init__(
@@ -264,7 +264,12 @@ class Pipeline:
                 ):
                     image = Path(r["image_path"])
                     with self._upright(r["page_id"], image, rotation, r["dpi"]) as upright:
-                        result = self._vision_reader().recognize(upright)[0]
+                        try:
+                            result = self._vision_reader().recognize(upright)[0]
+                        except Exception:
+                            self._record_ok_call(conn, r["page_id"], ok=False)
+                            raise
+                    self._record_ok_call(conn, r["page_id"], ok=True)
                     self._add_vision_reading(conn, r["page_id"], model, result)
             except Exception as e:
                 run.failed += 1
@@ -280,6 +285,11 @@ class Pipeline:
                 self._settle(conn, scan_id)
         run.waiting = waiting_for_vision(conn)
         return run
+
+    def _record_ok_call(self, conn: sqlite3.Connection, page_id: int, ok: bool) -> None:
+        """A vision call a person OKed: recorded, but not counted against the daily limit."""
+        with conn:
+            allowance.record(conn, self.settings.ocr.vision_provider, "vision", False, page_id, ok)
 
     def _add_vision_reading(
         self, conn: sqlite3.Connection, page_id: int, model: str, result: PageResult
@@ -457,15 +467,20 @@ class Pipeline:
                     )
             elif _last_vision_status(conn, page_id) in ("queued", "failed"):
                 pass  # already waiting for a person; never sent again on its own
-            elif ocr.vision_mode == "ask":
+            elif not allowance.may_call(conn, self.settings, ocr.vision_provider):
                 with conn:
                     conn.execute(
                         "INSERT INTO intake_steps (scan_id, page_id, step, status, error)"
                         " VALUES (?, ?, 'vision', 'queued', ?)",
-                        (scan_id, page_id, WAITING),
+                        (
+                            scan_id,
+                            page_id,
+                            allowance.why_waiting(self.settings, ocr.vision_provider),
+                        ),
                     )
             else:
                 model = getattr(self.vision, "model", None) or "vision"
+                ok = False
                 try:
                     with run_step(
                         conn, scan_id, Step.VISION, page_id=page_id, engine_version=model
@@ -473,8 +488,12 @@ class Pipeline:
                         readings.append(
                             ("vision", model, self._vision_reader().recognize(image)[0])
                         )
+                    ok = True
                 except Exception:
                     pass  # recorded as failed; the page waits for a person to try again
+                finally:
+                    with conn:
+                        allowance.record(conn, ocr.vision_provider, "vision", True, page_id, ok)
 
         if not readings:
             return  # vision only, and the page is waiting for the vision model

@@ -81,7 +81,7 @@ def test_the_assembler_runs_once_things_settle(settings, inbox, monkeypatch):
 
 
 class _Report:
-    considered = documents_created = 0
+    considered = documents_created = ai_calls = 0
 
 
 def test_files_already_read_from_the_same_place_are_not_hashed_again(settings, inbox, monkeypatch):

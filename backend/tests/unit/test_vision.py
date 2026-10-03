@@ -77,7 +77,7 @@ def test_a_heavy_file_is_re_encoded_even_if_it_fits(tmp_path):
 
 
 def test_the_pipeline_uses_the_size_in_settings(conn, settings, tmp_path):
-    settings.ocr.vision_mode, settings.ocr.vision_max_side = "auto", 600
+    settings.ai.providers["local"].allow, settings.ocr.vision_max_side = "auto", 600
     img = Image.new("RGB", (1200, 1600), "white")
     ImageDraw.Draw(img).rectangle([100, 100, 1000, 140], fill="black")
     img.save(tmp_path / "scan_0001.png")

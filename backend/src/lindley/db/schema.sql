@@ -1,4 +1,4 @@
--- Lindley schema, version 4 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
+-- Lindley schema, version 5 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
 -- Applied idempotently at startup by lindley.db.database.init_db.
 -- Design notes: design/database.md.
 --
@@ -303,3 +303,18 @@ SELECT
     (t.source = 'user' OR t.confirmed_at IS NOT NULL) AS reviewed
 FROM transcriptions t
 WHERE t.is_current = 1;
+
+-- ---------------------------------------------------------------- AI calls
+
+-- Every call Lindley makes to an AI: so a person can see what went where, and so a daily limit
+-- on calls made on its own can be kept. A call a person OKed or asked for isn't automatic.
+CREATE TABLE IF NOT EXISTS ai_calls (
+    id         INTEGER PRIMARY KEY,
+    provider   TEXT NOT NULL,                       -- its name in settings.json
+    purpose    TEXT NOT NULL CHECK (purpose IN ('vision', 'assemble', 'chat', 'embed')),
+    automatic  INTEGER NOT NULL CHECK (automatic IN (0, 1)),
+    page_id    INTEGER REFERENCES pages(id),        -- the page it was about, if one
+    ok         INTEGER NOT NULL DEFAULT 1 CHECK (ok IN (0, 1)),  -- 0: it failed
+    at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ai_calls_provider ON ai_calls(provider, at);

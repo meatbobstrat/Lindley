@@ -184,13 +184,16 @@ def test_a_duplicate_pair_is_stored_once(conn):
     assert tuple(row) == ("open", None)
 
 
-def old_schema(*, duplicates: bool) -> str:
-    """Today's schema as an older version had it: no history.batch (v3), no Duplicates (v2)."""
+def old_schema(*, duplicates: bool, batch: bool = False) -> str:
+    """Today's schema as an older version had it: no ai_calls (v4), no history.batch (v3), no
+    Duplicates (v2)."""
     from importlib.resources import files
 
     schema = files("lindley.db").joinpath("schema.sql").read_text(encoding="utf-8")
-    schema = re.sub(r"(after\s+TEXT),([^\n]*)\n\s+batch\s+INTEGER[^\n]*", r"\1 \2", schema)
-    schema = re.sub(r"CREATE INDEX IF NOT EXISTS idx_history_batch[^\n]*\n", "", schema)
+    schema = schema.split("-- " + "-" * 64 + " AI calls")[0]
+    if not batch:
+        schema = re.sub(r"(after\s+TEXT),([^\n]*)\n\s+batch\s+INTEGER[^\n]*", r"\1 \2", schema)
+        schema = re.sub(r"CREATE INDEX IF NOT EXISTS idx_history_batch[^\n]*\n", "", schema)
     if not duplicates:
         rule = "-- " + "-" * 64
         before, after = schema.split(rule + " Duplicates")
@@ -225,7 +228,20 @@ def test_v3_database_gains_history_batches(tmp_path):
     c = connect(db)
     assert "batch" in {r["name"] for r in c.execute("PRAGMA table_info(history)")}
     assert c.execute("SELECT action, batch FROM history").fetchone()[:] == ("rename", None)
-    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 4
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    c.close()
+
+
+def test_v4_database_gains_the_ai_call_record(tmp_path):
+    db = tmp_path / "v4.db"
+    c = sqlite3.connect(db)
+    c.executescript(old_schema(duplicates=True, batch=True) + "\nPRAGMA user_version = 4;")
+    assert "ai_calls" not in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
+    c.close()
+    init_db(db)
+    c = connect(db)
+    assert "ai_calls" in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 5
     c.close()
 
 

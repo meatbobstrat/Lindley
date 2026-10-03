@@ -21,6 +21,7 @@ from lindley.assembler import assemble
 from lindley.config import Settings
 from lindley.db.database import connect
 from lindley.duplicates import find_duplicates
+from lindley.providers import allowance
 from lindley.providers.base import ChatProvider, ProviderError
 from lindley.providers.registry import get_provider
 from lindley.worker.intake import ingest, is_supported
@@ -154,7 +155,8 @@ class FolderWatcher:
                 self._unassembled = True
             self._last_new = time.monotonic()
         if ready and (waiting := waiting_for_vision(conn)):
-            # Never sent from here: a person OKs it (vision_mode "auto" sends as pages are read).
+            # Never sent from here: a person OKs it (a provider allowed to run on its own has
+            # already been sent them as they were read).
             log.info("%d page(s) are waiting for you to OK the vision model", waiting)
         with self._lock:
             waiting = bool(self._pending)
@@ -162,7 +164,13 @@ class FolderWatcher:
             found = find_duplicates(conn).found  # first: copies of a page never share a document
             if found:
                 log.info("%d possible duplicate(s) to look at under Duplicates", len(found))
-            report = assemble(conn, self.settings.assembler, self.chat)
+            name = self.settings.ai.chat_provider
+            left = allowance.automatic_left(conn, self.settings, name) if self.chat else 0
+            chat = self.chat if left is None or left > 0 else None
+            report = assemble(conn, self.settings.assembler, chat, left)
+            if report.ai_calls:
+                with conn:
+                    allowance.record(conn, name, "assemble", True, count=report.ai_calls)
             log.info(
                 "Assembled %d Inbox pages: %d new documents",
                 report.considered,
@@ -199,7 +207,9 @@ def _readable(path: Path) -> bool:
 
 
 def _chat_from(settings: Settings) -> ChatProvider | None:
-    if not settings.assembler.use_ai:
+    """The chat AI, if it may ever run on its own; each run checks today's limit."""
+    cfg = allowance.provider_config(settings, settings.ai.chat_provider)
+    if cfg is None or cfg.allow != "auto":
         return None
     try:
         return get_provider(settings.ai, settings.ai.chat_provider)

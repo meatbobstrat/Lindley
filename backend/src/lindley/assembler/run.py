@@ -184,9 +184,19 @@ def _best_match(g: Group, docs: list[DocEnds]) -> tuple[DocEnds, bool, int, list
 
 
 def assemble(
-    conn: sqlite3.Connection, cfg: AssemblerSettings | None = None, chat: ChatProvider | None = None
+    conn: sqlite3.Connection,
+    cfg: AssemblerSettings | None = None,
+    chat: ChatProvider | None = None,
+    max_ai_calls: int | None = None,
 ) -> RunReport:
+    """Sort the Inbox. With `chat`, the AI is asked about what the rules couldn't settle:
+    passing it is the OK to call it (see lindley.providers.allowance), at most `max_ai_calls`
+    times if given. Without it, the rules decide alone."""
     cfg = cfg or AssemblerSettings()
+
+    def ai_left() -> bool:
+        return chat is not None and (max_ai_calls is None or report.ai_calls < max_ai_calls)
+
     report = RunReport()
     pages = load_inbox(conn)
     report.considered = len(pages)
@@ -198,8 +208,10 @@ def assemble(
     groups, pairs, ordered = segment(pages)
 
     # The AI looks only at what the rules couldn't settle.
-    if chat and cfg.use_ai:
+    if chat:
         for window in _ai_windows(groups, pairs, ordered, cfg.ai_band):
+            if not ai_left():
+                break
             report.ai_calls += 1
             result = ai.refine(chat, [p for g in window for p in g.pages], window)
             if result.groups is None:
@@ -258,7 +270,7 @@ def assemble(
                 waiting.append(g)
         new = [g for g in waiting if g.confidence >= cfg.group_at]
         made = {id(g) for g in new}
-        if chat and cfg.use_ai and (guess := [g for g in new if g.name_is_guess]):
+        if ai_left() and (guess := [g for g in new if g.name_is_guess]):
             report.ai_calls += 1
             for i, name in ai.suggest_names(chat, guess).items():
                 guess[i].name, guess[i].name_is_guess = name, False

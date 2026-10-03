@@ -378,3 +378,67 @@ def test_the_app_picks_up_work_cut_off_when_it_closed(settings, inbox, tmp_path)
         status = conn.execute("SELECT status FROM intake_steps").fetchone()[0]
     conn.close()
     assert status == "failed"
+
+
+def test_a_duplicate_file_isnt_hashed_again_on_each_start(settings, inbox, monkeypatch):
+    (inbox / "a.png").write_bytes(png_bytes())
+    (inbox / "copy of a.png").write_bytes(png_bytes())
+    first = make_watcher(settings)
+    first.sweep([inbox])
+    first.tick()
+    first.tick()
+    later = make_watcher(settings)
+    monkeypatch.setattr(watcher_mod, "ingest", lambda *a, **k: pytest.fail("hashed again"))
+    later.sweep([inbox])
+    assert later.tick() == [] and later.tick() == []
+
+
+def test_a_file_changed_in_place_at_the_same_size_is_read_again(settings, inbox):
+    path = inbox / "a.png"
+    path.write_bytes(png_bytes("white"))
+    first = make_watcher(settings)
+    first.sweep([inbox])
+    first.tick()
+    first.tick()
+    path.write_bytes(png_bytes("black"))  # rescanned over the old file: same size, new time
+    later = make_watcher(settings)
+    later.sweep([inbox])
+    later.tick()
+    assert later.tick() == [path]
+    assert len(scans(settings)) == 2
+
+
+def test_move_mode_takes_a_file_it_couldnt_remove_again(settings, inbox, monkeypatch):
+    settings.move_files = True
+    path = inbox / "a.png"
+    path.write_bytes(png_bytes())
+    unlink = watcher_mod.Path.unlink
+    monkeypatch.setattr(
+        watcher_mod.Path,
+        "unlink",
+        lambda self, *a, **k: (
+            (_ for _ in ()).throw(PermissionError("in use"))
+            if self.name == "a.png"
+            else unlink(self, *a, **k)
+        ),
+    )
+    first = make_watcher(settings)
+    first.sweep([inbox])
+    first.tick()
+    first.tick()
+    assert path.exists()
+    monkeypatch.undo()
+    later = make_watcher(settings)
+    later.sweep([inbox])
+    later.tick()
+    later.tick()
+    assert not path.exists()  # seen before, but still there: removed now
+
+
+def test_the_vision_queue_is_found_by_index(settings, inbox):
+    from lindley.worker.pipeline import _LAST_VISION
+
+    conn = connect(settings.db_path)
+    plan = " ".join(r[3] for r in conn.execute(f"EXPLAIN QUERY PLAN {_LAST_VISION}"))
+    conn.close()
+    assert "idx_intake_steps_page" in plan

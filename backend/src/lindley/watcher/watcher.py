@@ -27,7 +27,7 @@ from lindley.config import Settings
 from lindley.db.database import connect
 from lindley.duplicates import find_duplicates
 from lindley.providers.base import ChatProvider
-from lindley.worker.intake import ingest, is_supported, looks_complete
+from lindley.worker.intake import already_seen, ingest, is_supported, looks_complete
 from lindley.worker.pipeline import Pipeline, unfinished_scans, waiting_for_vision
 
 log = logging.getLogger(__name__)
@@ -247,7 +247,12 @@ class FolderWatcher:
                 except OSError:
                     del self._pending[path]  # gone, or a folder
                     continue
-                if seen.size == -1 and _already_read(conn, path, st.st_size):
+                # Move mode never skips one: a file still there wasn't removed yet.
+                if (
+                    seen.size == -1
+                    and not self.settings.move_files
+                    and already_seen(conn, path, st)
+                ):
                     del self._pending[path]
                     continue
                 if (st.st_size, st.st_mtime_ns) != (seen.size, seen.mtime):
@@ -307,19 +312,6 @@ class FolderWatcher:
         if self._conn is None:  # made on the thread that uses it
             self._conn = connect(self.settings.db_path)
         return self._conn
-
-
-def _already_read(conn: sqlite3.Connection, path: Path, size: int) -> bool:
-    """Read before from this very path at this size, so there's no need to hash it again.
-
-    Copy mode leaves originals in the watched folder; this keeps start-up sweeps cheap. Scans
-    that failed aren't matched, so they're tried again.
-    """
-    row = conn.execute(
-        "SELECT 1 FROM scans WHERE source_path = ? AND file_size = ? AND status = 'read'",
-        (str(path.resolve()), size),
-    ).fetchone()
-    return row is not None
 
 
 def _readable(path: Path) -> bool:

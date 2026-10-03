@@ -1,4 +1,4 @@
--- Lindley schema, version 5 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
+-- Lindley schema, version 9 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
 -- Applied idempotently at startup by lindley.db.database.init_db.
 -- Design notes: design/database.md.
 --
@@ -240,6 +240,18 @@ CREATE TABLE IF NOT EXISTS intake_steps (
 );
 CREATE INDEX IF NOT EXISTS idx_intake_steps_status ON intake_steps(status, step);
 CREATE INDEX IF NOT EXISTS idx_intake_steps_scan ON intake_steps(scan_id);
+-- Each page's latest step of a kind (its vision step: waiting, failed, done), asked every second.
+CREATE INDEX IF NOT EXISTS idx_intake_steps_page ON intake_steps(page_id, step, id);
+
+-- Files met in watched folders. One at the same path, size and time as before is the same file,
+-- so the watcher's start-up sweep doesn't hash it again (copy mode leaves every original there).
+CREATE TABLE IF NOT EXISTS seen_files (
+    path      TEXT PRIMARY KEY,                     -- resolved
+    size      INTEGER NOT NULL,
+    mtime_ns  INTEGER NOT NULL,
+    sha256    TEXT NOT NULL,
+    seen_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 -- Who did what, for undo and so Lindley's actions are always visible.
 CREATE TABLE IF NOT EXISTS history (

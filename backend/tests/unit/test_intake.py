@@ -284,3 +284,26 @@ def test_a_picture_too_big_to_read_safely_says_so(conn, settings, inbox, monkeyp
     monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1000)
     r = import_file(conn, settings, make_jpeg(inbox / "a.jpg"))
     assert r.status == "failed" and "too big to read safely" in r.error
+
+
+def test_library_paths_are_absolute_whatever_the_settings_say(
+    conn, settings, inbox, tmp_path, monkeypatch
+):
+    from lindley.worker.intake import absolute_paths
+
+    monkeypatch.chdir(tmp_path)
+    settings.library_dir = Path("library")  # relative, as the default settings are
+    r = import_file(conn, settings, make_tiff(inbox / "a.tif"))
+    rows = conn.execute("SELECT image_path FROM pages").fetchall()
+    assert all(Path(p[0]).is_absolute() for p in rows)
+    lib = conn.execute("SELECT library_path FROM scans").fetchone()[0]
+    assert Path(lib).is_absolute()
+    # A database from before: relative paths become absolute while the files are there.
+    conn.execute(
+        "UPDATE scans SET library_path = ? WHERE id = ?",
+        (str(Path(lib).relative_to(tmp_path)), r.scan_id),
+    )
+    conn.execute("UPDATE pages SET image_path = 'library/gone.png' WHERE page_index = 0")
+    conn.commit()
+    assert absolute_paths(conn) == 1
+    assert conn.execute("SELECT library_path FROM scans").fetchone()[0] == lib

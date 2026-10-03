@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import mimetypes
+import os
 import shutil
 import sqlite3
 from dataclasses import dataclass
@@ -105,9 +106,17 @@ def import_file(
         return ImportResult(path, "failed", error=f"Not a supported file type: {path.suffix}")
     started = now()
     try:
+        st = path.stat()  # before hashing: a file changed since is noticed again
         sha = sha256_of(path)
     except OSError as e:
         return _quarantine(settings, path, ImportResult(path, "failed", error=str(e)))
+    with conn:
+        conn.execute(
+            "INSERT INTO seen_files (path, size, mtime_ns, sha256) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT (path) DO UPDATE SET size = excluded.size,"
+            " mtime_ns = excluded.mtime_ns, sha256 = excluded.sha256, seen_at = datetime('now')",
+            (str(path.resolve()), st.st_size, st.st_mtime_ns, sha),
+        )
 
     existing = conn.execute(
         "SELECT s.id, s.status, s.library_path,"
@@ -181,6 +190,38 @@ def import_file(
     return ImportResult(path, "new", scan_id, pages)
 
 
+def already_seen(conn: sqlite3.Connection, path: Path, st: os.stat_result) -> bool:
+    """Seen before at this path, size and time, and split into pages: nothing to do. (Reading
+    pages that were never read is the watcher's start-up work, from Lindley's own copy.) A
+    file that failed before it was split is tried again."""
+    return (
+        conn.execute(
+            "SELECT 1 FROM seen_files f JOIN scans s ON s.sha256 = f.sha256"
+            " WHERE f.path = ? AND f.size = ? AND f.mtime_ns = ?"
+            " AND EXISTS (SELECT 1 FROM pages p WHERE p.scan_id = s.id)",
+            (str(path.resolve()), st.st_size, st.st_mtime_ns),
+        ).fetchone()
+        is not None
+    )
+
+
+def absolute_paths(conn: sqlite3.Connection) -> int:
+    """Library paths stored relative to the folder Lindley ran in (as the default settings
+    made them) become absolute, while that's still where they are. Returns how many changed."""
+    changed = 0
+    with conn:
+        for table, column in (("scans", "library_path"), ("pages", "image_path")):
+            rows = conn.execute(f"SELECT id, {column} FROM {table} WHERE {column} IS NOT NULL")
+            for row_id, value in rows.fetchall():
+                if not Path(value).is_absolute() and Path(value).exists():
+                    conn.execute(
+                        f"UPDATE {table} SET {column} = ? WHERE id = ?",
+                        (str(Path(value).resolve()), row_id),
+                    )
+                    changed += 1
+    return changed
+
+
 def ingest(
     conn: sqlite3.Connection,
     settings: Settings,
@@ -199,7 +240,8 @@ def ingest(
 
 def _library_copy(settings: Settings, path: Path, sha: str) -> Path:
     """Lindley's own copy, named by its hash, checked against the original before it's trusted."""
-    dest = settings.library_dir / "scans" / sha[:2] / f"{sha}{path.suffix.lower()}"
+    # Absolute: the database mustn't depend on the folder Lindley happens to run in.
+    dest = settings.library_dir.resolve() / "scans" / sha[:2] / f"{sha}{path.suffix.lower()}"
     if not (dest.exists() and sha256_of(dest) == sha):
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, dest)
@@ -385,7 +427,7 @@ def _split(
     conn: sqlite3.Connection, settings: Settings, scan_id: int, copy: Path, mime: str | None
 ) -> int:
     """One pages row per page. Single images are read in place; others become page PNGs."""
-    out = settings.library_dir / "pages" / str(scan_id)
+    out = settings.library_dir.resolve() / "pages" / str(scan_id)
     rows: list[tuple] = []
     if mime == "application/pdf":
         import pypdfium2 as pdfium

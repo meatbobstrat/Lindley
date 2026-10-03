@@ -27,6 +27,7 @@ from lindley.api import settings as settings_api
 from lindley.config import Settings, load_settings
 from lindley.db.database import connect, init_db
 from lindley.watcher.watcher import FolderWatcher
+from lindley.worker.intake import absolute_paths
 from lindley.worker.pipeline import recover_interrupted
 
 # Built frontend (frontend/dist), served in production so the app is a single process.
@@ -47,6 +48,7 @@ def create_app(
         conn = connect(settings.db_path)
         try:  # nothing else is running yet: whatever was running was cut off
             recover_interrupted(conn)
+            absolute_paths(conn)
         finally:
             conn.close()
         watcher = FolderWatcher(settings) if watch else None

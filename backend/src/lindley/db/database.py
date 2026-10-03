@@ -6,7 +6,7 @@ import sqlite3
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 # Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}.
 # schema.sql always describes the latest version, for new databases.
@@ -18,6 +18,7 @@ MIGRATIONS: dict[int, str] = {
     6: "",  # new table only (ai_answers)
     7: "",  # new table only (learned_weights)
     8: "",  # new table only (needs_ai)
+    9: "",  # new table only (seen_files), and an index
 }
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.
@@ -27,7 +28,9 @@ _PLACEHOLDER_TABLES = ("pages_fts", "jobs", "pages", "documents")
 def connect(db_path: Path, *, any_thread: bool = False) -> sqlite3.Connection:
     """`any_thread`: the connection may be used from another thread than the one that made it
     (one request in the API's threadpool). It must still only be used by one at a time."""
-    conn = sqlite3.connect(db_path, check_same_thread=not any_thread)
+    # The watcher, API requests and scripts share the database: a writer waits up to `timeout`
+    # seconds for another to finish (SQLite's busy timeout) rather than failing at once.
+    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=not any_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")

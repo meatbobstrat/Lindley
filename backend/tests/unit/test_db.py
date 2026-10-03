@@ -288,7 +288,23 @@ def test_v7_database_gains_the_needs_ai_queue(tmp_path):
     init_db(db)
     c = connect(db)
     assert "needs_ai" in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
-    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 8
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    c.close()
+
+
+def test_v8_database_gains_seen_files_and_the_page_step_index(tmp_path):
+    db = tmp_path / "v8.db"
+    init_db(db)
+    c = sqlite3.connect(db)
+    c.executescript(
+        "DROP TABLE seen_files; DROP INDEX idx_intake_steps_page; PRAGMA user_version = 8;"
+    )
+    c.close()
+    init_db(db)
+    c = connect(db)
+    names = {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
+    assert {"seen_files", "idx_intake_steps_page"} <= names
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 9
     c.close()
 
 

@@ -9,6 +9,7 @@ Targets undo knows how to put back:
 - page: its place (document_id, position, set_aside_at)
 - duplicate_set: the status of each duplicate pair in it
 - document: a document removed because it had no pages left (and its open suggestions)
+- new_document: a document made by the decision, removed again once its pages have gone back
 """
 
 from __future__ import annotations
@@ -136,6 +137,16 @@ def _undo_document(conn: sqlite3.Connection, doc_id: int, before: dict, _after: 
         _insert(conn, "suggestions", s)
 
 
+def _undo_new_document(conn: sqlite3.Connection, doc_id: int, _before: None, _after: dict) -> None:
+    if conn.execute("SELECT 1 FROM pages WHERE document_id = ?", (doc_id,)).fetchone():
+        raise UndoError(f"Document {doc_id} has had pages added since, so this can't be undone")
+    if conn.execute("SELECT 1 FROM exports WHERE document_id = ?", (doc_id,)).fetchone():
+        raise UndoError(f"Document {doc_id} has been exported since, so this can't be undone")
+    conn.execute("DELETE FROM suggestions WHERE document_id = ?", (doc_id,))
+    conn.execute("DELETE FROM facts WHERE document_id = ?", (doc_id,))
+    conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+
+
 def _insert(conn: sqlite3.Connection, table: str, row: dict) -> None:
     cols = ", ".join(row)
     conn.execute(
@@ -143,4 +154,9 @@ def _insert(conn: sqlite3.Connection, table: str, row: dict) -> None:
     )
 
 
-_UNDO = {"page": _undo_page, "duplicate_set": _undo_duplicate_set, "document": _undo_document}
+_UNDO = {
+    "page": _undo_page,
+    "duplicate_set": _undo_duplicate_set,
+    "document": _undo_document,
+    "new_document": _undo_new_document,
+}

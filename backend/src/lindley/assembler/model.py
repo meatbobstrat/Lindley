@@ -30,6 +30,7 @@ class Page:
     script: str | None = None  # handwritten, printed, typed, mixed, none
     ocr_conf: float | None = None  # the reading's confidence, 0-100
     modified_at: str | None = None  # the file's time: when it was scanned, if EXIF didn't say
+    added_at: str | None = None  # when the page came into Lindley (UTC, as SQLite writes it)
     clues: PageClues = field(init=False)
     layout: Layout | None = field(init=False)
     # Rare words, weighed against the other pages being sorted (see weigh_terms)

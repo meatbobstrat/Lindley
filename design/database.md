@@ -162,7 +162,11 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    - **Then loose ends, over the whole Inbox, best first.** A chain that doesn't end is joined to one that doesn't start when one clearly continues the other (0.75; 0.6 for two pages fed through the scanner the wrong way round), and no other loose end comes within 0.1 of it, for either page. Without that last rule, page 3 of one typescript was joined to page 4 of another: typescripts by one author share page numbers, and nearly every page ends mid-sentence.
    - **Order within a group:** page numbers first, then greeting first and signature last, then the chain. The order counts as settled, so the AI isn't asked about it, when every link in the chain scores 0.7 or more.
    - **Confidence:** each group gets one (0–100), based on how sure the breaks inside and around it are. It drops when the group has no clear start or end (a page may be missing), except for diaries.
-4. **AI** (`ai.py`), only when the chat AI may be used: its connection's `allow` is `auto` and today's limit isn't used up, or a person OKed it. The AI is asked only about breaks scoring 35–75 and groups whose order isn't settled. It gets page text and clues, never images.
+4. **A person, then the AI** (`ai.py`). What the rules can't settle goes to a person first, as hints in the Inbox: an answer costs nothing and is right. The AI is the last resort, asked only about breaks scoring 35–75 and groups whose order isn't settled, and only:
+   - when a person asks it about some pages (`POST /api/assembler/ask`): asking is the OK, and those pages are sent at once; or
+   - on its own, when its connection's `allow` is `auto` and today's limit isn't used up, for pages that have waited in the Inbox `ask_ai_after_days` (default 7) and that no one turned down. Pages whose "Do these go together?" a person dismissed aren't sent on their own. Naming new documents follows the same rule.
+
+   It gets page text and clues, never images.
    - Its reply must use every page given exactly once, and no others. Anything else is rejected and the rules' answer stands.
    - It also suggests names where the rules could only guess.
    - **Every reply is kept** (`answers.py`, table `ai_answers`), known by what the AI was shown: the pages' ids, text and clues, and the instructions. The rules' proposal is left out, since it shifts as new scans arrive beside the pages. Pages the AI looked at but that still wait in the Inbox are answered from that reply on later runs, with no call, even when the AI may not be called now. A reply that was rejected is kept too; a call that failed isn't. Change a page's reading and it's a new question.
@@ -174,9 +178,17 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    | The same, but a person has named, changed or worked on the document | Suggests it (`add_to_document`); the page stays in the Inbox |
    | The group is confident (at or above `group_at`, default 75) | Creates a Lindley document with an italic name, its type, date, confidence and `reasons` (`history`: `group_pages`) |
    | A likely match (at or above `hint_at`, default 45) | Suggests it (`add_to_document`); the page stays in the Inbox |
+   | Pages that may be one document (two or more, at or above `hint_at`) | Asks "Do these go together?" (`group_pages`, with the pages in order, a name, type and date) |
    | A blank page or stray note | Suggests Set aside; never moves it |
    | A completed document | Never touches it |
    | A suggestion a person dismissed | Never makes it again |
+
+**A person's answers** (`decide.py`, `GET /api/suggestions`, `POST /api/suggestions/{id}/accept` and `/dismiss`).
+- **Accept "Do these go together?"**: the pages become a document, which counts as the person's own (`origin = 'user'`), so Lindley only suggests changes to it from then on.
+- **Accept "Add to …?"**: every page hinted together goes to the start or end of the document, as hinted. Pages already there move down to make room when the new ones go first.
+- **Accept "Set aside?"**: the page is set aside.
+- Each is one `history` batch, returned as `undo`. Undoing a grouping removes the document it made, unless pages were added to it or it was exported since. A hint whose pages have moved since is refused as out of date.
+- **Dismiss**: the hint is never made again, and the AI isn't sent those pages on its own.
 
 **Test bench.** `lindley.assembler.bench` makes seeded batches of believable pages with known right answers:
 - letters of 1–4 pages, some with page numbers and some broken mid-sentence;

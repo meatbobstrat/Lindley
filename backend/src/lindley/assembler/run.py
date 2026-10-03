@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 from lindley.assembler import ai, apply
 from lindley.assembler.answers import Answers
@@ -19,6 +21,7 @@ from lindley.config import AssemblerSettings
 from lindley.providers.base import ChatProvider
 
 MAX_AI_PAGES = 40  # pages per AI question; larger tangles are left to the rules
+_ONE_AT_A_TIME = threading.Lock()  # the watcher and a person's request may both assemble
 
 
 @dataclass
@@ -51,6 +54,7 @@ class DocEnds:
 _PAGE_SQL = """
 SELECT p.id, p.scan_id, p.page_index, p.width_px, p.height_px, p.blank_score, p.phash,
        p.paper_color, p.detected_rotation, p.user_rotation, p.dpi, p.color_mode, p.script,
+       p.created_at AS added_at,
        s.original_name, s.scanned_at, s.file_modified_at, s.imported_at,
        t.text, t.words, t.confidence
 FROM pages p
@@ -91,6 +95,7 @@ def _page(r: sqlite3.Row, copies: dict[int, frozenset[int]] | None = None) -> Pa
         r["script"],
         r["confidence"],
         r["file_modified_at"],
+        r["added_at"],
     )
 
 
@@ -200,23 +205,58 @@ def _best_match(g: Group, docs: list[DocEnds]) -> tuple[DocEnds, bool, int, list
     return best
 
 
+def _declined(conn: sqlite3.Connection) -> set[int]:
+    """Pages a person said don't go together as Lindley proposed: the AI isn't asked about
+    them on its own."""
+    out: set[int] = set()
+    for (payload,) in conn.execute(
+        "SELECT payload FROM suggestions WHERE kind = 'group_pages' AND status = 'dismissed'"
+    ):
+        out |= set(json.loads(payload or "{}").get("pages", []))
+    return out
+
+
 def assemble(
     conn: sqlite3.Connection,
     cfg: AssemblerSettings | None = None,
     chat: ChatProvider | None = None,
     max_ai_calls: int | None = None,
+    asked: set[int] | None = None,
 ) -> RunReport:
-    """Sort the Inbox. With `chat`, the AI is asked about what the rules couldn't settle:
+    """Sort the Inbox. With `chat`, the AI may be asked about what the rules couldn't settle:
     passing it is the OK to call it (see lindley.providers.allowance), at most `max_ai_calls`
-    times if given. Without it, the rules decide alone, helped only by what the AI already said
-    about the same pages (lindley.assembler.answers), which costs nothing."""
-    cfg = cfg or AssemblerSettings()
-    answers = Answers(conn)
+    times if given. A person is asked first, with hints, so on its own the AI is only asked
+    about pages that have waited `ask_ai_after_days` and that no one turned down. With `asked`,
+    a person asked about those pages: only they are sent, at once. Without `chat`, the rules
+    decide alone, helped by what the AI already said about the same pages
+    (lindley.assembler.answers), which costs nothing."""
+    with _ONE_AT_A_TIME:
+        return _assemble(conn, cfg or AssemblerSettings(), chat, max_ai_calls, asked)
 
-    def may_ask() -> ChatProvider | None:
-        if chat is not None and (max_ai_calls is None or answers.calls < max_ai_calls):
-            return chat
-        return None
+
+def _assemble(
+    conn: sqlite3.Connection,
+    cfg: AssemblerSettings,
+    chat: ChatProvider | None,
+    max_ai_calls: int | None,
+    asked: set[int] | None,
+) -> RunReport:
+    answers = Answers(conn)
+    waited = (datetime.now(UTC) - timedelta(days=cfg.ask_ai_after_days)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    declined = _declined(conn) if chat is not None and asked is None else set()
+
+    def may_ask(ps: list[Page]) -> ChatProvider | None:
+        """The AI, if it may be called about these pages now."""
+        if chat is None or (max_ai_calls is not None and answers.calls >= max_ai_calls):
+            return None
+        ids = {p.id for p in ps}
+        if asked is not None:
+            return chat if ids & asked else None
+        if ids & declined or any((p.added_at or "") > waited for p in ps):
+            return None
+        return chat
 
     report = RunReport()
     pages = load_inbox(conn)
@@ -235,8 +275,14 @@ def assemble(
     windows = _ai_windows(groups, pairs, ordered, cfg.ai_band)
     report.ai_windows = len(windows)
     report.ai_pages = sum(len(g.pages) for w in windows for g in w)
+    if asked:  # pages a person asked about, though the rules didn't think them uncertain
+        sent = {p.id for w in windows for g in w for p in g.pages}
+        more = [g for g in groups if not g.set_aside and set(g.ids) & (asked - sent)]
+        if more and sum(len(g.pages) for g in more) <= MAX_AI_PAGES:
+            windows.append(more)
     for window in windows:
-        result = ai.refine(may_ask(), [p for g in window for p in g.pages], window, answers)
+        ps = [p for g in window for p in g.pages]
+        result = ai.refine(may_ask(ps), ps, window, answers)
         if result.groups is None:
             if result.problem:
                 report.ai_rejected.append(result.problem)
@@ -263,9 +309,12 @@ def assemble(
         apply.save_clues(conn, pages)
         apply.clear_hints(conn, [p.id for p in pages])
 
-        def hint(d: DocEnds, score: int, why: list[str], g: Group) -> None:
+        def hint(d: DocEnds, at_end: bool, score: int, why: list[str], g: Group) -> None:
+            where = {"pages": g.ids, "at": "end" if at_end else "start"}
             for p in g.pages:
-                report.hints += apply.suggest(conn, "add_to_document", p.id, d.id, score, why)
+                report.hints += apply.suggest(
+                    conn, "add_to_document", p.id, d.id, score, why, where
+                )
 
         def place(g: Group, allow_new: bool) -> bool:
             """Add a group to an open document, or hint at one. False: still unplaced."""
@@ -273,7 +322,7 @@ def assemble(
             if m and m[2] >= cfg.group_at:
                 d, at_end, score, why = m
                 if d.touched:  # a person's document: suggest, never change it
-                    hint(d, score, why, g)
+                    hint(d, at_end, score, why, g)
                     return True
                 apply.attach(conn, d.id, g, at_end, score, why)
                 a, b = (d.last, g.pages[0]) if at_end else (g.pages[-1], d.first)
@@ -287,7 +336,7 @@ def assemble(
             if allow_new and g.confidence >= cfg.group_at:
                 return False
             if m and m[2] >= cfg.hint_at:
-                hint(m[0], m[2], m[3], g)
+                hint(*m, g)
                 return True
             return False
 
@@ -304,16 +353,20 @@ def assemble(
         new = [g for g in waiting if g.confidence >= cfg.group_at]
         made = {id(g) for g in new}
         if guess := [g for g in new if g.name_is_guess]:
-            for i, name in ai.suggest_names(may_ask(), guess, answers).items():
+            asking = may_ask([p for g in guess for p in g.pages])
+            for i, name in ai.suggest_names(asking, guess, answers).items():
                 guess[i].name, guess[i].name_is_guess = name, False
         for g in new:
             doc_id = apply.create_document(conn, g)
             docs.append(DocEnds(doc_id, g.name, g.pages[0], g.pages[-1], False))
             report.documents_created += 1
             report.pages_grouped += len(g.pages)
+        # What's left goes to a person first: "Do these go together?"
         for g in waiting:
-            if id(g) not in made:
-                place(g, allow_new=False)
+            if id(g) in made or place(g, allow_new=False):
+                continue
+            if len(g.pages) > 1 and g.confidence >= cfg.hint_at:
+                report.hints += apply.suggest_group(conn, g)
 
         apply.save_links(conn, [p.id for p in pages], links)
         apply.mark_matched(conn, {p.scan_id for p in pages})

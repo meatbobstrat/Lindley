@@ -139,14 +139,16 @@ def suggest(
     reasons: list[str],
     payload: dict | None = None,
 ) -> bool:
-    """Add a suggestion, unless a person already dismissed the same one."""
-    dismissed = conn.execute(
-        "SELECT 1 FROM suggestions WHERE status = 'dismissed' AND kind = ? AND page_id = ?"
+    """Add a suggestion, unless a person already dismissed the same one. Pages proposed as a
+    group are the same suggestion only with the same pages."""
+    for (was,) in conn.execute(
+        "SELECT payload FROM suggestions WHERE status = 'dismissed' AND kind = ? AND page_id = ?"
         " AND document_id IS ?",
         (kind, page_id, doc_id),
-    ).fetchone()
-    if dismissed:
-        return False
+    ):
+        pages = set((payload or {}).get("pages", []))
+        if kind != "group_pages" or set(json.loads(was or "{}").get("pages", [])) == pages:
+            return False
     conn.execute(
         "INSERT INTO suggestions (kind, page_id, document_id, payload, confidence, reasons)"
         " VALUES (?, ?, ?, ?, ?, ?)",
@@ -160,6 +162,12 @@ def suggest(
         ),
     )
     return True
+
+
+def suggest_group(conn: sqlite3.Connection, g: Group) -> bool:
+    """Ask a person whether these pages go together, as one document in this order."""
+    payload = {"pages": g.ids, "name": g.name, "type": g.kind, "date": g.date}
+    return suggest(conn, "group_pages", g.pages[0].id, None, g.confidence, g.reasons, payload)
 
 
 def mark_matched(conn: sqlite3.Connection, scan_ids: set[int]) -> None:

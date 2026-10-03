@@ -20,7 +20,8 @@ LETTER = [
 ]
 LAST = "- 4 -\nPlease write soon.\nYour loving brother\nWill"
 
-AI_ON = AssemblerSettings()  # passing a chat AI to assemble() is the OK to call it
+# Passing a chat AI to assemble() is the OK to call it; these pages need not wait for a person
+AI_ON = AssemblerSettings(ask_ai_after_days=0)
 
 
 @pytest.fixture

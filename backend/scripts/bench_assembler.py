@@ -58,6 +58,8 @@ def run(
         init_db(db)
         conn = connect(db)
         settings = load_settings()  # asking for --ai is the OK to call it, whatever its "allow"
+        # and to call it at once, without waiting for a person to answer first
+        settings.assembler.ask_ai_after_days = 0
         if real:
             src, docs = real
             truth = load_real(conn, src, arrange(docs, order, seed))

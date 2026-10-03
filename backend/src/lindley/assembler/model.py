@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from lindley.assembler.clues import PageClues, page_clues, text_lines
 from lindley.assembler.layout import Layout, page_layout
-from lindley.assembler.terms import page_terms, weigh
+from lindley.assembler.terms import Library, page_terms, weigh
 
 
 @dataclass
@@ -25,6 +25,11 @@ class Page:
     paper_color: str | None = None
     copies: frozenset[int] = frozenset()  # pages that look like this page scanned again
     width: int | None = None
+    dpi: int | None = None
+    color_mode: str | None = None  # rgb, gray, bilevel
+    script: str | None = None  # handwritten, printed, typed, mixed, none
+    ocr_conf: float | None = None  # the reading's confidence, 0-100
+    modified_at: str | None = None  # the file's time: when it was scanned, if EXIF didn't say
     clues: PageClues = field(init=False)
     layout: Layout | None = field(init=False)
     # Rare words, weighed against the other pages being sorted (see weigh_terms)
@@ -42,15 +47,28 @@ class Page:
         return (
             c.file_prefix,
             c.file_seq if c.file_seq is not None else 10**9,
-            self.scanned_at or self.imported_at,
+            self.scanned_at or self.modified_at or self.imported_at,
             self.scan_id,
             self.page_index,
         )
 
+    @property
+    def when(self) -> str | None:
+        """When it was scanned, as near as can be told."""
+        return self.scanned_at or self.modified_at
 
-def weigh_terms(pages: list[Page]) -> None:
-    """Weigh each page's words by how rare they are among these pages."""
-    for p, v in zip(pages, weigh([page_terms(p.text) for p in pages]), strict=True):
+    @property
+    def size_in(self) -> tuple[float, float] | None:
+        """The sheet's size in inches, upright: (width, height)."""
+        if not (self.dpi and self.width and self.height):
+            return None
+        return self.width / self.dpi, self.height / self.dpi
+
+
+def weigh_terms(pages: list[Page], library: Library | None = None) -> None:
+    """Weigh each page's words by how rare they are: in the whole library when it's given,
+    else among these pages."""
+    for p, v in zip(pages, weigh([page_terms(p.text) for p in pages], library), strict=True):
         p.terms = v
 
 

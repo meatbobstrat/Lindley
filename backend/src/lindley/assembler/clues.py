@@ -384,6 +384,8 @@ _AMOUNT = re.compile(r"\$?\b\d+\.\d\d\b")
 _REFNO = re.compile(r"\b(?:Book|Vol\.?|Lot|No\.)\s+\d+\b")
 _FILE_SEQ = re.compile(r"(\d+)(?!.*\d)")
 _MID_START = re.compile(r"^[a-z]")
+# A word broken at the end of a line. Tesseract often reads a typewriter's hyphen as "=".
+HYPHENS = ("-", "=", "¬")
 
 
 @dataclass
@@ -559,7 +561,7 @@ def page_clues(
     c.starts_mid = bool(_MID_START.match(body[0])) and not c.salutation
     last = body[-1]
     c.ends_mid = not (c.closing or c.ends_form) and (
-        last.endswith("-") or (last[-1:].isalpha() or last[-1:] == ",")
+        last.endswith(HYPHENS) or (last[-1:].isalpha() or last[-1:] == ",")
     )
 
     c.dates = find_dates(text)

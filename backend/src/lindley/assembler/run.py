@@ -14,6 +14,7 @@ from lindley.assembler.answers import Answers
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page, weigh_terms
 from lindley.assembler.segment import segment
+from lindley.assembler.terms import Library
 from lindley.config import AssemblerSettings
 from lindley.providers.base import ChatProvider
 
@@ -49,8 +50,9 @@ class DocEnds:
 
 _PAGE_SQL = """
 SELECT p.id, p.scan_id, p.page_index, p.width_px, p.height_px, p.blank_score, p.phash,
-       p.paper_color, p.detected_rotation, p.user_rotation,
-       s.original_name, s.scanned_at, s.imported_at, t.text, t.words
+       p.paper_color, p.detected_rotation, p.user_rotation, p.dpi, p.color_mode, p.script,
+       s.original_name, s.scanned_at, s.file_modified_at, s.imported_at,
+       t.text, t.words, t.confidence
 FROM pages p
 JOIN scans s ON s.id = p.scan_id
 JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1
@@ -84,6 +86,11 @@ def _page(r: sqlite3.Row, copies: dict[int, frozenset[int]] | None = None) -> Pa
         r["paper_color"],
         (copies or {}).get(r["id"], frozenset()),
         _upright_width(r),
+        r["dpi"],
+        r["color_mode"],
+        r["script"],
+        r["confidence"],
+        r["file_modified_at"],
     )
 
 
@@ -98,6 +105,11 @@ def _upright_height(r: sqlite3.Row) -> int | None:
 
 def _upright_width(r: sqlite3.Row) -> int | None:
     return r["height_px"] if _sideways(r) else r["width_px"]
+
+
+def library_terms(conn: sqlite3.Connection) -> Library:
+    """How many pages use each word, over every page read so far."""
+    return Library.of(t for (t,) in conn.execute("SELECT text FROM v_current_text"))
 
 
 def load_inbox(conn: sqlite3.Connection) -> list[Page]:
@@ -213,7 +225,10 @@ def assemble(
         return report
 
     docs = load_open_documents(conn)
-    weigh_terms(pages + list({id(p): p for d in docs for p in (d.first, d.last)}.values()))
+    weigh_terms(
+        pages + list({id(p): p for d in docs for p in (d.first, d.last)}.values()),
+        library_terms(conn),
+    )
     groups, pairs, ordered = segment(pages)
 
     # The AI looks only at what the rules couldn't settle.

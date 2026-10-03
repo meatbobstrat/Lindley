@@ -4,6 +4,10 @@ Set by hand and checked on both benches (scripts/bench_assembler.py, made-up bat
 scans). scripts/fit_assembler.py can fit them to pages whose right answer is known; with the
 real scans so far (7 documents) fitted weights predicted single pairs better but built worse
 documents, so these stay until there's more to learn from.
+
+What the scanner saw (a long pause, a sheet of another size, other scan settings, handwriting
+beside typing) is measured but weighed at nothing: the real scans so far were all scanned alike,
+so there's nothing yet to set those weights by. A word split over a page break is set by hand.
 """
 
 WEIGHTS = {
@@ -27,4 +31,9 @@ WEIGHTS = {
     "layout_alike": 0.0,
     "layout_differs": -3.0,
     "words_shared": 0.0,
+    "word_split": 1.0,
+    "pause_long": 0.0,
+    "size_differs": 0.0,
+    "settings_differ": 0.0,
+    "script_differs": 0.0,
 }

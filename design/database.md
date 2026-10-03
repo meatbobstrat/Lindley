@@ -152,7 +152,9 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    - a sentence carried over the break, counted for less between pages not scanned together (in a typescript nearly every page ends mid-sentence);
    - the same letterhead, shared names, the same paper colour;
    - the **layout fingerprint** (`layout.py`): where lines start and end as a share of the page width, line spacing in character widths, and characters in a full line. It's free of the scan's size and resolution. Pages set out differently (a single-spaced letter, a page of 40-character notes) are kept apart;
-   - **rare words** both pages use (`terms.py`, tf-idf over the pages being sorted), measured but not yet counted (see below).
+   - **rare words** both pages use (`terms.py`, tf-idf), measured but not yet counted (see below). How rare a word is is measured over every page in the library, not only the Inbox;
+   - a word hyphenated at the bottom of one page and finished at the top of the next. Tesseract often reads a typewriter's hyphen as "=", which counts too;
+   - what the scanner saw: a pause of over ten minutes between two scans (the EXIF time, else the file's), sheets differing by more than half an inch, another resolution or colour mode, handwriting beside typing. These are measured but weighed at nothing until there are scans to set them by: the real scans so far were all scanned alike, and pauses fall mid-document as often as between documents (one archive's 178 scans took 45–90 seconds a page, and many pauses of 2–25 minutes came before a page that starts mid-sentence).
 
    A reason is shown to a person only when its evidence counts towards the pages going together. Each is saved in `page_links` with a readable note (`same_writer` for layout, `similar_text` for shared words).
 3. **Grouping** (`segment.py`). Pages are put in scan order and cut wherever the score falls below 0.5.

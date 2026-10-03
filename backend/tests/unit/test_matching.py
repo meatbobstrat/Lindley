@@ -6,7 +6,7 @@ from lindley.assembler.evidence import FEATURES, pair
 from lindley.assembler.layout import page_layout
 from lindley.assembler.learn import Example, accuracy, fit
 from lindley.assembler.model import Page, weigh_terms
-from lindley.assembler.terms import overlap, page_terms, weigh
+from lindley.assembler.terms import Library, overlap, page_terms, weigh
 
 WORDS = ["the", "quick", "brown", "fox", "jumps", "over", "lazy", "dogs", "while", "seven"]
 
@@ -110,3 +110,42 @@ def test_fitting_around_fixed_weights_leaves_them_alone():
     data = [Example(example(runs_on=i % 2), i % 2) for i in range(100)]
     w = fit(data, fixed={"bias": -0.85, "runs_on": 0.5})
     assert w["bias"] == -0.85 and w["runs_on"] == 0.5
+
+
+def test_rarity_is_measured_over_the_whole_library():
+    texts = ["Tonopah mining news", "Tonopah stage today"]
+    alone = weigh([page_terms(t) for t in texts])
+    assert not alone[0].get("tonopah")  # on every page there is: no weight
+    library = Library.of(texts + [f"Page {i} of a farm diary" for i in range(20)])
+    assert weigh([page_terms(t) for t in texts], library)[0]["tonopah"] > 0
+
+
+def _sheet(i, text, **kw):
+    return Page(i, i, f"scan_{i:04d}.jpg", text, **kw)
+
+
+BODY = "The road ran north over the summit and down the long grade toward the camp"
+
+
+def test_a_word_split_over_the_page_break_runs_on_even_read_as_equals():
+    a = _sheet(1, BODY + "\nand the wagons came over the two=by=")
+    b = _sheet(2, "four bridge at noon, and went on to the camp\n" + BODY)
+    f = pair(a, b).features
+    assert f["word_split"] == 1.0 and f["runs_on"] == 1.0
+    assert pair(_sheet(3, BODY + "\nand the wagons came over"), b).features["word_split"] == 0
+
+
+def test_what_the_scanner_saw_is_evidence():
+    letter = {"dpi": 300, "width": 2550, "height": 3300, "color_mode": "rgb"}
+    a = _sheet(1, BODY, script="typed", scanned_at="1999-01-01 10:00:00", **letter)
+    same = _sheet(2, BODY, script="typed", scanned_at="1999-01-01 10:01:00", **letter)
+    assert not any(
+        pair(a, same).features[k]
+        for k in ("pause_long", "size_differs", "settings_differ", "script_differs")
+    )
+    half = {**letter, "height": 1650, "color_mode": "gray"}
+    other = _sheet(2, BODY, script="handwritten", modified_at="1999-01-01 10:30:00", **half)
+    f = pair(a, other).features
+    assert f["pause_long"] == f["size_differs"] == f["settings_differ"] == 1.0
+    assert f["script_differs"] == 1.0
+    assert "the sheets are different sizes" in pair(a, other).breaks

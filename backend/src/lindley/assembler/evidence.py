@@ -10,7 +10,9 @@ by hand. The model only scores; the reasons a person reads come from the evidenc
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from lindley.assembler.model import Page
 from lindley.assembler.terms import overlap
@@ -42,7 +44,16 @@ FEATURES = (
     "layout_alike",  # typed alike: same margins, line spacing and line length
     "layout_differs",  # set out differently
     "words_shared",  # rare words both pages use
+    "word_split",  # a word hyphenated at the bottom of one page is finished at the top of the other
+    "pause_long",  # scanned one after the other, but with a long pause between
+    "size_differs",  # sheets of clearly different sizes
+    "settings_differ",  # scanned at another resolution, or in colour and in grey
+    "script_differs",  # one handwritten, the other typed or printed
 )
+PAUSE_S = 600  # a pause this long between two scans is a long one
+SIZE_IN = 0.5  # sheets differing by more than this, in inches, are different sizes
+_HYPHENATED = re.compile(r"[A-Za-z]{2,}[-=¬]$")  # see clues.HYPHENS
+_HAND, _TYPED = {"handwritten"}, {"printed", "typed"}
 
 
 @dataclass
@@ -82,6 +93,14 @@ def _paper_gap(a: str | None, b: str | None) -> int | None:
     if not (a and b and len(a) == 7 and len(b) == 7):
         return None
     return sum(abs(int(a[i : i + 2], 16) - int(b[i : i + 2], 16)) for i in (1, 3, 5))
+
+
+def _pause(a: str | None, b: str | None) -> float | None:
+    """Seconds from one scan to the next, if both times are known."""
+    try:
+        return (datetime.fromisoformat(b) - datetime.fromisoformat(a)).total_seconds()
+    except (TypeError, ValueError):
+        return None
 
 
 def _and(words: list[str]) -> str:
@@ -159,10 +178,33 @@ def pair(a: Page, b: Page, is_adjacent: bool | None = None) -> Pair:
                 f"to “{_snip(cb.first_line, False)}”",
             )
         )
+        if _HYPHENATED.search(ca.last_line):
+            f["word_split"] = 1.0
+            if counts("word_split"):
+                p.links.append(
+                    Link(
+                        "continues",
+                        0.9,
+                        f"A word is split over the page break: "
+                        f"“{ca.last_line.split()[-1]}” “{cb.first_line.split()[0]}”",
+                    )
+                )
     elif ca.ends_mid:
         f["a_ends_mid"] = 1.0
     elif cb.starts_mid:
         f["b_starts_mid"] = 1.0
+    if adj and (pause := _pause(a.when, b.when)) is not None and pause > PAUSE_S:
+        f["pause_long"] = 1.0
+    sa, sb = a.size_in, b.size_in
+    if sa and sb and max(abs(sa[0] - sb[0]), abs(sa[1] - sb[1])) > SIZE_IN:
+        f["size_differs"] = 1.0
+        p.breaks.append("the sheets are different sizes")
+    if (a.dpi and b.dpi and a.dpi != b.dpi) or (
+        a.color_mode and b.color_mode and a.color_mode != b.color_mode
+    ):
+        f["settings_differ"] = 1.0
+    if {a.script, b.script} & _HAND and {a.script, b.script} & _TYPED:
+        f["script_differs"] = 1.0
 
     if ca.letterhead and ca.letterhead == cb.letterhead:
         f["letterhead"] = 1.0

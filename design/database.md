@@ -139,7 +139,7 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
 `lindley.assembler.assemble(conn, settings.assembler, chat)` runs once new scans have settled. It's safe to run as often as you like; a second run with nothing new changes nothing.
 
 1. **Clues** (`clues.py`, rules only).
-   - **Page numbers.** A number on a row of its own in the top or bottom 12% of the page ("- 2 -", "Page 2 of 3", "ii"). Specks and smudges on that row don't count against it, and OCR slips next to a real digit are read through ("1l" is 11). A number inside a sentence, or in a typesetter's note like "Indent 1 em", isn't one. A number read with doubt is marked unsure and counts for less: it never moves a page, and an unsure 1 doesn't start a document. Creases and specks by the paper's edge are often read as numbers. When every page of a document is numbered, a gap is reported: "Page 4 seems to be missing".
+   - **Page numbers.** A number on a row of its own in the top or bottom 12% of the page ("- 2 -", "Page 2 of 3", "ii"). Specks and smudges on that row don't count against it, and OCR slips next to a real digit are read through ("1l" is 11). A number inside a sentence, or in a typesetter's note like "Indent 1 em", isn't one. A number read with doubt is marked unsure and counts for less, and never moves a page: creases and specks by the paper's edge are often read as numbers. When every page of a document is numbered, a gap is reported: "Page 4 seems to be missing".
    - **Noise at the edges.** Lines of specks (the paper's edge, show-through, a hole punch) are dropped from the top and bottom before the first and last lines are taken, and so are stray marks before the first word. A scrap Tesseract read out of order goes back into the line it sits in.
    - greetings ("Dear Sister,"), letterheads, headings and bylines ("By Lindley C. Branson"), which start a document;
    - closings and signatures ("Your loving son / John"), "Paid" on a short line of its own ("Paid. Thank you.", not "and paid no attention" in a story) and "Notary Public", which end one;
@@ -153,7 +153,7 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    - page numbers running n → n+1, close (a page swapped or missing) or far apart;
    - a sentence carried over the break, counted for less between pages not scanned together (in a typescript nearly every page ends mid-sentence);
    - the same letterhead, shared names, the same paper colour;
-   - the **layout fingerprint** (`layout.py`): line spacing in character widths, and characters in a full line. It's free of the scan's size and resolution. Margins aren't compared: on a flatbed the sheet lies wherever it was put down, and on 25 sorted folders a third of true neighbours looked set out differently by their margins alone. Pages set out differently (a single-spaced letter, a page of 40-character notes) are kept apart;
+   - the **layout fingerprint** (`layout.py`): where lines start and end as a share of the page width, line spacing in character widths, and characters in a full line. It's free of the scan's size and resolution. On a flatbed the sheet lies wherever it was put down, so margins shift within a typescript too (on 25 sorted folders, over a third of pages differ from the next by their margins alone), but more often between two: without them, or with twice the leeway, far more typescripts fed in one after another ran into the next. Pages set out differently (a single-spaced letter, a page of 40-character notes) are kept apart;
    - **rare words** both pages use (`terms.py`, tf-idf), measured but not yet counted (see below). How rare a word is is measured over every page in the library, not only the Inbox;
    - a word hyphenated at the bottom of one page and finished at the top of the next. Tesseract often reads a typewriter's hyphen as "=", which counts too;
    - **what pages are about** (`meaning.py`), when the optional Model2Vec package is installed (`pip install lindley[embed]`): a static embedding model, `minishlab/potion-base-8M` (8 MB, numpy only, about 0.25 ms a page on a laptop CPU), turns each page into a vector, and pages whose vectors point the same way count as alike. The model is downloaded once; no text leaves the computer. Vectors are made afresh each run, which is quicker than keeping them current as pages are read again. On the 7 real typescripts it was weaker than rare words (a page's most-alike page was from its own document for 36 of 45 pages, against 39 for rare words), the fitted weight was −0.03, and counting it at 1.0 made the rules' proposals less precise (0.72 → 0.69). So it's measured but weighed at nothing, for weights learned from a person's own archive to take up if it helps there;
@@ -244,20 +244,20 @@ Almost none of it becomes a document yet. A group of pages that's no kind the ru
 | Hand-made rule | 0.56 | 13 | 2 |
 | Fitted | 0.99 | 42 | 23 |
 
-Seven documents are too few to fit even that, so `GROUP_WEIGHTS` is empty and the hand-made rule stands. Twenty-five sorted folders (below) didn't change that: fitted and tested on folders left out in turn, it made 34 documents, 24 of them wrong. The weakest link inside a typescript (scanned next, ends mid-sentence) honestly scores about 0.7, and about three in ten such links on these scans really are breaks, so a typescript's confidence near 60 isn't too low. Those pages need a person's answer, or the AI.
+Seven documents are too few to fit even that, so `GROUP_WEIGHTS` is empty and the hand-made rule stands. Twenty-five sorted folders (below) didn't change that: fitted and tested on folders left out in turn, it made 30 documents, 20 of them wrong. The weakest link inside a typescript (scanned next, ends mid-sentence) honestly scores about 0.7, and about three in ten such links on these scans really are breaks, so a typescript's confidence near 60 isn't too low. Those pages need a person's answer, or the AI.
 
 **Sorted folders.** 156 typescript pages, mostly by one author, in 25 folders a person sorted (one article or letter each, its scans named Image, Image (2)...), read with Tesseract only. Fed in the way they were scanned, one folder at a time, and each folder alone, before the confidence bar:
 
 | | Before | Now |
 |---|---|---|
-| Folders proposed as exactly one group | 9 | 17 |
-| ... in the right order | 8 | 17 |
+| Folders proposed as exactly one group | 9 | 16 |
+| ... in the right order | 8 | 16 |
 | Documents mixing folders, one folder at a time | 3 | 0 |
 | Folders in the scanner's order, made one document | 18 | 22 |
 
-What changed: a file without a number counts as the first, file numbers count within a folder, a page scanned again is set aside instead of cutting its document in two, unsure page numbers no longer move pages, "Paid" in a story no longer ends one, and margins no longer count as layout.
+What changed: a file without a number counts as the first, file numbers count within a folder, a page scanned again is set aside instead of cutting its document in two, unsure page numbers no longer move pages, and "Paid" in a story no longer ends one. Fed in as one stream under made-up names, with no folders to go by (`bench_assembler.py --real`, in order), the proposals are as precise as before (0.75) and find a little more (recall 0.82 → 0.84), and the typescripts rebuilt exactly are all in the right order (82% → 100%; with neighbours swapped, 45% → 55%).
 
-Still none of it becomes a document by itself: the right groups score 25–64. Fed in as one stream under made-up names, with no folders to go by, the proposals find most pages that go together but often run one article into the next (in order: precision 0.60, recall 0.93, 46% rebuilt exactly). Groups at `hint_at` or above, asked about as "Do these go together?", are then right about half the time (96 right, 91 wrong over 10 runs), and none of the group features tells the two apart: a fitted rule did no better. With a folder to themselves, 14 of the 18 groups asked about are right, and 7 more right ones fall below `hint_at`.
+Still none of it becomes a document by itself: the right groups score 25–64. In one stream the rules often run one typescript into the next (about 56% rebuilt exactly), and groups at `hint_at` or above, asked about as "Do these go together?", are right about half the time (104 right, 92 wrong over 10 runs). None of the group features tells the two apart: a fitted rule did no better. With a folder to themselves, 14 of the 19 groups asked about are right, and 6 more right ones fall below `hint_at`.
 
 ## Duplicates
 

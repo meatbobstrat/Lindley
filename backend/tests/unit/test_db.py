@@ -257,7 +257,23 @@ def test_v5_database_gains_the_kept_ai_answers(tmp_path):
     init_db(db)
     c = connect(db)
     assert "ai_answers" in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
-    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 6
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    c.close()
+
+
+def test_v6_database_gains_learned_weights(tmp_path):
+    from importlib.resources import files
+
+    db = tmp_path / "v6.db"
+    schema = files("lindley.db").joinpath("schema.sql").read_text(encoding="utf-8")
+    c = sqlite3.connect(db)
+    old = schema.split("-- " + "-" * 64 + " Learned weights")[0]
+    c.executescript(old + "PRAGMA user_version = 6;")
+    c.close()
+    init_db(db)
+    c = connect(db)
+    assert "learned_weights" in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 7
     c.close()
 
 

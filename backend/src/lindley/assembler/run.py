@@ -11,7 +11,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from lindley.assembler import ai, apply
+from lindley.assembler import ai, apply, evidence, relearn
 from lindley.assembler.answers import Answers
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page, weigh_terms
@@ -222,6 +222,7 @@ def assemble(
     chat: ChatProvider | None = None,
     max_ai_calls: int | None = None,
     asked: set[int] | None = None,
+    weights: dict[str, float] | None = None,
 ) -> RunReport:
     """Sort the Inbox. With `chat`, the AI may be asked about what the rules couldn't settle:
     passing it is the OK to call it (see lindley.providers.allowance), at most `max_ai_calls`
@@ -229,8 +230,12 @@ def assemble(
     about pages that have waited `ask_ai_after_days` and that no one turned down. With `asked`,
     a person asked about those pages: only they are sent, at once. Without `chat`, the rules
     decide alone, helped by what the AI already said about the same pages
-    (lindley.assembler.answers), which costs nothing."""
+    (lindley.assembler.answers), which costs nothing.
+
+    The evidence is weighed with `weights` if given, else with weights learned from people's
+    answers (lindley.assembler.relearn), else with the shipped ones."""
     with _ONE_AT_A_TIME:
+        evidence.use_weights(weights if weights is not None else relearn.learned(conn))
         return _assemble(conn, cfg or AssemblerSettings(), chat, max_ai_calls, asked)
 
 

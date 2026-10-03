@@ -107,14 +107,24 @@ def _and(words: list[str]) -> str:
     return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
 
 
+_active: dict[str, float] = WEIGHTS  # in use: the shipped weights, or learned (use_weights)
+
+
+def use_weights(weights: dict[str, float] | None) -> None:
+    """Weigh evidence with these from now on (see lindley.assembler.relearn). None: the
+    shipped WEIGHTS."""
+    global _active
+    _active = WEIGHTS if weights is None else {**WEIGHTS, **weights}
+
+
 def counts(feature: str) -> bool:
     """Whether a piece of evidence counts towards pages going together, so it may be given to a
     person as a reason. Evidence weighed at nothing or against isn't."""
-    return WEIGHTS.get(feature, 0.0) > 0
+    return _active.get(feature, 0.0) > 0
 
 
 def score(features: dict[str, float], weights: dict[str, float] | None = None) -> float:
-    w = WEIGHTS if weights is None else weights
+    w = _active if weights is None else weights
     z = sum(w.get(k, 0.0) * v for k, v in features.items())
     return 1 / (1 + math.exp(-max(-30.0, min(30.0, z))))
 

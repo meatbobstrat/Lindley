@@ -331,3 +331,18 @@ CREATE TABLE IF NOT EXISTS ai_answers (
     reply      TEXT NOT NULL,                       -- as the AI gave it, checked again on use
     at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ---------------------------------------------------------------- Learned weights
+
+-- Evidence weights the assembler fitted to documents people vouched for
+-- (lindley.assembler.relearn). Every try is kept; the latest adopted one is in use, else the
+-- shipped weights. A try is adopted only if it built documents at least as well as the weights
+-- before it, on documents it wasn't fitted to.
+CREATE TABLE IF NOT EXISTS learned_weights (
+    id         INTEGER PRIMARY KEY,
+    weights    TEXT NOT NULL,                       -- JSON {feature: log-odds}
+    documents  INTEGER NOT NULL,                    -- answer documents it was fitted to
+    adopted    INTEGER NOT NULL CHECK (adopted IN (0, 1)),
+    report     TEXT,                                -- JSON: how it did against the weights before
+    at         TEXT NOT NULL DEFAULT (datetime('now'))
+);

@@ -18,6 +18,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from lindley.assembler import assemble
+from lindley.assembler.relearn import relearn
 from lindley.config import Settings
 from lindley.db.database import connect
 from lindley.duplicates import find_duplicates
@@ -177,6 +178,15 @@ class FolderWatcher:
                 report.documents_created,
             )
             self._unassembled = False
+            try:  # people's answers so far may teach it to do better
+                if (learnt := relearn(conn)) is not None:
+                    log.info(
+                        "Learned from %d documents people vouched for: %s",
+                        learnt.documents,
+                        "now in use" if learnt.adopted else "no better, so not used",
+                    )
+            except Exception:  # noqa: BLE001 - learning is a bonus; sorting goes on without it
+                log.exception("Learning from people's answers failed")
         return ready
 
     def _db(self) -> sqlite3.Connection:

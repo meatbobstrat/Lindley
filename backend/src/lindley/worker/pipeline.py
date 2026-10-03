@@ -255,7 +255,7 @@ class Pipeline:
                 ):
                     image = Path(r["image_path"])
                     with self._upright(r["page_id"], image, rotation, r["dpi"]) as upright:
-                        result = VisionEngine(self.vision).recognize(upright)[0]
+                        result = self._vision_reader().recognize(upright)[0]
                     self._add_vision_reading(conn, r["page_id"], model, result)
             except Exception as e:
                 run.failed += 1
@@ -314,6 +314,9 @@ class Pipeline:
         rotation = (page["detected_rotation"] + page["user_rotation"]) % 360
         with self._upright(page_id, image, rotation, page["dpi"]) as upright:
             self._read_upright(conn, scan_id, page_id, upright, page["blank_score"])
+
+    def _vision_reader(self) -> VisionEngine:
+        return VisionEngine(self.vision, self.settings.ocr.vision_max_side)
 
     def _page(self, conn: sqlite3.Connection, page_id: int) -> sqlite3.Row:
         return conn.execute(
@@ -401,7 +404,7 @@ class Pipeline:
                         conn, scan_id, Step.VISION, page_id=page_id, engine_version=model
                     ):
                         readings.append(
-                            ("vision", model, VisionEngine(self.vision).recognize(image)[0])
+                            ("vision", model, self._vision_reader().recognize(image)[0])
                         )
                 except Exception:
                     pass  # recorded as failed; the page waits for a person to try again

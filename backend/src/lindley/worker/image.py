@@ -107,6 +107,36 @@ def dhash(img: Image.Image) -> str:
     return f"{bits:016x}"
 
 
+SIG_SIZE = 32  # image_signature: a SIG_SIZE x SIG_SIZE grey picture of the page's contents
+
+
+def image_signature(path: Path, rotation: int = 0) -> bytes:
+    """A tiny picture of what's on the page, much the same however it was scanned.
+
+    Brightness and contrast are evened out and the page is cropped to its ink, so dpi, colour,
+    exposure and how much margin the scanner caught matter little. For pages with too little
+    text to compare by their words.
+    """
+    img = open_upright(path)
+    if rotation % 360:
+        img = img.rotate(-rotation, expand=True)
+    img.thumbnail((WORK_SIZE // 2, WORK_SIZE // 2))
+    gray = ImageOps.autocontrast(img.convert("L"), cutoff=2)
+    ink = gray.filter(ImageFilter.RankFilter(3, 2)).point(lambda v: 255 if v < 128 else 0)
+    box = ink.filter(ImageFilter.MaxFilter(5)).getbbox() or (0, 0, *gray.size)
+    return gray.crop(box).resize((SIG_SIZE, SIG_SIZE), Image.Resampling.BOX).tobytes()
+
+
+def signature_likeness(a: bytes, b: bytes) -> float:
+    """How alike two image signatures are: correlation, from -1 to 1."""
+    if len(a) != len(b) or not a:
+        return 0.0
+    ma, mb = sum(a) / len(a), sum(b) / len(b)
+    da, db = [x - ma for x in a], [x - mb for x in b]
+    norm = (sum(x * x for x in da) * sum(x * x for x in db)) ** 0.5
+    return sum(x * y for x, y in zip(da, db, strict=True)) / norm if norm else 0.0
+
+
 def hamming(a: str | None, b: str | None) -> int | None:
     """How many of the 64 bits differ, or None if either isn't a hash."""
     try:

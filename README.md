@@ -31,6 +31,7 @@ Lindley is in early development and isn't usable end to end yet.
 | Vision model reading (handwriting) | Wired into intake; the AI adapters are still stubs |
 | Folder watcher | Built; runs with the backend |
 | Image checks (blank pages, rotation, handwriting or print) | Built, and tried on a first sample of real typewritten scans |
+| Duplicates (pages and documents scanned more than once) | Detection, decisions and API built; designed in the mockup |
 | Searchable PDF export, search, AI chat | Not started |
 | Real UI (React) | Scaffold only; to be built from the mockup |
 
@@ -73,6 +74,10 @@ watched folders ─► watcher ─► intake ───────────�
   - Every change it makes is logged and can be undone.
 - **Nothing is destroyed.** Original scans are never altered. Corrections are added as new
   readings instead of overwriting old ones. Unwanted pages are *set aside* rather than deleted.
+- **Duplicates are found by what pages say.** A page scanned twice with different settings
+  looks different but reads the same, so Lindley compares text, not files or pixels. The
+  Duplicates folder shows the copies side by side. You choose what to keep, and the other copies
+  are set aside, never deleted.
 - **Everything lives in one place.** A page is in the Inbox, in one document, or set aside.
   A document is in one folder, or under In progress or Completed. The database enforces this.
 - **Transparency.** Confidence scores, the source of every fact, and the reasons for every
@@ -103,6 +108,7 @@ Open it in a browser; it uses sample data and saves nothing. It covers:
 - the Inbox and adding scans,
 - documents in three views (pages, reader, scan and text side by side),
 - the review queue, folders and search,
+- Duplicates: copies side by side, with their differences marked,
 - Ask Lindley,
 - a movable action toolbar.
 
@@ -116,6 +122,7 @@ Open it in a browser; it uses sample data and saves nothing. It covers:
 | `backend/src/lindley/providers/` | Pluggable AI providers: Anthropic, OpenAI-compatible (OpenAI, Ollama, LM Studio, vLLM), and a fake one for tests |
 | `backend/src/lindley/worker/` | Intake (hash, EXIF, split) and reading (Tesseract, vision model) |
 | `backend/src/lindley/watcher/` | Folder watcher: new scans are imported, read and assembled |
+| `backend/src/lindley/duplicates/` | Duplicate detection (by text) and a person's decisions |
 | `backend/src/lindley/search/` | Stub for the next phase |
 | `frontend/` | React, TypeScript and Vite |
 | `design/` | UI mockup and database design |
@@ -249,6 +256,7 @@ folders.
 - [x] Intake: hashing, EXIF, splitting PDFs and TIFFs, Tesseract reading
 - [x] Folder watcher
 - [x] Image checks: blank pages, rotation, handwriting or print
+- [x] Duplicates: detection, decisions, API and mockup (the React screen comes with the real UI)
 - [ ] Vision model reading for handwriting (intake is ready; the AI adapters aren't)
 - [ ] API and the real React UI, built from the mockup
 - [ ] Searchable PDF export, built from stored readings (no Ghostscript)

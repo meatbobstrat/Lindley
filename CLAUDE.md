@@ -12,6 +12,8 @@
     `pipeline.py` (step records, Tesseract/vision reading), `ocr/` engines
   - `watcher/`: watchdog folder watcher, started by the app lifespan (`create_app(watch=False)` in tests)
   - `assembler/`: Inbox pages → documents; `search/`: stub for now
+  - `duplicates/`: `detect.py` (pages scanned twice, found by text), `resolve.py` (keep a copy or
+    document, not duplicates). API in `api/duplicates.py`; page images in `api/pages.py`
   - `scripts/intake.py` reads real scans end to end; tests stub Tesseract (not installed in CI)
 - `frontend/`: Vite, React and TypeScript. The dev server proxies `/api` to `127.0.0.1:8765`
 - `scripts/dev.ps1`: runs both dev servers

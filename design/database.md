@@ -44,6 +44,8 @@ erDiagram
 | `exports` | PDF made | When a document was exported, where to, and which pages were in it. |
 | `intake_steps` | step run | Progress, errors, and the extractor version for each step, so a step can be re-run later. |
 | `history` | action | Who did what (a person or Lindley), with before and after. Used for undo and the audit trail. |
+| `duplicates` | page pair | Two pages that look like the same page scanned again (`same_page`), or that have very similar text (`similar`), with the evidence and a person's decision. |
+| `duplicate_checks`, `text_sketch` | page | Which reading each page was checked for duplicates with, and the page's text sketch for finding candidates. |
 
 Settings stay in `settings.json`. API keys stay in Windows Credential Manager and never go in the database.
 
@@ -182,6 +184,31 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
 
 The rules were written knowing what the bench generates, so these numbers are a ceiling, not a forecast. Real scans carry OCR errors, odd layouts and messier scanning order. The bench's job is to catch regressions and to measure a real model (`--ai settings`) once OCR is running.
 
+## Duplicates
+
+The same page is often scanned more than once, sometimes with different settings: another dpi, colour or grey, a different exposure, more or less margin. That changes every pixel and the file's hash, but not the words. So duplicates are found by their text (`lindley.duplicates.detect`), checked before the assembler runs:
+
+1. **Candidates.** Text is reduced to its letters (a–z). Each page keeps the hashes of its 64 smallest letter 8-grams in `text_sketch`. Pages sharing at least 4 of them are compared in full, so there is no all-pairs comparison.
+2. **Confirmation.** For each candidate, three measures: how many letter 8-grams the texts share (J), how much of the shorter text is in the longer (C), and how many words match in order (R).
+   - `same_page`: J ≥ 0.30 or R ≥ 0.60.
+   - `similar`: J ≥ 0.15 or C ≥ 0.35.
+   - Both pages need at least 200 letters.
+   - OCR errors on old paper keep J well below 1 even for the same page, so the bars are modest; unrelated pages share almost nothing.
+   - On a 17-page real sample: re-scans had J 0.45 and 0.39 and R 0.79 and 0.67. Two drafts of one passage had J 0.17 and C 0.45. Unrelated pages had J 0.07 and R 0.29 at most.
+3. **Little text.** Notes, drawings and unread handwriting are compared by a small picture of their contents instead (`worker.image.image_signature`: grey, contrast evened out, cropped to the ink, 32×32). A match at 0.90 correlation or above is only ever `similar`.
+
+Blank pages are never compared, and copies already set aside as duplicates are left out. A page is checked again whenever its current reading changes, such as after a vision reading or a person's correction.
+
+Duplicates is a queue to work through, like Needs your review, not a place. The pages stay where they are, but the assembler never puts two copies of a page in one document, and never adds a page to a document that already holds its copy. So a document scanned twice becomes two documents, which the queue shows as a pair.
+
+**Deciding** (`lindley.duplicates.resolve`). Open pairs that share a page form a set. Sets whose copies all lie in the same two documents form a document pair.
+- **Suggestion.** Lindley suggests a copy and says why, in this order: text a person checked, the clearer reading, the bigger scan, colour. Where a copy already is only breaks ties. For very similar text (drafts), the UI suggests keeping both.
+- **Keep one.** The kept scan takes the best place any copy had: a document position, else the Inbox. The other copies are set aside, marked as duplicates of it. Gaps in documents close up, and a document left with no pages is removed.
+- **Keep a document.** Does that for every set the two documents share. Pages only the other document has stay where they are.
+- **Not duplicates.** The pairs are never raised again.
+
+Every change is written to `history` with its before and after.
+
 ## Completeness
 
 `lindley.db.progress.document_progress(conn, doc_id, review_below)` works out a checklist every time it's asked. Nothing is stored.
@@ -213,6 +240,7 @@ The Details tab reads directly from this data:
 - Each page has at most one current reading (a partial unique index).
 - A fact belongs to exactly one page or one document.
 - A page link is stored once per pair, relation and source, with the smaller page id first.
+- A duplicate pair is stored once, with the smaller page id first, so a pair a person decided on is never raised again.
 - Searches go through `transcriptions_fts` joined on `is_current = 1`, so old readings aren't matched but are kept.
 
 ## Versioning

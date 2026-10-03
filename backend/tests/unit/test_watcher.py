@@ -190,3 +190,34 @@ def test_the_watcher_finds_duplicates_before_assembling(settings, inbox):
         assert docs[0] is None or docs[0] != docs[1]
     finally:
         conn.close()
+
+
+def test_after_starting_the_inbox_is_sorted_once_with_nothing_new(settings, inbox, monkeypatch):
+    """Pages may be waiting for an AI that may run on its own now."""
+    calls = []
+    monkeypatch.setattr(watcher_mod, "sort_on_its_own", lambda *a: calls.append(a) or _Report())
+    w = make_watcher(settings, settle_s=0)
+    w.tick()
+    w.tick()
+    assert len(calls) == 1
+
+
+def test_saving_settings_starts_the_watcher_again_with_them(client, settings, monkeypatch):
+    started = []
+
+    class Watcher:
+        def __init__(self, s):
+            self.settings = s
+
+        def start(self):
+            started.append(self.settings)
+
+        def stop(self):
+            started.append("stopped")
+
+    monkeypatch.setattr("lindley.api.settings.FolderWatcher", Watcher)
+    client.app.state.watcher = Watcher(settings)
+    new = settings.model_copy(deep=True)
+    new.ai.providers["local"].allow = "auto"
+    assert client.put("/api/settings", json=new.model_dump(mode="json")).status_code == 200
+    assert started[0] == "stopped" and started[1].ai.providers["local"].allow == "auto"

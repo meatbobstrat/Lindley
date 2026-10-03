@@ -64,8 +64,10 @@ class FolderWatcher:
         self._thread: threading.Thread | None = None
         self._observer = None
         self._conn: sqlite3.Connection | None = None
-        self._last_new = 0.0
-        self._unassembled = False
+        # Sort the Inbox once things settle after starting, too: pages may be waiting for an AI
+        # that may run on its own now, after a restart or a change of settings.
+        self._last_new = time.monotonic()
+        self._unassembled = True
 
     # --------------------------------------------------------------- lifecycle
 

@@ -4,6 +4,7 @@ from lindley.api.deps import Conn
 from lindley.config import Settings, save_settings
 from lindley.providers import allowance, keys
 from lindley.providers.registry import connectors
+from lindley.watcher.watcher import FolderWatcher
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -37,6 +38,12 @@ def put_settings(new: Settings, request: Request) -> Settings:
     old: Settings = request.app.state.settings
     save_settings(new, request.app.state.settings_path)
     request.app.state.settings = new
+    if (watcher := getattr(request.app.state, "watcher", None)) is not None:
+        # The watcher works from the settings it started with: start it again with these, so
+        # new folders are watched, and an AI that may now run on its own gets what's waiting.
+        watcher.stop()
+        request.app.state.watcher = FolderWatcher(new)
+        request.app.state.watcher.start()
     for name in set(old.ai.providers) - set(new.ai.providers):
         keys.delete_key(name)  # a connection removed takes its key with it
     return new

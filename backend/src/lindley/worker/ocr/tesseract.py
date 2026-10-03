@@ -1,11 +1,13 @@
 """Local OCR with the Tesseract command-line program (no Python wrapper needed).
 
 Tesseract's TSV output gives each word with its box and confidence; the words are what the
-assembler uses to find page numbers standing alone at the top or bottom of a page.
+assembler uses to find page numbers standing alone at the top or bottom of a page. Its
+orientation check (--psm 0) says which way up a page is.
 """
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from functools import cache
@@ -17,6 +19,8 @@ from lindley.worker.ocr.base import PageResult
 # Where the UB-Mannheim installer puts it when it isn't added to PATH.
 WINDOWS_DEFAULT = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 TIMEOUT_S = 300
+# Tesseract's orientation confidence below which a page is left the way it was scanned.
+ORIENTATION_MIN_CONF = 2.0
 
 
 class TesseractNotFound(RuntimeError):
@@ -53,6 +57,15 @@ def parse_tsv(tsv: str) -> tuple[str, list[dict], float | None]:
         last_par = key[:3]
     mean = round(sum(w["conf"] for w in words) / len(words), 1) if words else None
     return "\n".join(out), words, mean
+
+
+def parse_osd(out: str) -> tuple[int, float] | None:
+    """--psm 0 output -> (degrees clockwise to turn the page upright, confidence), if it says."""
+    rotate = re.search(r"^Rotate:\s*(\d+)", out, re.M)
+    conf = re.search(r"^Orientation confidence:\s*([\d.]+)", out, re.M)
+    if not (rotate and conf) or int(rotate.group(1)) not in (0, 90, 180, 270):
+        return None
+    return int(rotate.group(1)), float(conf.group(1))
 
 
 def find_tesseract(configured: Path | None = None) -> Path | None:
@@ -105,6 +118,26 @@ class TesseractEngine:
             raise RuntimeError(f"Tesseract couldn't read {image_path.name}: {run.stderr.strip()}")
         text, words, conf = parse_tsv(run.stdout)
         return [PageResult(1, text, conf, self.name, words)]
+
+    def orientation(self, image_path: Path) -> int | None:
+        """Degrees clockwise to turn the page upright, or None if Tesseract can't tell.
+
+        It can't on pages with little text (often handwriting), or if osd.traineddata is missing.
+        """
+        if not self.exe:
+            return None
+        run = subprocess.run(
+            [str(self.exe), str(image_path), "stdout", "--psm", "0"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=TIMEOUT_S,
+            check=False,
+        )
+        osd = parse_osd(run.stdout) if run.returncode == 0 else None
+        if osd is None or osd[1] < ORIENTATION_MIN_CONF:
+            return None
+        return osd[0]
 
     def make_searchable_pdf(self, source: Path, output: Path) -> None:
         raise NotImplementedError

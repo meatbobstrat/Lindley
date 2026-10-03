@@ -7,7 +7,12 @@ from PIL import Image, ImageDraw, ImageFont
 from lindley.assembler.clues import page_clues
 from lindley.config import OcrSettings
 from lindley.worker.ocr import tesseract
-from lindley.worker.ocr.tesseract import TesseractEngine, TesseractNotFound, parse_tsv
+from lindley.worker.ocr.tesseract import (
+    TesseractEngine,
+    TesseractNotFound,
+    parse_osd,
+    parse_tsv,
+)
 
 HEADER = (
     "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext"
@@ -88,6 +93,49 @@ def test_a_tesseract_error_is_reported(tmp_path, monkeypatch):
     )
     with pytest.raises(RuntimeError, match="bad image"):
         TesseractEngine(OcrSettings(tesseract_path=exe)).recognize(tmp_path / "page.png")
+
+
+OSD = """Page number: 0
+Orientation in degrees: 270
+Rotate: 90
+Orientation confidence: 6.42
+Script: Latin
+Script confidence: 3.10
+"""
+
+
+def test_parse_osd_reads_the_rotation_and_its_confidence():
+    assert parse_osd(OSD) == (90, 6.42)
+    assert parse_osd("Too few characters. Skipping this page") is None
+    assert parse_osd("Rotate: 45\nOrientation confidence: 9.0") is None
+
+
+def fake_tesseract(tmp_path, monkeypatch, code, stdout):
+    exe = tmp_path / "tesseract.exe"
+    exe.touch()
+    seen = []
+
+    def fake_run(args, **kw):
+        seen.append(args)
+        return subprocess.CompletedProcess(args, code, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(tesseract.subprocess, "run", fake_run)
+    return TesseractEngine(OcrSettings(tesseract_path=exe)), seen
+
+
+def test_orientation_runs_the_check_and_trusts_only_a_confident_answer(tmp_path, monkeypatch):
+    engine, seen = fake_tesseract(tmp_path, monkeypatch, 0, OSD)
+    assert engine.orientation(tmp_path / "page.png") == 90
+    assert seen[0][1:] == [str(tmp_path / "page.png"), "stdout", "--psm", "0"]
+    unsure = OSD.replace("6.42", "0.71")
+    assert fake_tesseract(tmp_path, monkeypatch, 0, unsure)[0].orientation(tmp_path / "p") is None
+
+
+def test_orientation_is_unknown_when_tesseract_cannot_tell(tmp_path, monkeypatch):
+    engine, _ = fake_tesseract(tmp_path, monkeypatch, 1, "Too few characters")
+    assert engine.orientation(tmp_path / "page.png") is None
+    missing = TesseractEngine(OcrSettings(tesseract_path=tmp_path / "nope.exe"))
+    assert missing.orientation(tmp_path / "page.png") is None
 
 
 real = TesseractEngine(OcrSettings())

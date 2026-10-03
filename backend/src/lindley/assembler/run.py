@@ -37,6 +37,7 @@ class RunReport:
     # What the rules left for the AI, whether or not one was asked: windows and their pages
     ai_windows: int = 0
     ai_pages: int = 0
+    ai_waiting: int = 0  # questions left waiting for the AI (needs_ai)
     ai_rejected: list[str] = field(default_factory=list)
     inbox_left: int = 0
 
@@ -267,6 +268,8 @@ def _assemble(
     pages = load_inbox(conn)
     report.considered = len(pages)
     if not pages:
+        with conn:
+            apply.save_needs_ai(conn, [])
         return report
 
     docs = load_open_documents(conn)
@@ -285,12 +288,15 @@ def _assemble(
         more = [g for g in groups if not g.set_aside and set(g.ids) & (asked - sent)]
         if more and sum(len(g.pages) for g in more) <= MAX_AI_PAGES:
             windows.append(more)
+    unasked: list[list[Group]] = []  # not asked, and no earlier answer: they wait for the AI
     for window in windows:
         ps = [p for g in window for p in g.pages]
         result = ai.refine(may_ask(ps), ps, window, answers)
         if result.groups is None:
             if result.problem:
                 report.ai_rejected.append(result.problem)
+            else:
+                unasked.append(window)
             continue
         gone = {id(g) for g in window}
         groups = [g for g in groups if id(g) not in gone] + result.groups
@@ -375,6 +381,8 @@ def _assemble(
 
         apply.save_links(conn, [p.id for p in pages], links)
         apply.mark_matched(conn, {p.scan_id for p in pages})
+        apply.save_needs_ai(conn, unasked)
+        report.ai_waiting = len(unasked)
     report.inbox_left = report.considered - report.pages_grouped - report.pages_added
     report.ai_calls, report.ai_reused = answers.calls, answers.reused
     return report

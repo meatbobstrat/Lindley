@@ -66,7 +66,7 @@ def test_a_file_is_taken_only_once_it_stops_growing(settings, inbox):
 
 def test_the_assembler_runs_once_things_settle(settings, inbox, monkeypatch):
     calls = []
-    monkeypatch.setattr(watcher_mod, "assemble", lambda *a: calls.append(a) or _Report())
+    monkeypatch.setattr(watcher_mod, "sort_on_its_own", lambda *a: calls.append(a) or _Report())
     w = make_watcher(settings, settle_s=3600)
     (inbox / "a.png").write_bytes(png_bytes())
     w.notice(inbox / "a.png")

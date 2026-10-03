@@ -60,10 +60,19 @@ def age(conn, days):
     conn.commit()
 
 
-def test_uncertain_pages_go_to_a_person_first(conn):
+WAIT = AssemblerSettings(ask_ai_after_days=7)  # a person gets a week to answer first
+
+
+def test_an_ai_that_may_run_on_its_own_is_asked_at_once(conn):
+    story(conn)
+    ai = Answers()
+    assert assemble(conn, AssemblerSettings(), ai).documents_created == 1 and ai.calls >= 1
+
+
+def test_with_a_wait_uncertain_pages_go_to_a_person_first(conn):
     a, b = story(conn)
     ai = Answers()
-    report = assemble(conn, AssemblerSettings(), ai)
+    report = assemble(conn, WAIT, ai)
     assert ai.calls == 0 and report.documents_created == 0  # just arrived: a person first
     [h] = hints(conn, "group_pages")
     assert json.loads(h["payload"])["pages"] == [a, b] and h["confidence"] == 53
@@ -74,7 +83,7 @@ def test_pages_left_unanswered_go_to_the_ai_on_their_own(conn):
     story(conn)
     age(conn, 8)
     ai = Answers()
-    report = assemble(conn, AssemblerSettings(), ai)
+    report = assemble(conn, WAIT, ai)
     assert ai.calls >= 1 and report.documents_created == 1
 
 

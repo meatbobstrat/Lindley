@@ -17,14 +17,12 @@ from pathlib import Path
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from lindley.assembler import assemble
+from lindley.assembler.auto import chat_on_its_own, read_on_its_own, sort_on_its_own
 from lindley.assembler.relearn import relearn
 from lindley.config import Settings
 from lindley.db.database import connect
 from lindley.duplicates import find_duplicates
-from lindley.providers import allowance
-from lindley.providers.base import ChatProvider, ProviderError
-from lindley.providers.registry import get_provider
+from lindley.providers.base import ChatProvider
 from lindley.worker.intake import ingest, is_supported
 from lindley.worker.pipeline import Pipeline, waiting_for_vision
 
@@ -57,7 +55,7 @@ class FolderWatcher:
     ) -> None:
         self.settings = settings
         self.pipeline = pipeline or Pipeline.from_settings(settings)
-        self.chat = chat if chat is not None else _chat_from(settings)
+        self.chat = chat if chat is not None else chat_on_its_own(settings)
         self.poll_s = poll_s
         self.settle_s = settle_s
         self._pending: dict[Path, int] = {}  # path -> size at the last check (-1: not yet seen)
@@ -155,23 +153,21 @@ class FolderWatcher:
             if r.status == "new" or r.reading:
                 self._unassembled = True
             self._last_new = time.monotonic()
+        # Hard pages that arrived while the vision model had to ask go now, if it may run on
+        # its own (see lindley.assembler.auto); the rest wait in Needs AI for a person.
+        if (run := read_on_its_own(conn, self.settings, self.pipeline)) and run.read:
+            log.info("Read %d hard page(s) with the vision model", run.read)
+            self._unassembled = True
+            self._last_new = time.monotonic()
         if ready and (waiting := waiting_for_vision(conn)):
-            # Never sent from here: a person OKs it (a provider allowed to run on its own has
-            # already been sent them as they were read).
-            log.info("%d page(s) are waiting for you to OK the vision model", waiting)
+            log.info("%d page(s) are waiting in Needs AI for the vision model", waiting)
         with self._lock:
             waiting = bool(self._pending)
         if self._unassembled and not waiting and time.monotonic() - self._last_new >= self.settle_s:
             found = find_duplicates(conn).found  # first: copies of a page never share a document
             if found:
                 log.info("%d possible duplicate(s) to look at under Duplicates", len(found))
-            name = self.settings.ai.connection_for("assemble")
-            left = allowance.automatic_left(conn, self.settings, name) if self.chat else 0
-            chat = self.chat if left is None or left > 0 else None
-            report = assemble(conn, self.settings.assembler, chat, left)
-            if report.ai_calls:
-                with conn:
-                    allowance.record(conn, name, "assemble", True, count=report.ai_calls)
+            report = sort_on_its_own(conn, self.settings, self.chat)
             log.info(
                 "Assembled %d Inbox pages: %d new documents",
                 report.considered,
@@ -214,14 +210,3 @@ def _readable(path: Path) -> bool:
             return True
     except OSError:
         return False
-
-
-def _chat_from(settings: Settings) -> ChatProvider | None:
-    """The chat AI, if it may ever run on its own; each run checks today's limit."""
-    cfg = allowance.provider_config(settings, settings.ai.connection_for("assemble"))
-    if cfg is None or cfg.allow != "auto":
-        return None
-    try:
-        return get_provider(settings.ai, "assemble")
-    except ProviderError:
-        return None

@@ -170,6 +170,24 @@ def suggest_group(conn: sqlite3.Connection, g: Group) -> bool:
     return suggest(conn, "group_pages", g.pages[0].id, None, g.confidence, g.reasons, payload)
 
 
+def save_needs_ai(conn: sqlite3.Connection, windows: list[list[Group]]) -> None:
+    """What's waiting for the sorting AI now. A question still waiting keeps the time it
+    started waiting; one no longer waiting (sorted, answered, or its pages gone) is dropped."""
+    now = {
+        json.dumps(sorted(p.id for g in w for p in g.pages)): json.dumps(
+            [{"pages": g.ids, "name": g.name, "confidence": g.confidence} for g in w]
+        )
+        for w in windows
+    }
+    gone = [(k,) for (k,) in conn.execute("SELECT pages FROM needs_ai") if k not in now]
+    conn.executemany("DELETE FROM needs_ai WHERE pages = ?", gone)
+    conn.executemany(
+        "INSERT INTO needs_ai (pages, proposal) VALUES (?, ?)"
+        " ON CONFLICT (pages) DO UPDATE SET proposal = excluded.proposal",
+        list(now.items()),
+    )
+
+
 def mark_matched(conn: sqlite3.Connection, scan_ids: set[int]) -> None:
     for sid in scan_ids:
         done = conn.execute(

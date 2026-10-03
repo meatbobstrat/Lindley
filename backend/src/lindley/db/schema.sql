@@ -346,3 +346,15 @@ CREATE TABLE IF NOT EXISTS learned_weights (
     report     TEXT,                                -- JSON: how it did against the weights before
     at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ---------------------------------------------------------------- Needs AI
+
+-- What the rules couldn't sort and the AI hasn't been asked about yet: one row per question the
+-- sorting AI would be asked, refreshed each time the assembler runs (lindley.assembler.run).
+-- Pages too hard to read wait in intake_steps instead, as a queued 'vision' step.
+CREATE TABLE IF NOT EXISTS needs_ai (
+    id         INTEGER PRIMARY KEY,
+    pages      TEXT NOT NULL UNIQUE,                -- JSON list of page ids, sorted
+    proposal   TEXT NOT NULL,                       -- JSON [{pages, name, confidence}]: the rules'
+    since      TEXT NOT NULL DEFAULT (datetime('now'))
+);

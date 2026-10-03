@@ -273,7 +273,22 @@ def test_v6_database_gains_learned_weights(tmp_path):
     init_db(db)
     c = connect(db)
     assert "learned_weights" in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
-    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 7
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    c.close()
+
+
+def test_v7_database_gains_the_needs_ai_queue(tmp_path):
+    from importlib.resources import files
+
+    db = tmp_path / "v7.db"
+    schema = files("lindley.db").joinpath("schema.sql").read_text(encoding="utf-8")
+    c = sqlite3.connect(db)
+    c.executescript(schema.split("-- " + "-" * 64 + " Needs AI")[0] + "PRAGMA user_version = 7;")
+    c.close()
+    init_db(db)
+    c = connect(db)
+    assert "needs_ai" in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 8
     c.close()
 
 

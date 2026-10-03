@@ -65,10 +65,14 @@ watched folders ─► watcher ─► intake ───────────�
    - **You before the AI.** Pages the rules aren't sure about stay in the Inbox with a hint:
      "Do these go together?" or "Add to …?". Your answer costs nothing.
    - **AI as the last resort.** The AI is asked only about uncertain breaks, page order and
-     names, and only if one is connected: when you ask it about some pages, or, if it may run
-     on its own, about pages left unanswered for a week (`ask_ai_after_days`). Its answers are
-     kept, so the same question is never paid for twice. It sees page text, never images, and
-     its answers are checked before they're used.
+     names, and only if one is connected. If its connection may run on its own, it's asked as
+     they arrive (or after `ask_ai_after_days`, to give you first go). Otherwise they wait in
+     *Needs AI* until you send them. Its answers are kept, so the same question is never paid
+     for twice. It sees page text, never images, and its answers are checked before they're
+     used.
+   - **Needs AI.** One place for every scan waiting for an AI: pages too hard to read
+     (Tesseract below 70% confidence, waiting for the vision model) and pages the rules
+     couldn't sort, each with the rules' own guess at the documents. Send one, or all.
    - **What you see.** Confident groups appear under In progress with italic, suggested names
      and the reasons behind them.
 3. **Review.** Any page read with less than 90% confidence (adjustable) goes to *Needs your
@@ -253,7 +257,7 @@ file in these places, in order:
 | `db_path` | SQLite database location |
 | `move_files` | `true` moves scans out of watched folders; `false` copies them and leaves the originals |
 | `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this, a page needs the vision model. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000) |
-| `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" or "Do these go together?" hint (45). `ai_band`: which uncertain breaks may be sent to the AI. `ask_ai_after_days`: how long pages wait for a person before the AI may be asked about them on its own (7; 0: at once) |
+| `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" or "Do these go together?" hint (45). `ai_band`: which uncertain breaks may be sent to the AI. `ask_ai_after_days`: when the sorting AI may run on its own, how long pages wait for a person first (0: at once) |
 | `ai.providers` | Named AI connections. `type` is a connector (`local`, `anthropic`, `openai`, `google`, `openai_compat`), with `base_url` and `model` where needed. `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some). `daily_limit` and `monthly_limit` cap the calls it makes on its own. `per_minute` and `at_once` throttle every call |
 | `ai.jobs` | Which connection does each job: `vision` (reading hard pages), `assemble` (sorting pages into documents), `chat` (Ask Lindley) and `embed` (finding related pages), each with an optional `model` of its own. Out of the box there are none |
 

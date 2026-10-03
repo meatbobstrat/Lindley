@@ -48,6 +48,7 @@ erDiagram
 | `duplicate_checks`, `text_sketch` | page | Which reading each page was checked for duplicates with, and the page's text sketch for finding candidates. |
 | `ai_calls` | call to an AI | Which connection, what for (reading a page, sorting pages), whether Lindley made it on its own or a person OKed it, and whether it worked. Keeps the daily and monthly limits and shows what was sent where. |
 | `ai_answers` | question to an AI | The AI's reply about some pages, known by what it was shown, so the same question is never paid for twice. |
+| `needs_ai` | question waiting for an AI | Pages the rules couldn't sort and the AI hasn't been asked about, with the rules' own guess at the documents in them. Refreshed each time the assembler runs. |
 
 Settings stay in `settings.json`. API keys stay in Windows Credential Manager and never go in the database.
 
@@ -163,9 +164,9 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    - **Then loose ends, over the whole Inbox, best first.** A chain that doesn't end is joined to one that doesn't start when one clearly continues the other (0.75; 0.6 for two pages fed through the scanner the wrong way round), and no other loose end comes within 0.1 of it, for either page. Without that last rule, page 3 of one typescript was joined to page 4 of another: typescripts by one author share page numbers, and nearly every page ends mid-sentence.
    - **Order within a group:** page numbers first, then greeting first and signature last, then the chain. The order counts as settled, so the AI isn't asked about it, when every link in the chain scores 0.7 or more.
    - **Confidence:** each group gets one (0–100), based on how sure the breaks inside and around it are. It drops when the group has no clear start or end (a page may be missing), except for diaries.
-4. **A person, then the AI** (`ai.py`). What the rules can't settle goes to a person first, as hints in the Inbox: an answer costs nothing and is right. The AI is the last resort, asked only about breaks scoring 35–75 and groups whose order isn't settled, and only:
-   - when a person asks it about some pages (`POST /api/assembler/ask`): asking is the OK, and those pages are sent at once; or
-   - on its own, when its connection's `allow` is `auto` and today's limit isn't used up, for pages that have waited in the Inbox `ask_ai_after_days` (default 7) and that no one turned down. Pages whose "Do these go together?" a person dismissed aren't sent on their own. Naming new documents follows the same rule.
+4. **A person, then the AI** (`ai.py`). What the rules can't settle goes to a person as hints in the Inbox: an answer costs nothing and is right. The AI is the last resort, asked only about breaks scoring 35–75 and groups whose order isn't settled, and only:
+   - on its own, when its connection's `allow` is `auto` and its limits aren't used up (`auto.py`), as the pages arrive, or once they've waited `ask_ai_after_days` for a person to answer first (default 0). Pages whose "Do these go together?" a person dismissed aren't sent on their own. Naming new documents follows the same rule.
+   - when a person sends them from **Needs AI** (below), or asks about some pages (`POST /api/assembler/ask`): asking is the OK, and those pages are sent at once.
 
    It gets page text and clues, never images.
    - Its reply must use every page given exactly once, and no others. Anything else is rejected and the rules' answer stands.
@@ -183,6 +184,12 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    | A blank page or stray note | Suggests Set aside; never moves it |
    | A completed document | Never touches it |
    | A suggestion a person dismissed | Never makes it again |
+
+**Needs AI** (`api/needs_ai.py`, `GET /api/needs-ai`). Every scan waiting for an AI, in two kinds, like the two kinds of Duplicates:
+- **Hard to read.** Pages Tesseract read with less than `ocr.confidence_threshold` (70), waiting for the vision model as a queued `vision` step, or whose vision call failed. Their Tesseract reading is used meanwhile. `POST /api/needs-ai/read` sends some or all of them (failed ones too), then sorts the Inbox again with the new text.
+- **Hard to sort.** Each question the sorting AI would be asked that it hasn't been (`needs_ai`), with the rules' own guess at the documents in it and how sure they are. `POST /api/needs-ai/{id}/sort` sends one, `POST /api/needs-ai/sort` all. Once the AI has looked at pages, they leave the list even if its answer was turned down: they're the person's to sort then.
+
+The list also says which connection would be used, where it runs (local or cloud) and whether it may run on its own. When it may, Lindley sends these itself as they arrive, within its limits (the watcher, through `auto.py`, sends hard pages that waited while it had to ask), so the list is usually empty. Calls a person sends are recorded as theirs, never counted against the limits.
 
 **Learning from people** (`relearn.py`, table `learned_weights`). A person's answers are free labels. Every document a person made, accepted, finished or worked on (and every assembled PDF read in) is an answer: these pages, in this order. Every two-page "Do these go together?" a person turned down says those two don't. Once there are 10 answer documents, and 5 more than at the last try, the watcher fits the weights again after a settle (about 10 seconds for 7 documents). Fitting alone isn't trusted, since fitted weights have predicted pairs better yet built worse documents. So the answer documents are split in two, and weights fitted to one half rebuild the other half's documents, fed in as loose scans in order and with neighbours swapped, against the weights in use. They're adopted only if, both ways round, they make no more wrong documents, rebuild no fewer exactly, and do better somewhere. Every try is kept; the latest adopted weights are used, else the shipped ones. On the 7 real typescripts, weights fitted to half of them rebuilt one document fewer of the other half, so they'd be turned down.
 

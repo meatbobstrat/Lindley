@@ -104,10 +104,11 @@ class AssemblerSettings(BaseModel):
     # Breaks between pages scored inside this band are checked with the chat AI, when the chat
     # provider may be used (its `allow`, or a person's OK).
     ai_band: tuple[int, int] = (35, 75)
-    # A person is asked first ("Do these go together?"). The AI is only asked on its own about
-    # pages that have waited in the Inbox this many days, unanswered; a person can ask it about
-    # any pages at once. 0: as soon as they arrive.
-    ask_ai_after_days: int = Field(default=7, ge=0)
+    # When the AI may run on its own (its connection's `allow` is "auto"), it's asked about
+    # pages the rules can't settle once they've waited this many days for a person to answer
+    # first. 0: as soon as they arrive. A person can ask it about any pages at once, whatever
+    # the connection's `allow`.
+    ask_ai_after_days: int = Field(default=0, ge=0)
 
 
 class Settings(BaseModel):

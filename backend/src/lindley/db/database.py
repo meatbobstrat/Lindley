@@ -6,7 +6,7 @@ import sqlite3
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}.
 # schema.sql always describes the latest version, for new databases.
@@ -17,6 +17,7 @@ MIGRATIONS: dict[int, str] = {
     5: "",  # new table only (ai_calls)
     6: "",  # new table only (ai_answers)
     7: "",  # new table only (learned_weights)
+    8: "",  # new table only (needs_ai)
 }
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.

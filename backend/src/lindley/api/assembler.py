@@ -7,11 +7,14 @@ asked for. An answer the AI gave before about the same pages is used again, with
 
 from __future__ import annotations
 
+import sqlite3
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from lindley.api.deps import Conn
 from lindley.assembler import assemble
+from lindley.config import Settings
 from lindley.providers import allowance
 from lindley.providers.base import ProviderError
 from lindley.providers.registry import get_provider
@@ -25,7 +28,11 @@ class AskRequest(BaseModel):
 
 @router.post("/ask")
 def ask(body: AskRequest, request: Request, conn: Conn) -> dict:
-    settings = request.app.state.settings
+    return ask_about(conn, request.app.state.settings, set(body.page_ids))
+
+
+def ask_about(conn: sqlite3.Connection, settings: Settings, page_ids: set[int]) -> dict:
+    """Send these pages to the sorting AI at once, as a person asked."""
     name = settings.ai.connection_for("assemble")
     if not name:
         raise HTTPException(400, "No AI is set up to sort pages. Choose one in Settings.")
@@ -33,7 +40,7 @@ def ask(body: AskRequest, request: Request, conn: Conn) -> dict:
         chat = get_provider(settings.ai, "assemble")
     except ProviderError as e:
         raise HTTPException(400, str(e)) from e
-    report = assemble(conn, settings.assembler, chat, asked=set(body.page_ids))
+    report = assemble(conn, settings.assembler, chat, asked=page_ids)
     if report.ai_calls:
         with conn:
             allowance.record(conn, name, "assemble", False, count=report.ai_calls)

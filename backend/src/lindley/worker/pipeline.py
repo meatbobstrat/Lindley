@@ -76,6 +76,22 @@ def waiting_for_vision(conn: sqlite3.Connection) -> int:
     return conn.execute(sql).fetchone()[0]
 
 
+def vision_queue(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Pages waiting for the vision model, or whose vision call failed, with why and where:
+    page_id, status ('queued' or 'failed'), error, file_name, confidence (the reading in use),
+    document_id, document_name, position."""
+    return conn.execute(
+        "SELECT v.page_id, v.status, v.error, s.original_name AS file_name, t.confidence,"
+        " p.document_id, d.name AS document_name, p.position"
+        f" FROM ({_LAST_VISION}) v JOIN pages p ON p.id = v.page_id"
+        " JOIN scans s ON s.id = p.scan_id"
+        " LEFT JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
+        " LEFT JOIN documents d ON d.id = p.document_id"
+        " WHERE v.status IN ('queued', 'failed') AND p.set_aside_at IS NULL"
+        " ORDER BY p.document_id IS NULL, p.document_id, p.position, s.id, p.page_index"
+    ).fetchall()
+
+
 def vision_failures(conn: sqlite3.Connection) -> tuple[int, str | None]:
     """Pages whose last vision call failed (they wait for a person to retry), and an error."""
     sql = f"SELECT COUNT(*), MAX(error) FROM ({_LAST_VISION}) WHERE status = 'failed'"
@@ -229,12 +245,17 @@ class Pipeline:
         conn: sqlite3.Connection,
         page_ids: list[int] | None = None,
         retry_failed: bool = False,
+        automatic: bool = False,
+        limit: int | None = None,
     ) -> WaitingRun:
-        """Send the pages waiting for the vision model. Only a person starts this.
+        """Send the pages waiting for the vision model: a person asked, or, with `automatic`,
+        Lindley sends them on its own because the connection may now run on its own (at most
+        `limit` calls: what's left of its limits).
 
-        Pages whose vision call failed are sent again only with retry_failed. It stops after
-        STOP_AFTER_FAILURES failures in a row, so a broken provider isn't called page after page.
-        A vision reading becomes current if it's better, but never replaces a person's text.
+        Pages whose vision call failed are sent again only with retry_failed, which only a
+        person asks for. It stops after STOP_AFTER_FAILURES failures in a row, so a broken
+        provider isn't called page after page. A vision reading becomes current if it's better,
+        but never replaces a person's text.
         """
         if self.vision is None:
             raise RuntimeError("No vision model is set up")
@@ -253,6 +274,9 @@ class Pipeline:
         run = WaitingRun()
         in_a_row, scans, error = 0, set(), ""
         for r in rows:
+            if limit is not None and run.read + run.failed >= limit:
+                run.stopped = "Stopped at the limit of calls Lindley may make on its own"
+                break
             if in_a_row >= STOP_AFTER_FAILURES:
                 run.stopped = f"Stopped after {in_a_row} failures in a row: {error}"
                 break
@@ -272,9 +296,9 @@ class Pipeline:
                         try:
                             result = self._vision_reader().recognize(upright)[0]
                         except Exception:
-                            self._record_ok_call(conn, r["page_id"], ok=False)
+                            self._record_call(conn, r["page_id"], automatic, ok=False)
                             raise
-                    self._record_ok_call(conn, r["page_id"], ok=True)
+                    self._record_call(conn, r["page_id"], automatic, ok=True)
                     self._add_vision_reading(conn, r["page_id"], model, result)
             except Exception as e:
                 run.failed += 1
@@ -291,10 +315,12 @@ class Pipeline:
         run.waiting = waiting_for_vision(conn)
         return run
 
-    def _record_ok_call(self, conn: sqlite3.Connection, page_id: int, ok: bool) -> None:
-        """A vision call a person OKed: recorded, but not counted against the daily limit."""
+    def _record_call(
+        self, conn: sqlite3.Connection, page_id: int, automatic: bool, ok: bool
+    ) -> None:
+        """A vision call: one a person OKed isn't counted against the limits."""
         with conn:
-            allowance.record(conn, self.vision_name, "vision", False, page_id, ok)
+            allowance.record(conn, self.vision_name, "vision", automatic, page_id, ok)
 
     def _add_vision_reading(
         self, conn: sqlite3.Connection, page_id: int, model: str, result: PageResult

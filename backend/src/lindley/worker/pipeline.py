@@ -173,12 +173,17 @@ class Pipeline:
         self.tesseract = tesseract
         self.vision = vision
 
+    @property
+    def vision_name(self) -> str | None:
+        """The connection that reads hard pages (ai.jobs.vision)."""
+        return self.settings.ai.connection_for("vision")
+
     @classmethod
     def from_settings(cls, settings: Settings, use_ai: bool = True) -> Pipeline:
         vision = None
-        if use_ai and settings.ocr.engine != "tesseract" and settings.ocr.vision_provider:
+        if use_ai and settings.ocr.engine != "tesseract" and settings.ai.connection_for("vision"):
             try:
-                vision = get_provider(settings.ai, settings.ocr.vision_provider)
+                vision = get_provider(settings.ai, "vision")
             except ProviderError:
                 vision = None
         return cls(settings, TesseractEngine(settings.ocr), vision)
@@ -289,7 +294,7 @@ class Pipeline:
     def _record_ok_call(self, conn: sqlite3.Connection, page_id: int, ok: bool) -> None:
         """A vision call a person OKed: recorded, but not counted against the daily limit."""
         with conn:
-            allowance.record(conn, self.settings.ocr.vision_provider, "vision", False, page_id, ok)
+            allowance.record(conn, self.vision_name, "vision", False, page_id, ok)
 
     def _add_vision_reading(
         self, conn: sqlite3.Connection, page_id: int, model: str, result: PageResult
@@ -467,7 +472,7 @@ class Pipeline:
                     )
             elif _last_vision_status(conn, page_id) in ("queued", "failed"):
                 pass  # already waiting for a person; never sent again on its own
-            elif not allowance.may_call(conn, self.settings, ocr.vision_provider):
+            elif not allowance.may_call(conn, self.settings, self.vision_name):
                 with conn:
                     conn.execute(
                         "INSERT INTO intake_steps (scan_id, page_id, step, status, error)"
@@ -475,7 +480,7 @@ class Pipeline:
                         (
                             scan_id,
                             page_id,
-                            allowance.why_waiting(self.settings, ocr.vision_provider),
+                            allowance.why_waiting(self.settings, self.vision_name),
                         ),
                     )
             else:
@@ -493,7 +498,7 @@ class Pipeline:
                     pass  # recorded as failed; the page waits for a person to try again
                 finally:
                     with conn:
-                        allowance.record(conn, ocr.vision_provider, "vision", True, page_id, ok)
+                        allowance.record(conn, self.vision_name, "vision", True, page_id, ok)
 
         if not readings:
             return  # vision only, and the page is waiting for the vision model

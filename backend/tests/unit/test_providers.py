@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from lindley.config import AiSettings, ProviderConfig
+from lindley.config import AiSettings, JobConfig, ProviderConfig
 from lindley.providers.base import (
     ChatMessage,
     ChatProvider,
@@ -86,10 +86,35 @@ def test_fake_provider_satisfies_all_interfaces():
     assert p.embed(["a", "b"])[0] != p.embed(["a", "b"])[1]
 
 
+def test_each_job_gets_its_connection_and_model():
+    ai = AiSettings(
+        providers={
+            "home": ProviderConfig(type="local", model="qwen2.5vl"),
+            "claude": ProviderConfig(type="anthropic", model="claude-sonnet-5"),
+        },
+        jobs={
+            "vision": JobConfig(connection="claude"),
+            "assemble": JobConfig(connection="claude", model="claude-haiku-4-5"),
+            "chat": JobConfig(connection="home"),
+            "embed": JobConfig(connection="home"),
+        },
+    )
+    assert get_provider(ai, "vision").model == "claude-sonnet-5"  # the connection's
+    assert get_provider(ai, "assemble").model == "claude-haiku-4-5"  # the job's
+    assert get_provider(ai, "chat").model == "qwen2.5vl"
+    assert get_provider(ai, "embed").model == "nomic-embed-text"  # the connector's default
+    ai.providers["claude"].model = None
+    assert get_provider(ai, "vision").model == "claude-opus-5"
+
+
 def test_get_provider_errors():
-    ai = AiSettings(providers={"f": ProviderConfig(type="fake")})
-    assert isinstance(get_provider(ai, "f"), FakeProvider)
-    with pytest.raises(ProviderError):
-        get_provider(ai, "missing")
-    with pytest.raises(ProviderError):
-        get_provider(ai, None)
+    ai = AiSettings(
+        providers={"claude": ProviderConfig(type="anthropic")},
+        jobs={"embed": JobConfig(connection="claude"), "chat": JobConfig(connection="gone")},
+    )
+    with pytest.raises(ProviderError, match="No AI"):
+        get_provider(ai, "vision")
+    with pytest.raises(ProviderError, match="not configured"):
+        get_provider(ai, "chat")
+    with pytest.raises(ProviderError, match="Anthropic can't"):
+        get_provider(ai, "embed")

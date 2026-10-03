@@ -10,6 +10,7 @@ from lindley.config import (
     resolve_settings_path,
     save_settings,
 )
+from lindley.providers.base import JOBS
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -21,10 +22,16 @@ def test_missing_file_gives_defaults(tmp_path: Path):
     assert s.ocr.engine == "hybrid"
 
 
-def test_no_ai_calls_unless_a_person_oks_them():
+def test_out_of_the_box_there_is_no_ai():
     s = Settings()
-    assert all(p.allow == "ask" for p in s.ai.providers.values())
+    assert s.ai.providers == {}
+    assert all(s.ai.connection_for(job) is None for job in JOBS)
     assert s.ocr.vision_max_side == 2000
+
+
+def test_no_ai_calls_unless_a_person_oks_them():
+    cfg = ProviderConfig(type="local")
+    assert cfg.allow == "ask" and cfg.daily_limit is None and cfg.monthly_limit is None
 
 
 def test_round_trip(tmp_path: Path):
@@ -36,8 +43,7 @@ def test_round_trip(tmp_path: Path):
 
 def test_example_settings_file_is_valid():
     s = load_settings(REPO_ROOT / "settings.example.json")
-    assert s.ai.chat_provider in s.ai.providers
-    assert s.ocr.vision_provider in s.ai.providers
+    assert all(s.ai.connection_for(job) in s.ai.providers for job in JOBS)
 
 
 def test_env_var_overrides_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -67,4 +73,24 @@ def test_settings_from_before_per_provider_allow_carry_over(tmp_path: Path):
     s = load_settings(path)
     assert s.ai.providers["local"].allow == "auto" and s.ai.providers["cloud"].allow == "auto"
     path.write_text('{"ocr": {"vision_mode": "ask"}}', encoding="utf-8")
-    assert load_settings(path).ai.providers["local"].allow == "ask"
+    assert load_settings(path).ai.providers == {}
+
+
+def test_settings_from_before_jobs_carry_over(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        '{"ocr": {"vision_provider": "claude"},'
+        ' "ai": {"chat_provider": "home", "providers": {'
+        '   "home": {"type": "openai_compat", "base_url": "http://192.168.1.20:1234/v1"},'
+        '   "far": {"type": "openai_compat", "base_url": "https://ai.example.com/v1"},'
+        '   "claude": {"type": "anthropic"}}}}',
+        encoding="utf-8",
+    )
+    ai = load_settings(path).ai
+    assert ai.connection_for("vision") == "claude"
+    assert ai.connection_for("assemble") == ai.connection_for("chat") == "home"
+    assert ai.connection_for("embed") is None  # "local" when left out, and there's none
+    assert ai.providers["home"].type == "local"  # on the local network
+    assert ai.providers["far"].type == "openai_compat"
+    saved = save_settings(load_settings(path), path).read_text(encoding="utf-8")
+    assert "chat_provider" not in saved and "vision_provider" not in saved

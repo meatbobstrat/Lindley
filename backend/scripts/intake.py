@@ -67,7 +67,7 @@ def page_name(conn, page_id: int) -> str:
 
 
 def where_vision_goes(settings) -> str:
-    name = settings.ocr.vision_provider
+    name = settings.ai.connection_for("vision")
     cfg = settings.ai.providers.get(name) if name else None
     if cfg is None:
         return "no vision model is set up"
@@ -109,7 +109,7 @@ def main() -> int:
     conn = connect(settings.db_path)
     print(f"Database: {settings.db_path.resolve()}")
     if files:
-        cfg = allowance.provider_config(settings, settings.ocr.vision_provider)
+        cfg = allowance.provider_config(settings, settings.ai.connection_for("vision"))
         mode = ("automatic" if cfg and cfg.allow == "auto" else "ask") if pipe.vision else "off"
         vision = "" if settings.ocr.engine == "tesseract" else f" (vision: {mode})"
         print(
@@ -201,12 +201,12 @@ def main() -> int:
         print(f"{waiting_dups} possible duplicate pair(s) are waiting for you to decide.")
 
     if not a.no_assemble:
-        name = settings.ai.chat_provider
+        name = settings.ai.connection_for("assemble")
         left = 0 if a.no_ai else None if a.ai else allowance.automatic_left(conn, settings, name)
         chat = None
         if left is None or left > 0:
             try:
-                chat = get_provider(settings.ai, name)
+                chat = get_provider(settings.ai, "assemble")
             except ProviderError:
                 chat = None
         report = assemble(conn, settings.assembler, chat, left)

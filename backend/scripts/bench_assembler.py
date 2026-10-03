@@ -68,7 +68,7 @@ def run(seed: int, ai: str, verbose: bool, real=None, order: str = "") -> tuple[
         if ai == "oracle":
             chat = OracleChat(truth)
         elif ai == "settings":
-            chat = get_provider(settings.ai, settings.ai.chat_provider)
+            chat = get_provider(settings.ai, "assemble")
         calls = assemble(conn, settings.assembler, chat).ai_calls
         if batch and batch.late:
             late = load(conn, batch.late, start_seq=len(batch.pages) + 50)

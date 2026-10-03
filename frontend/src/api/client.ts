@@ -4,7 +4,8 @@ export interface Health {
   status: string
   version: string
   ocr_engine: string
-  chat_provider: string | null
+  // The AI connection doing each job, or null when none is set up.
+  ai: Record<'vision' | 'assemble' | 'chat' | 'embed', string | null>
 }
 
 export class ApiError extends Error {

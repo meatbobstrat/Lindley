@@ -164,7 +164,7 @@ class FolderWatcher:
             found = find_duplicates(conn).found  # first: copies of a page never share a document
             if found:
                 log.info("%d possible duplicate(s) to look at under Duplicates", len(found))
-            name = self.settings.ai.chat_provider
+            name = self.settings.ai.connection_for("assemble")
             left = allowance.automatic_left(conn, self.settings, name) if self.chat else 0
             chat = self.chat if left is None or left > 0 else None
             report = assemble(conn, self.settings.assembler, chat, left)
@@ -208,10 +208,10 @@ def _readable(path: Path) -> bool:
 
 def _chat_from(settings: Settings) -> ChatProvider | None:
     """The chat AI, if it may ever run on its own; each run checks today's limit."""
-    cfg = allowance.provider_config(settings, settings.ai.chat_provider)
+    cfg = allowance.provider_config(settings, settings.ai.connection_for("assemble"))
     if cfg is None or cfg.allow != "auto":
         return None
     try:
-        return get_provider(settings.ai, settings.ai.chat_provider)
+        return get_provider(settings.ai, "assemble")
     except ProviderError:
         return None

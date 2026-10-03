@@ -472,3 +472,31 @@ def test_a_page_two_that_could_follow_either_page_one_joins_neither():
     two = "- 2 -\nlong bridge at noon and went on.\n" + body
     groups, _, _ = segment(_stream([one, RECEIPT, one + " old", RECEIPT, two, RECEIPT, two]))
     assert not any(len([p for p in g.pages if "summit" in p.text]) > 1 for g in groups)
+
+
+def test_folders_a_person_sorted_are_an_answer_key(conn):
+    from lindley.assembler.bench import real_answers
+
+    def scan(folder, name, blank=0.1):
+        sid = conn.execute(
+            "INSERT INTO scans (sha256, original_name, source_path, origin, import_mode, status)"
+            " VALUES (?, ?, ?, 'watched', 'copy', 'read')",
+            (f"{folder}/{name}", name, f"D:/Sorted/{folder}/{name}"),
+        ).lastrowid
+        pid = conn.execute(
+            "INSERT INTO pages (scan_id, blank_score) VALUES (?, ?)", (sid, blank)
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO transcriptions (page_id, source, text, is_current)"
+            " VALUES (?, 'tesseract', 'Some words', 1)",
+            (pid,),
+        )
+        return pid
+
+    with conn:
+        b2, b1 = scan("Burbanks", "Image (2).jpg"), scan("Burbanks", "Image.jpg")
+        scan("Burbanks", "Image (3).jpg", blank=0.99)
+        a = [scan("Abe", f"Image ({n}).jpg") for n in (10, 2)]
+        scan("Notes", "Image.jpg")
+    # Abe, then Burbanks, each in file name order; no blank pages, and no one-page folders
+    assert real_answers(conn) == [[a[1], a[0]], [b1, b2]]

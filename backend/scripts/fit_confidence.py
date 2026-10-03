@@ -4,11 +4,11 @@ are one document.
 python scripts/fit_confidence.py --real lindley.db            # fit, and test it
 python scripts/fit_confidence.py --real lindley.db --write    # save it to weights.py
 
-The groups come from made-up batches and from real scans (assembled PDFs are the answer key, as
-for scripts/fit_assembler.py). Each real document is left out in turn and its groups scored by a
-fit made without it, and the report says what the hand-made rule and the fitted one would each
-make into documents at group_at. --write saves GROUP_WEIGHTS to weights.py: only the weights, no
-text from any scan.
+The groups come from made-up batches and from real scans (assembled PDFs or folders a person
+sorted are the answer key, as for scripts/fit_assembler.py). Each real document is left out in
+turn and its groups scored by a fit made without it, and the report says what the hand-made
+rule and the fitted one would each make into documents at group_at. --write saves GROUP_WEIGHTS
+to weights.py: only the weights, no text from any scan.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from pathlib import Path
 
 from fit_assembler import MADE_UP, OUT, REAL_SEEDS, batch
 
-from lindley.assembler.bench import ORDERS, arrange, load, load_real, make_batch, pdf_answers
+from lindley.assembler.bench import ORDERS, arrange, load, load_real, make_batch, real_answers
 from lindley.assembler.evidence import score
 from lindley.assembler.learn import L2, Example, fit
 from lindley.assembler.segment import GROUP_FEATURES, segment
@@ -81,7 +81,7 @@ def main() -> None:
     real: list[Tagged] = []
     for db in a.real:
         src = connect(db)
-        docs = pdf_answers(src)
+        docs = real_answers(src)
         for order in ORDERS:
             for seed in REAL_SEEDS:
                 pages, truth = batch(

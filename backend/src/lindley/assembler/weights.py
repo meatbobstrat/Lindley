@@ -40,5 +40,5 @@ WEIGHTS = {
 }
 
 # A group's confidence, in log-odds, over segment.GROUP_FEATURES. Empty: the hand-made rule in
-# segment._confidence. scripts/fit_assembler.py --groups fits them.
+# segment._confidence. scripts/fit_confidence.py fits them.
 GROUP_WEIGHTS: dict[str, float] = {}

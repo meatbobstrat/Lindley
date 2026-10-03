@@ -6,9 +6,11 @@ python scripts/bench_assembler.py --ai settings   # plus the chat AI in your set
 
 python scripts/bench_assembler.py --real lindley.db [--orders in_order,shuffled] [--seeds 10]
 
---real scores it on real scans instead: assembled PDFs, read into a Lindley database with
-scripts/intake.py, are the answer key. Each PDF's pages are fed in as loose scans, all the
-documents together, in each order (see ORDERS in lindley.assembler.bench), once per seed.
+--real scores it on real scans instead, read into a Lindley database with scripts/intake.py.
+The answer key is its assembled PDFs, or if it has none, the folders a person sorted the scans
+into, one document each (lindley.assembler.bench.real_answers). Each document's pages are fed
+in as loose scans, all the documents together, in each order (see ORDERS in
+lindley.assembler.bench), once per seed.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from lindley.assembler.bench import (
     load,
     load_real,
     make_batch,
-    pdf_answers,
+    real_answers,
     score,
     score_groups,
 )
@@ -122,13 +124,15 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=int, default=None, help="default 30, or 10 with --real")
     ap.add_argument("--ai", choices=["none", "oracle", "settings"], default="none")
-    ap.add_argument("--real", type=Path, help="a Lindley database holding assembled PDFs")
+    ap.add_argument(
+        "--real", type=Path, help="a Lindley database of assembled PDFs or sorted folders"
+    )
     ap.add_argument("--orders", default=",".join(ORDERS))
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
     if a.real:
         src = connect(a.real)
-        docs = pdf_answers(src)
+        docs = real_answers(src)
         print(f"{len(docs)} documents, {sum(map(len, docs))} pages, from {a.real}  AI: {a.ai}")
         for order in a.orders.split(","):
             scores, calls, proposals, asks = zip(

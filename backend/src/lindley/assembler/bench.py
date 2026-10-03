@@ -12,8 +12,11 @@ import random
 import sqlite3
 from dataclasses import dataclass, field
 from itertools import combinations
+from pathlib import PurePath
 
+from lindley.assembler.clues import file_series
 from lindley.providers.base import ChatMessage
+from lindley.worker.image import BLANK_AT
 
 PLACES = ["Xenia, O.", "Bellbrook, O.", "Dayton, O.", "Spring Valley, O.", "Cedarville, O."]
 FIRSTS = ["John", "Will", "Clara", "Mary", "Samuel", "Ellen", "George", "Hattie"]
@@ -380,6 +383,30 @@ def pdf_answers(conn: sqlite3.Connection) -> list[list[int]]:
         if len(ids) >= 2:
             docs.append(ids)
     return docs
+
+
+def folder_answers(conn: sqlite3.Connection) -> list[list[int]]:
+    """An answer key from scans a person sorted into folders: each folder of two or more read
+    pages is one document, its pages in file name order (Image, Image (2), Image (3)...). Blank
+    pages are left out, since Lindley sets them aside."""
+    by_folder: dict[str, list[tuple[tuple, int]]] = {}
+    for r in conn.execute(
+        "SELECT p.id, p.page_index, s.original_name, s.source_path FROM pages p"
+        " JOIN scans s ON s.id = p.scan_id"
+        " JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
+        " WHERE s.status = 'read' AND coalesce(p.blank_score, 0) < ?",
+        (BLANK_AT,),
+    ):
+        prefix, seq = file_series(r["original_name"])
+        key = (prefix, seq or 0, r["page_index"])
+        by_folder.setdefault(str(PurePath(r["source_path"]).parent), []).append((key, r["id"]))
+    return [[pid for _, pid in sorted(ps)] for _, ps in sorted(by_folder.items()) if len(ps) >= 2]
+
+
+def real_answers(conn: sqlite3.Connection) -> list[list[int]]:
+    """The answer key a database of real scans holds: its assembled PDFs if it has any, else
+    the folders its scans were sorted into."""
+    return pdf_answers(conn) or folder_answers(conn)
 
 
 def arrange(docs: list[list[int]], order: str, seed: int) -> list[tuple[int, int, int]]:

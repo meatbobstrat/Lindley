@@ -105,8 +105,8 @@ def describe(pages: list[Page]) -> tuple[str | None, str, bool, str | None]:
     return kind, f"Pages starting “{words}…”", True, date
 
 
-# What a group's confidence is fitted on (lindley.assembler.learn, scripts/fit_assembler.py
-# --groups): the chance that these pages, and only these, are one document.
+# What a group's confidence is fitted on (lindley.assembler.learn, scripts/fit_confidence.py):
+# the chance that these pages, and only these, are one document.
 GROUP_FEATURES = (
     "bias",
     "weakest",  # the weakest link inside it, in log-odds (0 for a single page)

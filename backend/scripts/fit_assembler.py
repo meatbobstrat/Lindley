@@ -1,7 +1,7 @@
 """Fit the assembler's evidence weights to pages whose right answer is known.
 
 python scripts/fit_assembler.py                       # made-up batches only
-python scripts/fit_assembler.py --real lindley.db     # plus real scans (assembled PDFs)
+python scripts/fit_assembler.py --real lindley.db     # plus real scans (PDFs or sorted folders)
 python scripts/fit_assembler.py --real lindley.db --write
 
 Real scans count as much as all the made-up batches together. Each real document is also left
@@ -16,7 +16,7 @@ import argparse
 import tempfile
 from pathlib import Path
 
-from lindley.assembler.bench import ORDERS, arrange, load, load_real, make_batch, pdf_answers
+from lindley.assembler.bench import ORDERS, arrange, load, load_real, make_batch, real_answers
 from lindley.assembler.evidence import FEATURES
 from lindley.assembler.learn import L2, Example, accuracy, examples, fit, log_loss
 from lindley.assembler.run import load_inbox
@@ -55,7 +55,7 @@ def made_up() -> list[Example]:
 def real(db: Path) -> list[tuple[set[str], Example]]:
     """Examples from real scans, each with the documents its two pages came from."""
     src = connect(db)
-    docs = pdf_answers(src)
+    docs = real_answers(src)
     out = []
     for order in ORDERS:
         for seed in REAL_SEEDS:

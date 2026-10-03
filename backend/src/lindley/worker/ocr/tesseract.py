@@ -142,9 +142,6 @@ class TesseractEngine:
             return None
         return osd[0]
 
-    def make_searchable_pdf(self, source: Path, output: Path) -> None:
-        raise NotImplementedError
-
     def missing_help(self) -> str:
         where = self.settings.tesseract_path or "PATH or " + str(WINDOWS_DEFAULT)
         return (

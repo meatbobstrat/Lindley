@@ -77,6 +77,9 @@ watched folders ─► watcher ─► intake ───────────�
   A document is in one folder, or under In progress or Completed. The database enforces this.
 - **Transparency.** Confidence scores, the source of every fact, and the reasons for every
   grouping are kept and shown.
+- **Few dependencies.** Everything is a Python package except Tesseract, which the installer
+  will include. Searchable PDFs are built from Lindley's own readings and word positions, so
+  they need no Ghostscript or second OCR pass, and they carry people's corrections.
 - **Accessible.** The UI targets WCAG 2.2 AA, and status is never shown by colour alone.
 - **Private by default.** Lindley works with an AI on your own computer (Ollama, LM Studio).
   - Cloud AI (Anthropic, OpenAI and others) is supported, but setup and Settings warn plainly
@@ -115,7 +118,8 @@ Open it in a browser; it uses sample data and saves nothing. It covers:
 
 Prerequisites: Python 3.13 and Node 22+. Reading scans needs
 [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
-(`winget install UB-Mannheim.TesseractOCR`). Searchable PDF export will also need Ghostscript.
+(`winget install UB-Mannheim.TesseractOCR`). The installer will include it, so it's only a
+step for development.
 
 ```powershell
 # backend
@@ -235,8 +239,8 @@ folders.
 - [x] Image checks: blank pages, rotation, handwriting or print
 - [ ] Vision model reading for handwriting (intake is ready; the AI adapters aren't)
 - [ ] API and the real React UI, built from the mockup
-- [ ] Searchable PDF export
+- [ ] Searchable PDF export, built from stored readings (no Ghostscript)
 - [ ] Search and Ask Lindley (chat with your documents)
 - [ ] Details view: everything Lindley found about a page or document
 - [ ] Settings in the app, with API keys in Windows Credential Manager
-- [ ] One-click installer (Windows/Mac)
+- [ ] One-click installer (Windows/Mac), with Tesseract included

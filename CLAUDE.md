@@ -5,9 +5,12 @@
   - `config.py`: Pydantic `Settings`, plus the settings.json lookup and load/save
   - `app.py`: `create_app(settings)` factory; routers live in `api/`
   - `db/`: plain `sqlite3` with FTS5; `schema.sql` is applied idempotently by `init_db`
-  - `providers/`: the AI abstraction (`ChatProvider`, `VisionProvider`, `EmbeddingProvider`),
-    built by `registry.build_provider`. Adapters: `anthropic`, `openai_compat`
-    (OpenAI/Ollama/LM Studio/vLLM) and `fake` (for tests)
+  - `providers/`: the AI abstraction (`ChatProvider`, `VisionProvider`, `EmbeddingProvider`).
+    `registry.get_provider(ai, job)` builds the one settings give a job (`vision`, `assemble`,
+    `chat`, `embed`), wrapped in its connection's throttle (`throttle.py`). Connectors are files
+    in `providers/connectors/`, found at start-up: `local`, `anthropic`, `openai`, `google`,
+    `openai_compat` and `fake` (for tests); `_openai_wire.py` and `_http.py` are shared helpers.
+    `keys.py`: API keys in the system credential store (keyring)
   - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
     `pipeline.py` (step records, Tesseract/vision reading), `ocr/` engines
   - `watcher/`: watchdog folder watcher, started by the app lifespan (`create_app(watch=False)` in tests)
@@ -29,7 +32,9 @@
 
 ## Conventions
 - The repo is **public**. Never commit `settings.json`, `.env`, databases or scanned data.
-  API keys come only from the env var named by a provider's `api_key_env`.
-- Tests use `FakeProvider` and temp dirs. They never touch real providers or the network.
+  API keys live in the credential store (`providers/keys.py`), or the env var named by a
+  provider's `api_key_env`. Tests use an in-memory keyring (conftest).
+- Tests use `FakeProvider` and temp dirs. They never touch real providers or the network:
+  connector tests run on `httpx.MockTransport`.
 - Local AI and ML must run on an ordinary laptop: no GPU, no heavy ML packages.
 - Make one commit per logical step, after tests and lint pass, and push to `origin main`.

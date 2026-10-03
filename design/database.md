@@ -46,7 +46,7 @@ erDiagram
 | `history` | action | Who did what (a person or Lindley), with before and after. A person's decision is one `batch` of rows, undone together. Used for undo and the audit trail. |
 | `duplicates` | page pair | Two pages that look like the same page scanned again (`same_page`), or that have very similar text (`similar`), with the evidence and a person's decision. |
 | `duplicate_checks`, `text_sketch` | page | Which reading each page was checked for duplicates with, and the page's text sketch for finding candidates. |
-| `ai_calls` | call to an AI | Which connection, what for (reading a page, sorting pages), whether Lindley made it on its own or a person OKed it, and whether it worked. Keeps the daily limit and shows what was sent where. |
+| `ai_calls` | call to an AI | Which connection, what for (reading a page, sorting pages), whether Lindley made it on its own or a person OKed it, and whether it worked. Keeps the daily and monthly limits and shows what was sent where. |
 
 Settings stay in `settings.json`. API keys stay in Windows Credential Manager and never go in the database.
 

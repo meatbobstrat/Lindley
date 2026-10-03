@@ -10,7 +10,6 @@
     "tesseract_path": null,
     "languages": ["eng"],
     "confidence_threshold": 70,
-    "vision_provider": "local",
     "vision_max_side": 2000
   },
   "assembler": {
@@ -19,32 +18,54 @@
     "ai_band": [35, 75]
   },
   "ai": {
-    "chat_provider": "local",
-    "embedding_provider": "local",
+    "jobs": {
+      "vision": { "connection": "local", "model": null },
+      "assemble": { "connection": "claude", "model": null },
+      "chat": { "connection": "claude", "model": null },
+      "embed": { "connection": "local", "model": null }
+    },
     "providers": {
       "local": {
-        "type": "openai_compat",
+        "type": "local",
+        "label": "Ollama on this computer",
         "base_url": "http://localhost:11434/v1",
-        "model": "llama3.1",
-        "api_key_env": null,
+        "model": "llama3.2-vision",
         "allow": "ask",
-        "daily_limit": null
+        "daily_limit": null,
+        "monthly_limit": null,
+        "per_minute": null,
+        "at_once": 1
       },
       "claude": {
         "type": "anthropic",
-        "base_url": null,
-        "model": "claude-sonnet-5",
-        "api_key_env": "ANTHROPIC_API_KEY",
+        "label": "Claude",
+        "model": "claude-opus-5",
         "allow": "ask",
-        "daily_limit": 50
+        "daily_limit": 50,
+        "monthly_limit": 1000,
+        "per_minute": 30,
+        "at_once": 2
       },
       "openai": {
-        "type": "openai_compat",
-        "base_url": "https://api.openai.com/v1",
+        "type": "openai",
+        "label": "OpenAI",
         "model": "gpt-4o",
         "api_key_env": "OPENAI_API_KEY",
         "allow": "ask",
-        "daily_limit": 50
+        "daily_limit": 50,
+        "monthly_limit": 1000,
+        "per_minute": 30,
+        "at_once": 2
+      },
+      "gemini": {
+        "type": "google",
+        "label": "Gemini",
+        "model": "gemini-2.5-flash",
+        "allow": "ask",
+        "daily_limit": 50,
+        "monthly_limit": 1000,
+        "per_minute": 30,
+        "at_once": 2
       }
     }
   }

@@ -28,7 +28,8 @@ Lindley is in early development and isn't usable end to end yet.
 | Database | Schema v5 designed and tested ([design/database.md](design/database.md)) |
 | Assembler (Inbox pages → documents) | Built; scored on synthetic batches and on real assembled typescripts |
 | Intake (hash, EXIF, split) and Tesseract reading | Built; try it on your scans with `scripts/intake.py` |
-| Vision model reading (handwriting) | Wired into intake; the AI adapters are still stubs |
+| AI connections (a local AI, Anthropic, OpenAI, Google) | Built: one file per connector, a connection per job, limits and throttling, keys in Windows Credential Manager. Tried against made-up servers; not yet on real scans with each AI |
+| Vision model reading (handwriting) | Built into intake, through any AI connection that can read pages |
 | Folder watcher | Built; runs with the backend |
 | Image checks (blank pages, rotation, handwriting or print) | Built, and tried on a first sample of real typewritten scans |
 | Duplicates (pages and documents scanned more than once) | Detection, decisions and API built; designed in the mockup |
@@ -62,7 +63,7 @@ watched folders ─► watcher ─► intake ───────────�
    - **Weighed, not guessed.** Each piece of evidence has a weight in a small, explainable
      model. A fitting script can set the weights from documents whose right answer is known.
    - **AI for the hard parts.** The AI is asked only about uncertain breaks, page order and
-     names. It sees page text, never images, and its answers are checked before they're used.
+     names, and only if one is connected: with none, you match those pages to documents by hand. It sees page text, never images, and its answers are checked before they're used.
    - **What you see.** Confident groups appear under In progress with italic, suggested names
      and the reasons behind them. Less certain pages stay in the Inbox with an "Add to …?" hint.
 3. **Review.** Any page read with less than 90% confidence (adjustable) goes to *Needs your
@@ -93,21 +94,29 @@ watched folders ─► watcher ─► intake ───────────�
 - **No AI calls without your OK.** AI calls can cost money, so by default Lindley makes none
   until you say so.
   - Each AI connection says when Lindley may use it: *Ask me first* (the default), or
-    *Whenever it's needed*, with a daily limit after which it asks again.
+    *Whenever it's needed*, with a daily and a monthly limit after which it asks again.
+  - Each connection is also throttled, for every call: at most so many calls a minute, and so
+    many at once. That keeps Lindley under a cloud AI's rate limits, and a slow computer usable.
   - Pages that need the vision model wait for you, with their Tesseract reading in use meanwhile.
     So do pages the AI could help sort.
   - Questions you type in Ask Lindley are always sent: asking is your OK.
   - Every call is recorded: which AI, what for, and whether you OKed it.
   - Pages are reduced before they're sent (2000 px on the longer side, as JPEG).
-  - A call that failed is never repeated on its own.
+  - A call that failed is never repeated on its own. The one exception: when the AI says it's
+    busy, Lindley waits as long as it asks (at most a minute) and tries again, at most twice.
 - **Runs on an ordinary laptop.** Matching pages uses rules and a small model in plain Python,
   with no graphics card and no heavy machine-learning packages. A local AI is optional.
 - **Private by default.** Lindley works with an AI on your own computer (Ollama, LM Studio).
-  - Cloud AI (Anthropic, OpenAI and others) is supported, but setup and Settings warn plainly
+  - Cloud AI (Anthropic, OpenAI, Google and others) is supported, but setup and Settings warn plainly
     that your scans are then sent to that company and are no longer private. You must
     acknowledge the warning before entering a key.
   - The app always shows where your pages and questions are sent.
-  - With no AI connected, the rules and Tesseract still work.
+  - Each job can have its own AI: reading hard pages, sorting pages into documents, answering
+    questions, and finding related pages. For example, reading on this computer and questions
+    with a cloud AI.
+  - With no AI connected, the rules and Tesseract still work, and you match pages to documents
+    by hand where the rules aren't sure. First-run setup asks for one AI connection, or none;
+    more can be added in Settings.
 
 ## UI design
 
@@ -128,7 +137,7 @@ Open it in a browser; it uses sample data and saves nothing. It covers:
 | `backend/` | Python 3.13 and FastAPI (`src/lindley/`) |
 | `backend/src/lindley/db/` | SQLite schema (with full-text search), migrations, document completeness |
 | `backend/src/lindley/assembler/` | Clues, evidence, grouping, AI refinement, test bench |
-| `backend/src/lindley/providers/` | Pluggable AI providers: Anthropic, OpenAI-compatible (OpenAI, Ollama, LM Studio, vLLM), and a fake one for tests |
+| `backend/src/lindley/providers/` | AI connectors, one file each in `connectors/`: a local AI (Ollama, LM Studio, vLLM), Anthropic, OpenAI, Google, any OpenAI-compatible service, and a fake one for tests. Plus limits, throttling and keys |
 | `backend/src/lindley/worker/` | Intake (hash, EXIF, split) and reading (Tesseract, vision model) |
 | `backend/src/lindley/watcher/` | Folder watcher: new scans are imported, read and assembled |
 | `backend/src/lindley/duplicates/` | Duplicate detection (by text) and a person's decisions |
@@ -176,7 +185,7 @@ The assembler can be tried now on made-up archive batches:
 cd backend
 python scripts\demo_assembler.py              # watch the Inbox shrink as documents appear
 python scripts\bench_assembler.py             # score it on 30 batches with known answers
-python scripts\bench_assembler.py --ai settings   # include the chat AI from your settings
+python scripts\bench_assembler.py --ai settings   # include the AI your settings give to sorting pages
 ```
 
 The rules were written knowing what the bench generates, so its scores are a ceiling, not a
@@ -238,14 +247,32 @@ file in these places, in order:
 | `move_files` | `true` moves scans out of watched folders; `false` copies them and leaves the originals |
 | `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this, a page needs the vision model. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000) |
 | `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" hint (45). `ai_band`: which uncertain breaks are sent to the AI |
-| `ai` | Named providers, plus which one to use for chat and for embeddings. Each provider's `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some), and `daily_limit` caps the calls it makes on its own each day |
+| `ai.providers` | Named AI connections. `type` is a connector (`local`, `anthropic`, `openai`, `google`, `openai_compat`), with `base_url` and `model` where needed. `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some). `daily_limit` and `monthly_limit` cap the calls it makes on its own. `per_minute` and `at_once` throttle every call |
+| `ai.jobs` | Which connection does each job: `vision` (reading hard pages), `assemble` (sorting pages into documents), `chat` (Ask Lindley) and `embed` (finding related pages), each with an optional `model` of its own. Out of the box there are none |
 
 The review threshold (90%) is designed as a setting on the app's Settings screen. It isn't in
 `settings.json` yet.
 
-**API keys never go in `settings.json`.** For now, each provider names an environment variable
-(`api_key_env`, for example `ANTHROPIC_API_KEY`) that holds its key. The design moves keys into
-Windows Credential Manager, entered through the app's Settings screen.
+**API keys never go in `settings.json`.** They're kept in Windows Credential Manager (the
+Keychain on a Mac), under "Lindley", with the connection's name. Save one through the API
+(`PUT /api/connections/<name>/key`); the app's Settings screen will do the same. A connection can
+instead name an environment variable that holds its key (`api_key_env`, for example
+`OPENAI_API_KEY`).
+
+### Adding an AI connector
+
+Each AI service Lindley can use is one file in `backend/src/lindley/providers/connectors/`, and
+every file there is found when Lindley starts. To add one, drop in a module that defines:
+
+- `INFO`, a `ConnectorInfo`: its id (the `type` in settings), its name, whether it runs on your
+  own computers or a company's, the jobs it can do, and its usual model for each.
+- `Provider`, built as `Provider(config=..., model=..., api_key=...)`. It implements the calls its
+  jobs need (`chat` and `chat_stream`, `transcribe`, `embed`), plus `check()`, which Test
+  connection uses.
+
+A service that speaks the OpenAI API needs only `INFO` and a subclass of `OpenAIWire` (see
+`google.py`). Test it against a made-up server with `httpx.MockTransport`, as
+`tests/unit/test_connectors.py` does. Settings and first-run setup list it with no other change.
 
 ## Tests
 
@@ -275,13 +302,17 @@ folders.
 - [x] Folder watcher
 - [x] Image checks: blank pages, rotation, handwriting or print
 - [x] Duplicates: detection, decisions with undo, API and mockup (the React screen comes with the real UI)
-- [ ] Vision model reading for handwriting (intake is ready; the AI adapters aren't)
+- [x] AI connectors, one file each: a local AI, Anthropic, OpenAI, Google, and other OpenAI-compatible services
+- [x] Vision model reading for handwriting
 - [ ] API and the real React UI, built from the mockup
 - [ ] Searchable PDF export, built from stored readings (no Ghostscript)
 - [ ] Search and Ask Lindley (chat with your documents)
 - [ ] Details view: everything Lindley found about a page or document
-- [ ] Settings in the app, with API keys in Windows Credential Manager
-- [x] When each AI may be used: ask first or automatic, with a daily limit; every call recorded
+- [x] API keys in Windows Credential Manager
+- [ ] Settings in the app, built from the mockup
+- [ ] Advanced settings (hidden from standard users): an interface for creating custom connectors. They're files too, built the same way as the built-in ones
+- [x] When each AI may be used: ask first or automatic, with a daily and a monthly limit; every call recorded
+- [x] Throttling each AI: calls a minute and at once, and waiting when it's busy
 - [ ] AI spending: a monthly limit, and the cost of each call
 - [ ] Suggest groups of pages Lindley isn't sure of (typescripts, notes) for a person to confirm
 - [ ] One-click installer (Windows/Mac), with Tesseract included

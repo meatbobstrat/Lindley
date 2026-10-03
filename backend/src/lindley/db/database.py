@@ -19,8 +19,10 @@ MIGRATIONS: dict[int, str] = {
 _PLACEHOLDER_TABLES = ("pages_fts", "jobs", "pages", "documents")
 
 
-def connect(db_path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
+def connect(db_path: Path, *, any_thread: bool = False) -> sqlite3.Connection:
+    """`any_thread`: the connection may be used from another thread than the one that made it
+    (one request in the API's threadpool). It must still only be used by one at a time."""
+    conn = sqlite3.connect(db_path, check_same_thread=not any_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")

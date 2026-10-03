@@ -373,6 +373,21 @@ def test_a_page_scanned_twice_never_shares_a_document_with_its_copy(conn):
     assert docs[ids[1]] is None or docs[ids[1]] != docs[ids[2]]
 
 
+def test_a_page_scanned_again_is_set_aside_and_the_pages_around_it_still_join(conn):
+    ids = list(load(conn, pages([LETTER[0], LETTER[1], LETTER[1], LETTER[2], LAST])))
+    conn.execute(
+        "INSERT INTO duplicates (page_a, page_b, kind, score) VALUES (?, ?, 'same_page', 95)",
+        (ids[1], ids[2]),
+    )
+    conn.commit()
+    assemble(conn)
+    letter = [r[0] for r in conn.execute("SELECT id FROM pages WHERE document_id IS NOT NULL")]
+    assert sorted(letter) == [ids[0], ids[1], ids[3], ids[4]]
+    aside = open_suggestions(conn, "set_aside")
+    assert [s["page_id"] for s in aside] == [ids[2]]
+    assert "scan_0002.jpg scanned again" in aside[0]["reasons"]
+
+
 def test_copies_are_a_hard_break():
     a = Page(1, 1, "scan_0001.jpg", LETTER[0], copies=frozenset({2}))
     b = Page(2, 1, "scan_0001.jpg", LETTER[1], page_index=1)

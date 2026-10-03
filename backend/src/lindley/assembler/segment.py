@@ -228,13 +228,38 @@ def make_group(
     return g
 
 
+def rescans(ordered: list[Page]) -> dict[int, Page]:
+    """Pages that are another scan of a page earlier in the stream, each with that page. A
+    page is often scanned again when the first scan came out badly."""
+    kept: dict[int, Page] = {}
+    out: dict[int, Page] = {}
+    for p in ordered:
+        if first := next((kept[i] for i in sorted(p.copies) if i in kept), None):
+            out[p.id] = first
+        else:
+            kept[p.id] = p
+    return out
+
+
 def segment(pages: list[Page]) -> tuple[list[Group], list[Pair], list[Page]]:
-    """Groups of pages, with the neighbour scores and the scan order used."""
+    """Groups of pages, with the neighbour scores and the scan order used.
+
+    A page scanned again is set aside, so the pages either side of it still join up; which
+    copy to keep is a person's choice (lindley.duplicates)."""
     if not any(p.terms for p in pages):
         weigh_terms(pages)
     ordered = scan_order(pages)
-    pairs = pair_scores(ordered)
-    return linked_groups(ordered, pairs), pairs, ordered
+    again = rescans(ordered)
+    stream = [p for p in ordered if p.id not in again]
+    pairs = pair_scores(stream)
+    groups = linked_groups(stream, pairs)
+    for p in ordered:
+        if first := again.get(p.id):
+            g = make_group([p], [], None, None)
+            g.set_aside = True
+            g.reasons = [f"It looks like {first.file_name} scanned again"]
+            groups.append(g)
+    return groups, pairs, stream
 
 
 # ---------------------------------------------------------------- Linking over the whole Inbox

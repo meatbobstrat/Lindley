@@ -175,16 +175,20 @@ def document_pairs(sets: list[DuplicateSet], conn: sqlite3.Connection) -> list[D
 
 
 def suggest_keep(copies: list[Copy]) -> tuple[int, list[str]]:
-    """The copy Lindley would keep, and why. A person decides."""
+    """The copy Lindley would keep, and why. A person decides.
+
+    The kept copy takes the best place any copy has, so where a copy is matters only as a tie
+    break: text a person checked, then the clearer reading (in steps of 5%), then the bigger scan
+    (in whole megapixels), then colour.
+    """
 
     def rank(c: Copy) -> tuple:
         return (
-            c.where == "document" and c.document_touched,
-            c.where == "document",
             c.corrected,
-            c.confidence or 0,
-            c.pixels,
+            round((c.confidence or 0) / 5),
+            c.pixels // 1_000_000,
             c.color_mode == "rgb",
+            c.where == "document",
             -_order(c, copies),
         )
 
@@ -213,7 +217,11 @@ def suggest_keep(copies: list[Copy]) -> tuple[int, list[str]]:
         why.append(
             "Imported first" if _order(best, copies) == 0 else "The copies look equally good"
         )
-    return best.page_id, why[:3]
+    why = why[:3]
+    home = next((c for c in rest if c.where == "document"), None)
+    if best.where != "document" and home:
+        why.append(f"Keeping it puts it in its place in {_quoted(home.document_name or '')}")
+    return best.page_id, why
 
 
 def _quoted(name: str) -> str:

@@ -86,13 +86,20 @@ def test_lindley_suggests_the_better_copy_and_says_why(conn):
     sharper = page(conn, conf=90, dpi=600, size=(4800, 6600))
     dup(conn, in_doc, sharper)
     s = open_sets(conn)[0]
-    assert s.suggested == in_doc and s.why == ["It's already in “Letter from Will”"]
-    loose = page(conn, conf=78)
-    dup(conn, sharper, loose)
-    conn.execute("DELETE FROM duplicates WHERE page_a = ?", (in_doc,))
-    s = open_sets(conn)[0]
     assert s.suggested == sharper
-    assert s.why == ["Read with 90% confidence, against 78%", "Sharper scan: 600 dpi, against 300"]
+    assert s.why == [
+        "Read with 90% confidence, against 78%",
+        "Sharper scan: 600 dpi, against 300",
+        "Keeping it puts it in its place in “Letter from Will”",
+    ]
+
+
+def test_with_copies_as_good_as_each_other_the_one_in_a_document_wins(conn):
+    d = doc(conn)
+    loose, in_doc = page(conn, conf=80), page(conn, d, 0, conf=81)
+    dup(conn, loose, in_doc)
+    s = open_sets(conn)[0]
+    assert s.suggested == in_doc and s.why == ["It's already in “Letter from Will”"]
 
 
 def test_keeping_the_inbox_copy_puts_it_in_the_documents_place(conn):

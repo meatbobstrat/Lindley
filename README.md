@@ -33,7 +33,8 @@ Lindley is in early development and isn't usable end to end yet.
 | Folder watcher | Built; runs with the backend |
 | Image checks (blank pages, rotation, handwriting or print) | Built, and tried on a first sample of real typewritten scans |
 | Duplicates (pages and documents scanned more than once) | Detection, decisions and API built; designed in the mockup |
-| Searchable PDF export, search, AI chat | Not started |
+| Searchable PDF export | Built: one PDF per document, from Lindley's own readings, with people's corrections; try it with `scripts/export.py` |
+| Search, AI chat | Not started |
 | Real UI (React) | Scaffold only; to be built from the mockup |
 
 ## How it works
@@ -77,7 +78,10 @@ watched folders ─► watcher ─► intake ───────────�
      and the reasons behind them.
 3. **Review.** Any page read with less than 90% confidence (adjustable) goes to *Needs your
    review*, so a person checks it before it's trusted for search and chat.
-4. **Export.** A finished document becomes a searchable PDF in your library.
+4. **Export.** A finished document becomes a searchable PDF in your library: each page is its
+   scan, with what Lindley read from it as invisible text over the writing. Corrections and
+   the vision model's readings are laid over Tesseract's word positions, so search and
+   selection land on the right words.
 
 ## Design decisions
 
@@ -151,6 +155,7 @@ Open it in a browser; it uses sample data and saves nothing. It covers:
 | `backend/src/lindley/worker/` | Intake (hash, EXIF, split) and reading (Tesseract, vision model) |
 | `backend/src/lindley/watcher/` | Folder watcher: new scans are imported, read and assembled |
 | `backend/src/lindley/duplicates/` | Duplicate detection (by text) and a person's decisions |
+| `backend/src/lindley/export/` | Searchable PDFs: word positions for each reading, the PDF, and exporting a document |
 | `backend/src/lindley/search/` | Stub for the next phase |
 | `frontend/` | React, TypeScript and Vite |
 | `design/` | UI mockup and database design |
@@ -238,6 +243,32 @@ Pages Tesseract struggles with wait for the vision model, and the summary says h
 are and where they'd be sent. `--vision` is your OK to send them. `--vision --retry-failed` also
 tries again the ones whose vision call failed.
 
+### Make PDFs
+
+`scripts/export.py` turns documents into searchable PDFs, in the library's `Exports` folder:
+
+```powershell
+cd backend
+python scripts\export.py --settings D:\scratch\settings.json            # list documents, and what each still needs
+python scripts\export.py --doc 3 7 --settings D:\scratch\settings.json  # export these
+python scripts\export.py --ready --settings D:\scratch\settings.json    # every document Lindley thinks is complete
+python scripts\export.py --all --settings D:\scratch\settings.json      # every document
+```
+
+Each PDF holds the document's pages in order, named after the document, and exporting marks
+the document Completed. Exporting it again replaces the PDF. The app will do the same through
+`POST /api/documents/<id>/export`.
+- **What's in it.** Each page is its scan, turned upright, at its size on paper (from the
+  scan's dpi). What Lindley read from it is invisible text over the writing: a person's
+  correction if there is one, else the vision model's reading or Tesseract's.
+- **What the export reports.** Pages still waiting for your review are exported with
+  Lindley's best reading, and the export says how many there are. So are pages read only by
+  the vision model, with no Tesseract word positions: their text is searchable but not over
+  the writing.
+- **Letters.** The text uses the PDF viewer's built-in Helvetica, so it needs no font file.
+  That covers English and western European letters, curly quotes and dashes. Other characters
+  become their plain letter ("ſ" is "s"), else "?".
+
 ## Config
 
 Copy `settings.example.json` to `settings.json` and edit it. The app looks for the settings
@@ -253,7 +284,7 @@ file in these places, in order:
 | `watch_folders` | Folders to watch for new scans |
 | `processing_dir` | Working area for files being processed |
 | `quarantine_dir` | Where files that fail processing are put |
-| `library_dir` | Lindley's library: its copies of scans, and exported PDFs |
+| `library_dir` | Lindley's library: its copies of scans, and exported PDFs (in `Exports`) |
 | `db_path` | SQLite database location |
 | `move_files` | `true` moves scans out of watched folders; `false` copies them and leaves the originals |
 | `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this, a page needs the vision model. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000) |
@@ -332,7 +363,9 @@ folders.
 - [x] AI connectors, one file each: a local AI, Anthropic, OpenAI, Google, and other OpenAI-compatible services
 - [x] Vision model reading for handwriting
 - [ ] API and the real React UI, built from the mockup
-- [ ] Searchable PDF export, built from stored readings (no Ghostscript)
+- [x] Searchable PDF export, built from stored readings (no Ghostscript)
+- [ ] Searchable text for every alphabet: ship a glyphless font, so text outside Windows-1252
+  (Greek, Cyrillic, Hebrew and so on) goes into the PDF as it was read
 - [ ] Search and Ask Lindley (chat with your documents)
 - [ ] Details view: everything Lindley found about a page or document
 - [x] API keys in Windows Credential Manager

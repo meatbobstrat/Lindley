@@ -292,7 +292,28 @@ Every change is written to `history` with its before and after, one batch per de
 | Page order settled | no open `reorder` suggestion |
 | Exported | an `exports` row exists |
 
-`ready` means everything except the export is done. That drives the mockup's banner, "Lindley thinks this document is complete." The review threshold comes from settings, so it's passed in rather than stored. Changing the threshold changes the checklist straight away.
+`ready` means everything except the export is done (`pages_to_review` lists the pages behind "Nothing waiting for review"). That drives the mockup's banner, "Lindley thinks this document is complete." The review threshold comes from settings, so it's passed in rather than stored. Changing the threshold changes the checklist straight away.
+
+## Export
+
+`lindley.export.export_document(conn, library_dir, doc_id)` makes one searchable PDF of a document's pages, in order, at `<library_dir>/Exports/<name>.pdf` (`POST /api/documents/{id}/export`, or `scripts/export.py`). It's built from Lindley's own data, with no Ghostscript and no second OCR pass.
+
+- **Words and where they sit** (`textlayer.py`). The current reading is used, so a person's correction wins.
+  - Tesseract's words come with boxes, used as they are.
+  - A vision reading or a correction has none, so its words are aligned with the page's Tesseract words (`difflib`, on letters and digits only). A word in both takes Tesseract's box with the new spelling. A word read differently shares out the boxes of the words it replaces, by length. A word Tesseract missed goes in the gap beside its neighbours on their line.
+  - A page with no Tesseract boxes (read only by the vision model) is laid out in lines down the page. It's searchable but not over the writing, and the export reports it as unplaced.
+- **The PDF** (`pdf.py`, fpdf2, which OCRmyPDF also uses for its text layer).
+  - Each page is its scan, turned upright (EXIF, `detected_rotation`, `user_rotation`), sized on paper from its dpi. A missing or implausible dpi (a phone photo's 72) is guessed: 300, or 11 inches on the longer side.
+  - A JPEG that needs no turning is embedded as it is, bilevel pages stay one bit, and others become JPEG at quality 90.
+  - Words are invisible text (render mode 3), each line at the height of its tallest word and each word stretched to its box's width.
+  - The text is in the viewer's built-in Helvetica, so it's limited to Windows-1252: other characters become their plain letter, else "?".
+  - Title is the document's name, Subject its type and date.
+- **Saving.**
+  - The export is refused while a page is still being read or a page's scan is missing. Pages waiting for review are exported with Lindley's best reading, and reported.
+  - The file is written in full, then moved into place. It's named after the document (made safe for Windows), with ` (2)` and so on when another document's PDF, or any file Lindley didn't make, has that name.
+  - In one transaction, an `exports` row records the pages in order, the document becomes `complete` (Lindley never touches it again), and `history` gets an `export` row outside any batch, since an export isn't undone. Reopening (`reopen_document`, `POST /api/documents/{id}/reopen`) is how to take it back. The PDF is kept until the next export replaces it.
+  - Exporting a renamed document removes its earlier PDF, unless another document's PDF is at that path now.
+  - Undoing the grouping that made the document is refused once it's exported.
 
 ## The Details tab (future UI round)
 

@@ -25,6 +25,9 @@
     every call is recorded in `ai_calls`
   - `duplicates/`: `detect.py` (pages scanned twice, found by text), `resolve.py` (keep a copy or
     document, not duplicates). API in `api/duplicates.py`; page images in `api/pages.py`
+  - `export/`: searchable PDFs. `textlayer.py` (word boxes; other readings aligned to Tesseract's),
+    `pdf.py` (fpdf2, invisible text), `document.py` (Exports folder, status, `exports` row).
+    API in `api/documents.py`; `scripts/export.py` exports from the command line
   - `scripts/intake.py` reads real scans end to end; tests stub Tesseract (not installed in CI)
 - `frontend/`: Vite, React and TypeScript. The dev server proxies `/api` to `127.0.0.1:8765`
 - `scripts/dev.ps1`: runs both dev servers

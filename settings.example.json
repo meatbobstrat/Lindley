@@ -10,13 +10,15 @@
     "tesseract_path": null,
     "languages": ["eng"],
     "confidence_threshold": 70,
-    "vision_provider": "local"
+    "vision_provider": "local",
+    "vision_mode": "ask",
+    "vision_max_side": 2000
   },
   "assembler": {
     "group_at": 75,
     "hint_at": 45,
     "ai_band": [35, 75],
-    "use_ai": true
+    "use_ai": false
   },
   "ai": {
     "chat_provider": "local",

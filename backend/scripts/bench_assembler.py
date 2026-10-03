@@ -26,6 +26,8 @@ def run(seed: int, ai: str, verbose: bool) -> tuple[Score, int]:
         conn = connect(db)
         truth = load(conn, batch.pages)
         settings = load_settings()
+        # Asking for --ai is the OK to call it, whatever settings.json says.
+        settings.assembler.use_ai = ai != "none"
         chat = None
         if ai == "oracle":
             chat = OracleChat(truth)

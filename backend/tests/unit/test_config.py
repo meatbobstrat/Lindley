@@ -21,6 +21,12 @@ def test_missing_file_gives_defaults(tmp_path: Path):
     assert s.ocr.engine == "hybrid"
 
 
+def test_no_ai_calls_unless_a_person_oks_them():
+    s = Settings()
+    assert s.ocr.vision_mode == "ask" and s.assembler.use_ai is False
+    assert s.ocr.vision_max_side == 2000
+
+
 def test_round_trip(tmp_path: Path):
     path = tmp_path / "settings.json"
     s = Settings(move_files=True, watch_folders=[Path("a"), Path("b")])

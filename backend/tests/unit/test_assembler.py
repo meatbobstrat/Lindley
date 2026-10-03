@@ -19,6 +19,8 @@ LETTER = [
 ]
 LAST = "- 4 -\nPlease write soon.\nYour loving brother\nWill"
 
+AI_ON = AssemblerSettings(use_ai=True)  # a person has turned the AI step on
+
 
 @pytest.fixture
 def conn(tmp_path):
@@ -186,7 +188,7 @@ def test_a_valid_ai_reply_settles_an_uncertain_break(conn):
             }
         )
     )
-    report = assemble(conn, chat=ai)
+    report = assemble(conn, AI_ON, chat=ai)
     assert report.ai_calls >= 1 and report.documents_created == 1
     doc = conn.execute("SELECT * FROM documents").fetchone()
     assert doc["name"] == "Farm notes, 1890s"
@@ -228,13 +230,14 @@ def test_a_failing_ai_leaves_the_rules_in_charge(conn):
         def chat(self, messages):
             raise ConnectionError("no route to host")
 
-    report = assemble(conn, chat=Broken())
+    report = assemble(conn, AI_ON, chat=Broken())
     assert report.documents_created == 1
 
 
-def test_ai_can_be_turned_off(conn):
+def test_the_ai_is_not_asked_unless_a_person_turned_it_on(conn):
     load(conn, pages(AMBIGUOUS))
     ai = Scripted("{}")
+    assemble(conn, chat=ai)
     assemble(conn, AssemblerSettings(use_ai=False), chat=ai)
     assert ai.calls == 0
 

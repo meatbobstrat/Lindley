@@ -18,9 +18,14 @@ class OcrSettings(BaseModel):
     engine: Literal["hybrid", "tesseract", "vision"] = "hybrid"
     tesseract_path: Path | None = None
     languages: list[str] = Field(default_factory=lambda: ["eng"])
-    # Pages whose Tesseract confidence (0-100) falls below this are sent to the vision provider.
+    # Pages whose Tesseract confidence (0-100) falls below this need the vision provider.
     confidence_threshold: int = Field(default=70, ge=0, le=100)
     vision_provider: str | None = "local"
+    # "ask": those pages wait until a person OKs sending them (AI calls can cost money).
+    # "auto": they're sent as soon as they're read.
+    vision_mode: Literal["ask", "auto"] = "ask"
+    # Pages are reduced to this many pixels on their longer side before they're sent.
+    vision_max_side: int = Field(default=2000, ge=512)
 
 
 class ProviderConfig(BaseModel):
@@ -57,7 +62,8 @@ class AssemblerSettings(BaseModel):
     hint_at: int = Field(default=45, ge=0, le=100)
     # Breaks between pages scored inside this band are checked with the chat AI, if one is set.
     ai_band: tuple[int, int] = (35, 75)
-    use_ai: bool = True
+    # Off until a person turns it on: AI calls can cost money and send page text away.
+    use_ai: bool = False
 
 
 class Settings(BaseModel):

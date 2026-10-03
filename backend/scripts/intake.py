@@ -21,6 +21,7 @@ from lindley.config import load_settings
 from lindley.db.database import connect, init_db
 from lindley.providers.base import ProviderError
 from lindley.providers.registry import get_provider
+from lindley.worker.image import BLANK_AT
 from lindley.worker.intake import ingest, is_supported
 from lindley.worker.pipeline import Pipeline
 
@@ -108,6 +109,20 @@ def main() -> int:
     )
     if vision_failed[0]:
         print(f"The vision model failed on {vision_failed[0]} page(s): {vision_failed[1]}")
+    checked = conn.execute(
+        "SELECT COUNT(*), SUM(blank_score >= ?), SUM(detected_rotation != 0) FROM pages"
+        " WHERE blank_score IS NOT NULL",
+        (BLANK_AT,),
+    ).fetchone()
+    if checked[0]:
+        scripts = ", ".join(
+            f"{r[1]} {r[0]}"
+            for r in conn.execute(
+                "SELECT coalesce(script, 'unsure') AS s, COUNT(*) FROM pages"
+                " WHERE blank_score IS NOT NULL GROUP BY s ORDER BY COUNT(*) DESC"
+            )
+        )
+        print(f"Page checks: {checked[1]} blank, {checked[2]} turned upright. Writing: {scripts}")
 
     if not a.no_assemble:
         chat = None

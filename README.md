@@ -30,7 +30,7 @@ Lindley is in early development and isn't usable end to end yet.
 | Intake (hash, EXIF, split) and Tesseract reading | Built; try it on your scans with `scripts/intake.py` |
 | Vision model reading (handwriting) | Wired into intake; the AI adapters are still stubs |
 | Folder watcher | Built; runs with the backend |
-| Image checks (blank pages, rotation, handwriting or print) | Next up |
+| Image checks (blank pages, rotation, handwriting or print) | Built; thresholds still to tune on real scans |
 | Searchable PDF export, search, AI chat | Not started |
 | Real UI (React) | Scaffold only; to be built from the mockup |
 
@@ -171,6 +171,12 @@ Folders are searched recursively in natural name order (`scan_2` before `scan_10
 to run again: files already read are skipped, and failed ones are tried again. Originals are
 never changed, and with `move_files` they're removed only once their copy is checked.
 
+Before a page is read, Lindley checks the image. Blank pages are noted and aren't sent to the
+vision model. Sideways or upside-down pages are read from a turned copy (Tesseract's orientation
+check needs `osd.traineddata`, which the UB-Mannheim installer includes). Each page is also
+marked handwritten, printed or mixed. The script's summary counts blank pages, turned pages and
+each kind of writing.
+
 ## Config
 
 Copy `settings.example.json` to `settings.json` and edit it. The app looks for the settings
@@ -226,7 +232,7 @@ folders.
 - [x] Assembler: grouping Inbox pages into documents
 - [x] Intake: hashing, EXIF, splitting PDFs and TIFFs, Tesseract reading
 - [x] Folder watcher
-- [ ] Image checks: blank pages, rotation, handwriting or print
+- [x] Image checks: blank pages, rotation, handwriting or print
 - [ ] Vision model reading for handwriting (intake is ready; the AI adapters aren't)
 - [ ] API and the real React UI, built from the mockup
 - [ ] Searchable PDF export

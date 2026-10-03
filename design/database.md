@@ -63,6 +63,32 @@ Each step writes an `intake_steps` row, so the UI can show "Reading…" and a fa
 | `embed` | current text | an `embeddings` row |
 | `match` | everything above | `page_links` evidence, then `suggestions` |
 
+### The image step
+
+`lindley.worker.image` looks at a reduced copy of each page with its edges cropped off, so dark
+scanner borders and shadows don't count as writing. The thresholds are a first guess, to be tuned
+on real scans.
+
+- `blank_score` is how little ink there is, after dust specks are filtered out: 0 means a full
+  page of writing and 1 means blank. At 0.97 or above, a page counts as blank. A blank page
+  is still read by Tesseract, so it has a current reading, but it isn't sent to the vision model
+  and the assembler only suggests setting it aside.
+- `paper_color` is the mean colour of the background pixels.
+- `phash` is a 64-bit difference hash. Hashes within 4 bits of each other are the same picture
+  (a `duplicate` link). Near-empty pages all hash alike, so they're never compared.
+- `detected_rotation` comes from Tesseract's orientation check: the degrees clockwise that turn the
+  page upright. It's used only when Tesseract is confident; otherwise it's 0. Pages with
+  `detected_rotation + user_rotation` (or an EXIF orientation) are read from a turned copy in the
+  processing folder, which is deleted afterwards. **Word boxes are therefore in upright
+  coordinates.** `width_px` and `height_px` are the image as a viewer shows it (EXIF applied),
+  before either rotation.
+- `script` is set after reading, from Tesseract's confidence line by line. Mostly confident lines
+  are `printed` and mostly poor ones are `handwritten`; a real share of both is `mixed`; a blank
+  page is `none`. If Tesseract can't tell, it stays NULL. `typed` isn't told apart from
+  `printed` yet.
+
+The step runs once per page. A scan that's read again after a failure doesn't check its pages again.
+
 ### Kinds of fact
 
 These are the starting kinds. New extractors add new kinds without a schema change.

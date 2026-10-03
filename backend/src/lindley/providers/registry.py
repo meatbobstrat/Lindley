@@ -21,6 +21,7 @@ from lindley.providers.base import (
     ProviderError,
     VisionProvider,
 )
+from lindley.providers.throttle import Guarded, throttle_for
 
 log = logging.getLogger(__name__)
 
@@ -71,11 +72,15 @@ def build_provider(config: ProviderConfig, job: Job = "chat", model: str | None 
     return connector.provider(config=config, model=model, api_key=config.api_key())
 
 
-def get_provider(ai: AiSettings, job: Job) -> Provider:
-    """The provider settings give a job, e.g. get_provider(s.ai, "vision")."""
+def get_provider(ai: AiSettings, job: Job) -> Guarded:
+    """The provider settings give a job, e.g. get_provider(s.ai, "vision"), keeping to its
+    connection's throttle."""
     name = ai.connection_for(job)
     if not name:
         raise ProviderError(f"No AI is set up for this job ({job})")
     if name not in ai.providers:
         raise ProviderError(f"Provider '{name}' is not configured")
-    return build_provider(ai.providers[name], job, ai.jobs[job].model)
+    config = ai.providers[name]
+    return Guarded(
+        build_provider(config, job, ai.jobs[job].model), name, throttle_for(name, config)
+    )

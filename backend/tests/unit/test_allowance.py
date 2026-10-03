@@ -32,9 +32,21 @@ def test_an_ai_allowed_to_run_on_its_own_keeps_to_its_daily_limit(conn, settings
     assert allowance.automatic_left(conn, settings, "local") == 1
     allowance.record(conn, "local", "assemble", True)
     assert not allowance.may_call(conn, settings, "local")
-    assert "2 automatic calls are used up" in allowance.why_waiting(settings, "local")
+    assert "2 automatic calls are used up" in allowance.why_waiting(conn, settings, "local")
     conn.execute("UPDATE ai_calls SET at = datetime('now', '-2 days')")
     assert allowance.automatic_left(conn, settings, "local") == 2  # a new day
+
+
+def test_a_monthly_limit_too(conn, settings):
+    cfg = settings.ai.providers["local"]
+    cfg.allow, cfg.daily_limit, cfg.monthly_limit = "auto", 10, 3
+    assert allowance.automatic_left(conn, settings, "local") == 3  # the smaller of the two
+    allowance.record(conn, "local", "vision", True, count=3)
+    assert not allowance.may_call(conn, settings, "local")
+    assert "this month's 3 automatic calls" in allowance.why_waiting(conn, settings, "local")
+    conn.execute("UPDATE ai_calls SET at = datetime('now', 'start of month', '-1 day')")
+    assert allowance.calls_this_month(conn, "local") == 0
+    assert allowance.automatic_left(conn, settings, "local") == 3  # a new month
 
 
 def test_the_calls_are_recorded_with_what_they_were_for(conn):

@@ -480,7 +480,7 @@ class Pipeline:
                         (
                             scan_id,
                             page_id,
-                            allowance.why_waiting(self.settings, self.vision_name),
+                            allowance.why_waiting(conn, self.settings, self.vision_name),
                         ),
                     )
             else:

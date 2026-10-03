@@ -39,7 +39,8 @@ class ProviderConfig(BaseModel):
     # The model for every job but embeddings, unless ai.jobs names one; else the connector's
     # default for the job.
     model: str | None = None
-    # Name of the environment variable holding the API key; keys never live in settings.json.
+    # API keys never live in settings.json: they're in the system's credential store (see
+    # providers/keys.py), or, when this names one, in an environment variable.
     api_key_env: str | None = None
     # When Lindley may use this AI on its own, for work in the background: reading hard pages,
     # sorting pages into documents. "ask": the work waits until a person OKs it, since a call
@@ -57,8 +58,15 @@ class ProviderConfig(BaseModel):
     at_once: int = Field(default=2, ge=1, le=32)
     timeout_s: int = Field(default=120, ge=5, le=3600)
 
-    def api_key(self) -> str | None:
-        return os.environ.get(self.api_key_env) if self.api_key_env else None
+    def api_key(self, name: str | None = None) -> str | None:
+        """The key: from api_key_env if it's set, else saved for connection `name`."""
+        if self.api_key_env and (key := os.environ.get(self.api_key_env)):
+            return key
+        if name:
+            from lindley.providers.keys import get_key
+
+            return get_key(name)
+        return None
 
 
 class JobConfig(BaseModel):

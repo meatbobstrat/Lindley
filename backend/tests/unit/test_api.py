@@ -32,9 +32,15 @@ def test_settings_say_when_each_ai_may_run_and_how_much_it_has_today(client, set
     assert usage == {
         "allow": "auto",
         "daily_limit": 50,
+        "monthly_limit": None,
+        "per_minute": None,
+        "at_once": 2,
         "automatic_today": 0,
         "oked_today": 0,
+        "automatic_month": 0,
+        "oked_month": 0,
         "automatic_left": 50,
+        "key_hint": None,
     }
     current["ai"]["providers"]["local"]["daily_limit"] = 0
     assert client.put("/api/settings", json=current).status_code == 422  # at least 1, or none

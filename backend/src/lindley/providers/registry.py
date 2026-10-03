@@ -59,7 +59,9 @@ def connectors() -> dict[str, Connector]:
     return discover()
 
 
-def build_provider(config: ProviderConfig, job: Job = "chat", model: str | None = None) -> Provider:
+def build_provider(
+    config: ProviderConfig, job: Job = "chat", model: str | None = None, name: str | None = None
+) -> Provider:
     """A provider for one job: its model is `model`, else the connection's (except for
     embeddings, which need a model of their own), else the connector's default for that job."""
     connector = connectors().get(config.type)
@@ -69,7 +71,7 @@ def build_provider(config: ProviderConfig, job: Job = "chat", model: str | None 
     if job not in info.jobs:
         raise ProviderError(f"{info.company or info.label} can't do this job ({job})")
     model = model or (config.model if job != "embed" else None) or info.default_models.get(job)
-    return connector.provider(config=config, model=model, api_key=config.api_key())
+    return connector.provider(config=config, model=model, api_key=config.api_key(name))
 
 
 def get_provider(ai: AiSettings, job: Job) -> Guarded:
@@ -81,6 +83,5 @@ def get_provider(ai: AiSettings, job: Job) -> Guarded:
     if name not in ai.providers:
         raise ProviderError(f"Provider '{name}' is not configured")
     config = ai.providers[name]
-    return Guarded(
-        build_provider(config, job, ai.jobs[job].model), name, throttle_for(name, config)
-    )
+    provider = build_provider(config, job, ai.jobs[job].model, name)
+    return Guarded(provider, name, throttle_for(name, config))

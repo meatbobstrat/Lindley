@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from lindley import __version__
-from lindley.api import chat, documents, duplicates, health, pages, search
+from lindley.api import chat, connections, documents, duplicates, health, pages, search
 from lindley.api import history as history_api
 from lindley.api import settings as settings_api
 from lindley.config import Settings, load_settings
@@ -56,6 +56,7 @@ def create_app(
     for router in (
         health.router,
         settings_api.router,
+        connections.router,
         documents.router,
         search.router,
         chat.router,

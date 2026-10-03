@@ -1,11 +1,42 @@
 from pathlib import Path
 
+import keyring
 import pytest
 from fastapi.testclient import TestClient
+from keyring.backend import KeyringBackend
+from keyring.errors import PasswordDeleteError
 
 from lindley.app import create_app
 from lindley.config import AiSettings, JobConfig, ProviderConfig, Settings
 from lindley.providers.base import JOBS
+
+
+class MemoryKeyring(KeyringBackend):
+    priority = 1
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.keys: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service, username):
+        return self.keys.get((service, username))
+
+    def set_password(self, service, username, password):
+        self.keys[(service, username)] = password
+
+    def delete_password(self, service, username):
+        if self.keys.pop((service, username), None) is None:
+            raise PasswordDeleteError(username)
+
+
+@pytest.fixture(autouse=True)
+def keys():
+    """Tests never touch the real credential store."""
+    before = keyring.get_keyring()
+    store = MemoryKeyring()
+    keyring.set_keyring(store)
+    yield store
+    keyring.set_keyring(before)
 
 
 @pytest.fixture

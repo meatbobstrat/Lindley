@@ -256,7 +256,7 @@ folders.
 - [x] Intake: hashing, EXIF, splitting PDFs and TIFFs, Tesseract reading
 - [x] Folder watcher
 - [x] Image checks: blank pages, rotation, handwriting or print
-- [x] Duplicates: detection, decisions, API and mockup (the React screen comes with the real UI)
+- [x] Duplicates: detection, decisions with undo, API and mockup (the React screen comes with the real UI)
 - [ ] Vision model reading for handwriting (intake is ready; the AI adapters aren't)
 - [ ] API and the real React UI, built from the mockup
 - [ ] Searchable PDF export, built from stored readings (no Ghostscript)

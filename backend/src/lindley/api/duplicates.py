@@ -1,6 +1,7 @@
 """The Duplicates queue: pages and documents scanned more than once, and a person's decision.
 
-Copies a person doesn't keep are set aside, marked as duplicates; nothing is deleted.
+Copies a person doesn't keep are set aside, marked as duplicates; nothing is deleted. Each
+decision returns `undo`: the batch to send to POST /api/undo/{batch} to take it back.
 """
 
 from __future__ import annotations
@@ -117,27 +118,27 @@ def get_duplicate_set(set_id: int, conn: Conn) -> dict:
 
 @router.post("/keep-document")
 def keep_document(body: KeepDocumentRequest, conn: Conn) -> dict:
-    n = resolve.keep_document(conn, body.keep, body.other)
-    if not n:
+    d = resolve.keep_document(conn, body.keep, body.other)
+    if not d.sets:
         raise HTTPException(404, "Those two documents don't share any open duplicates")
-    return {"sets": n}
+    return {"sets": d.sets, "set_aside": d.set_aside, "undo": d.batch}
 
 
 @router.post("/{set_id}/keep")
 def keep(set_id: int, body: KeepRequest, conn: Conn) -> dict:
     try:
-        aside = resolve.keep(conn, set_id, body.page_id)
+        d = resolve.keep(conn, set_id, body.page_id)
     except LookupError as e:
         raise HTTPException(404, str(e)) from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    return {"kept": body.page_id, "set_aside": aside}
+    return {"kept": body.page_id, "set_aside": d.set_aside, "undo": d.batch}
 
 
 @router.post("/{set_id}/not-duplicates")
 def not_duplicates(set_id: int, conn: Conn) -> dict:
     try:
-        resolve.not_duplicates(conn, set_id)
+        d = resolve.not_duplicates(conn, set_id)
     except LookupError as e:
         raise HTTPException(404, str(e)) from e
-    return {"ok": True}
+    return {"ok": True, "undo": d.batch}

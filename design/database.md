@@ -43,7 +43,7 @@ erDiagram
 | `suggestions` | proposal | "Add to document", "reorder", "name", "complete", and so on, with reasons shown in the UI. |
 | `exports` | PDF made | When a document was exported, where to, and which pages were in it. |
 | `intake_steps` | step run | Progress, errors, and the extractor version for each step, so a step can be re-run later. |
-| `history` | action | Who did what (a person or Lindley), with before and after. Used for undo and the audit trail. |
+| `history` | action | Who did what (a person or Lindley), with before and after. A person's decision is one `batch` of rows, undone together. Used for undo and the audit trail. |
 | `duplicates` | page pair | Two pages that look like the same page scanned again (`same_page`), or that have very similar text (`similar`), with the evidence and a person's decision. |
 | `duplicate_checks`, `text_sketch` | page | Which reading each page was checked for duplicates with, and the page's text sketch for finding candidates. |
 
@@ -207,7 +207,9 @@ Duplicates is a queue to work through, like Needs your review, not a place. The 
 - **Keep a document.** Does that for every set the two documents share. Pages only the other document has stay where they are.
 - **Not duplicates.** The pairs are never raised again.
 
-Every change is written to `history` with its before and after.
+Every change is written to `history` with its before and after, one batch per decision. That includes the pages that move up when a gap closes, and the open suggestions of a document that's removed.
+
+**Undo** (`lindley.history.undo`, `POST /api/undo` for the latest decision or `POST /api/undo/{batch}` for a given one). It replays a batch backwards, putting each page, duplicate pair and removed document back as it was. It only does so if nothing has changed since: each target must still look the way the decision left it. If a page has moved again, the undo is refused with a reason and nothing is changed. Each decision's API response includes its batch as `undo`.
 
 ## Completeness
 

@@ -109,7 +109,7 @@ def test_keeping_the_inbox_copy_puts_it_in_the_documents_place(conn):
     better = page(conn, conf=95)
     dup(conn, old, better)
     set_id = open_sets(conn)[0].id
-    assert keep(conn, set_id, better) == [old]
+    assert keep(conn, set_id, better).set_aside == [old]
     assert where(conn, better) == (d, 1, 0)
     assert where(conn, old) == (None, None, 1)
     assert [where(conn, p)[1] for p in (first, last)] == [0, 2]
@@ -144,13 +144,13 @@ def test_a_document_scanned_twice(conn):
         dup(conn, x, y)
     [dp] = document_pairs(open_sets(conn), conn)
     assert dp.documents == (a, b) and len(dp.set_ids) == 3 and dp.extra == {a: [], b: []}
-    assert keep_document(conn, a, b) == 3
+    assert keep_document(conn, a, b).sets == 3
     assert all(where(conn, p)[2] for p in again) and [where(conn, p)[0] for p in first] == [a] * 3
     assert conn.execute("SELECT COUNT(*) FROM documents WHERE id = ?", (b,)).fetchone()[0] == 0
     removed = conn.execute(
         "SELECT before FROM history WHERE action = 'remove_empty_document'"
     ).fetchone()[0]
-    assert json.loads(removed)["name"] == "Letter, again"
+    assert json.loads(removed)["document"]["name"] == "Letter, again"
 
 
 def test_extra_pages_of_the_other_document_stay(conn):

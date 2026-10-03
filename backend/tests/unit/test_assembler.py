@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 
 import pytest
@@ -250,6 +251,9 @@ def test_v1_database_gains_documents_reasons(tmp_path):
 
     schema = files("lindley.db").joinpath("schema.sql").read_text(encoding="utf-8")
     v1 = "\n".join(ln for ln in schema.splitlines() if "reasons             TEXT" not in ln)
+    # Nor history.batch, which came in version 4.
+    v1 = re.sub(r"(after\s+TEXT),([^\n]*)\n\s+batch\s+INTEGER[^\n]*", r"\1 \2", v1)
+    v1 = re.sub(r"CREATE INDEX IF NOT EXISTS idx_history_batch[^\n]*\n", "", v1)
     db = tmp_path / "old.db"
     c = sqlite3.connect(db)
     c.executescript(v1 + "\nPRAGMA user_version = 1;")

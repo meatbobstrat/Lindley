@@ -6,7 +6,8 @@ document was scanned twice.
 
 Keeping a copy never deletes anything. The kept scan takes the best place any copy has (a
 document position, else the Inbox) and the other copies are set aside, marked as duplicates.
-Every change is written to `history` with its before and after, so it can be undone.
+Every change is written to `history` with its before and after, one batch per decision, so
+lindley.history.undo can put it all back.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass, field
+
+from lindley import history
 
 KIND_ORDER = {"same_page": 0, "similar": 1}
 
@@ -52,6 +55,15 @@ class DuplicateSet:
     reasons: list[str]  # why these look like copies
     suggested: int  # the page Lindley would keep
     why: list[str]  # why that one
+
+
+@dataclass
+class Decision:
+    """What a decision changed. `batch` is what lindley.history.undo takes to undo it."""
+
+    batch: int
+    set_aside: list[int] = field(default_factory=list)
+    sets: int = 1
 
 
 @dataclass
@@ -236,8 +248,8 @@ def _order(c: Copy, copies: list[Copy]) -> int:
 # ---------------------------------------------------------------- Decisions (a person's)
 
 
-def keep(conn: sqlite3.Connection, set_id: int, page_id: int) -> list[int]:
-    """Keep one copy; set the others aside. Returns the pages set aside."""
+def keep(conn: sqlite3.Connection, set_id: int, page_id: int, batch: int | None = None) -> Decision:
+    """Keep one copy; set the others aside."""
     s = get_set(conn, set_id)
     if s is None:
         raise LookupError(f"No open duplicate set {set_id}")
@@ -259,14 +271,16 @@ def keep(conn: sqlite3.Connection, set_id: int, page_id: int) -> list[int]:
         )
     )
     with conn:
+        batch = batch or history.new_batch(conn)
         emptied: set[int] = set()
         for c in others:
-            _move(conn, c.page_id, None, None, aside=True, action="set_aside_duplicate")
+            _move(conn, batch, c.page_id, None, None, aside=True, action="set_aside_duplicate")
             if c.document_id and c is not home:
                 emptied.add(c.document_id)
         if home is not kept and home is not None:
             _move(
                 conn,
+                batch,
                 page_id,
                 home.document_id,
                 home.position,
@@ -274,52 +288,38 @@ def keep(conn: sqlite3.Connection, set_id: int, page_id: int) -> list[int]:
                 action="replace_with_duplicate",
             )
         elif kept.where == "aside" and any(c.where == "inbox" for c in others):
-            _move(conn, page_id, None, None, aside=False, action="return_duplicate")
+            _move(conn, batch, page_id, None, None, aside=False, action="return_duplicate")
         for doc in emptied:
-            _close_gaps(conn, doc)
-        before = [dict(id=i, status="open") for i in s.pair_ids]
-        conn.executemany(
-            "UPDATE duplicates SET status = 'resolved', kept_page = ?,"
-            " resolved_at = datetime('now') WHERE id = ?",
-            [(page_id, i) for i in s.pair_ids],
-        )
-        _log(conn, "keep_duplicate", "duplicate_set", set_id, before, {"kept": page_id})
+            _close_gaps(conn, batch, doc)
+        _decide(conn, batch, "keep_duplicate", set_id, s.pair_ids, "resolved", page_id)
         for doc in emptied:
-            _remove_if_empty(conn, doc)
-    return [c.page_id for c in others]
+            _remove_if_empty(conn, batch, doc)
+    return Decision(batch, [c.page_id for c in others])
 
 
-def keep_document(conn: sqlite3.Connection, keep_doc: int, other_doc: int) -> int:
+def keep_document(conn: sqlite3.Connection, keep_doc: int, other_doc: int) -> Decision:
     """Keep one document of a pair scanned twice: in every set they share, the copy in
-    `keep_doc` is kept. Pages only the other document has stay where they are."""
+    `keep_doc` is kept. Pages only the other document has stay where they are. It's one
+    decision, undone as one."""
     sets = [
         s for s in open_sets(conn) if {c.document_id for c in s.copies} >= {keep_doc, other_doc}
     ]
+    decision = Decision(history.new_batch(conn), [], len(sets))
     for s in sets:
         kept = next(c for c in s.copies if c.document_id == keep_doc)
-        keep(conn, s.id, kept.page_id)
-    return len(sets)
+        decision.set_aside += keep(conn, s.id, kept.page_id, decision.batch).set_aside
+    return decision
 
 
-def not_duplicates(conn: sqlite3.Connection, set_id: int) -> None:
+def not_duplicates(conn: sqlite3.Connection, set_id: int) -> Decision:
     """The pages only look alike: keep them all, and never raise them again."""
     s = get_set(conn, set_id)
     if s is None:
         raise LookupError(f"No open duplicate set {set_id}")
     with conn:
-        conn.executemany(
-            "UPDATE duplicates SET status = 'not_duplicate', resolved_at = datetime('now')"
-            " WHERE id = ?",
-            [(i,) for i in s.pair_ids],
-        )
-        _log(
-            conn,
-            "not_duplicates",
-            "duplicate_set",
-            set_id,
-            [dict(id=i, status="open") for i in s.pair_ids],
-            {"status": "not_duplicate"},
-        )
+        batch = history.new_batch(conn)
+        _decide(conn, batch, "not_duplicates", set_id, s.pair_ids, "not_duplicate", None)
+    return Decision(batch)
 
 
 def duplicate_of(conn: sqlite3.Connection, page_id: int) -> int | None:
@@ -332,8 +332,39 @@ def duplicate_of(conn: sqlite3.Connection, page_id: int) -> int | None:
     return r[0] if r else None
 
 
+def _decide(
+    conn: sqlite3.Connection,
+    batch: int,
+    action: str,
+    set_id: int,
+    pair_ids: list[int],
+    status: str,
+    kept: int | None,
+) -> None:
+    """Close a set's pairs, recording each pair's state before and after."""
+
+    def states() -> list[dict]:
+        return [
+            dict(
+                conn.execute(
+                    "SELECT id, status, kept_page, resolved_at FROM duplicates WHERE id = ?", (i,)
+                ).fetchone()
+            )
+            for i in pair_ids
+        ]
+
+    before = states()
+    conn.executemany(
+        "UPDATE duplicates SET status = ?, kept_page = ?, resolved_at = datetime('now')"
+        " WHERE id = ?",
+        [(status, kept, i) for i in pair_ids],
+    )
+    history.log(conn, batch, action, "duplicate_set", set_id, before, states())
+
+
 def _move(
     conn: sqlite3.Connection,
+    batch: int,
     page_id: int,
     document_id: int | None,
     position: int | None,
@@ -341,44 +372,40 @@ def _move(
     aside: bool,
     action: str,
 ) -> None:
-    before = dict(
-        conn.execute(
-            "SELECT document_id, position, set_aside_at FROM pages WHERE id = ?", (page_id,)
-        ).fetchone()
-    )
+    before = history.place(conn, page_id)
     conn.execute(
         "UPDATE pages SET document_id = ?, position = ?,"
         " set_aside_at = CASE WHEN ? THEN datetime('now') END, updated_at = datetime('now')"
         " WHERE id = ?",
         (document_id, position, aside, page_id),
     )
-    after = dict(
-        conn.execute(
-            "SELECT document_id, position, set_aside_at FROM pages WHERE id = ?", (page_id,)
-        ).fetchone()
-    )
-    _log(conn, action, "page", page_id, before, after)
+    history.log(conn, batch, action, "page", page_id, before, history.place(conn, page_id))
 
 
-def _close_gaps(conn: sqlite3.Connection, doc_id: int) -> None:
-    ids = [
-        r[0]
-        for r in conn.execute(
-            "SELECT id FROM pages WHERE document_id = ? ORDER BY position", (doc_id,)
-        )
-    ]
-    conn.executemany(
-        "UPDATE pages SET position = ? WHERE id = ?", [(i, pid) for i, pid in enumerate(ids)]
-    )
+def _close_gaps(conn: sqlite3.Connection, batch: int, doc_id: int) -> None:
+    """Number a document's pages 0, 1, 2... again, recording each page that moves up."""
+    rows = conn.execute(
+        "SELECT id, position FROM pages WHERE document_id = ? ORDER BY position", (doc_id,)
+    ).fetchall()
+    for i, r in enumerate(rows):
+        if r["position"] != i:
+            before = history.place(conn, r["id"])
+            conn.execute("UPDATE pages SET position = ? WHERE id = ?", (i, r["id"]))
+            after = history.place(conn, r["id"])
+            history.log(conn, batch, "close_gap", "page", r["id"], before, after)
 
 
-def _remove_if_empty(conn: sqlite3.Connection, doc_id: int) -> None:
-    """A document left with no pages goes, unless something else still refers to it."""
+def _remove_if_empty(conn: sqlite3.Connection, batch: int, doc_id: int) -> None:
+    """A document left with no pages goes, unless something else still refers to it. Its open
+    suggestions go with it; both are recorded so undo can bring them back."""
     if conn.execute("SELECT 1 FROM pages WHERE document_id = ? LIMIT 1", (doc_id,)).fetchone():
         return
     doc = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
     if doc is None:
         return
+    suggestions = conn.execute(
+        "SELECT * FROM suggestions WHERE document_id = ? AND status = 'open'", (doc_id,)
+    ).fetchall()
     conn.execute("SAVEPOINT remove_doc")
     try:
         conn.execute("DELETE FROM suggestions WHERE document_id = ? AND status = 'open'", (doc_id,))
@@ -386,26 +413,6 @@ def _remove_if_empty(conn: sqlite3.Connection, doc_id: int) -> None:
     except sqlite3.IntegrityError:
         conn.execute("ROLLBACK TO remove_doc")  # facts or an export still refer to it: keep it
     else:
-        _log(conn, "remove_empty_document", "document", doc_id, dict(doc), None)
+        before = {"document": dict(doc), "suggestions": [dict(r) for r in suggestions]}
+        history.log(conn, batch, "remove_empty_document", "document", doc_id, before, None)
     conn.execute("RELEASE remove_doc")
-
-
-def _log(
-    conn: sqlite3.Connection,
-    action: str,
-    target_type: str,
-    target_id: int,
-    before: object,
-    after: object,
-) -> None:
-    conn.execute(
-        "INSERT INTO history (actor, action, target_type, target_id, before, after)"
-        " VALUES ('user', ?, ?, ?, ?, ?)",
-        (
-            action,
-            target_type,
-            target_id,
-            json.dumps(before) if before is not None else None,
-            json.dumps(after) if after is not None else None,
-        ),
-    )

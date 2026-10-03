@@ -87,7 +87,7 @@ def test_keep_sets_the_other_copy_aside(client, settings, tmp_path):
     set_id = client.get("/api/duplicates").json()["sets"][0]["id"]
     assert client.post(f"/api/duplicates/{set_id}/keep", json={"page_id": 999}).status_code == 400
     r = client.post(f"/api/duplicates/{set_id}/keep", json={"page_id": b})
-    assert r.json() == {"kept": b, "set_aside": [a]}
+    assert {k: v for k, v in r.json().items() if k != "undo"} == {"kept": b, "set_aside": [a]}
     assert client.get("/api/duplicates").json()["count"] == 0
     assert client.post(f"/api/duplicates/{set_id}/keep", json={"page_id": b}).status_code == 404
 
@@ -97,7 +97,7 @@ def test_keep_all_when_they_are_different(client, settings, tmp_path):
     a, b = add_page(conn, tmp_path, "draft"), add_page(conn, tmp_path, "final")
     pair(conn, a, b, kind="similar")
     set_id = client.get("/api/duplicates").json()["sets"][0]["id"]
-    assert client.post(f"/api/duplicates/{set_id}/not-duplicates").json() == {"ok": True}
+    assert client.post(f"/api/duplicates/{set_id}/not-duplicates").json()["ok"] is True
     assert client.get("/api/duplicates").json()["count"] == 0
 
 
@@ -112,7 +112,7 @@ def test_a_document_scanned_twice(client, settings, tmp_path):
     [dp] = client.get("/api/duplicates").json()["documents"]
     assert dp["documents"] == [d1, d2] and dp["names"] == ["Letter", "Letter, again"]
     r = client.post("/api/duplicates/keep-document", json={"keep": d1, "other": d2})
-    assert r.json() == {"sets": 2}
+    assert r.json()["sets"] == 2 and sorted(r.json()["set_aside"]) == again
     assert (
         client.post("/api/duplicates/keep-document", json={"keep": d1, "other": d2}).status_code
         == 404
@@ -134,3 +134,21 @@ def test_page_images_come_upright_and_reduced(client, settings, tmp_path):
 def test_differences_keep_spacing_and_ignore_punctuation():
     assert differences("Dear  Sister,\nWe", "dear sister we") == [["Dear  Sister,\nWe", False]]
     assert differences("a b c", "a c") == [["a ", False], ["b ", True], ["c", False]]
+
+
+def test_a_decision_can_be_undone_through_the_api(client, settings, tmp_path):
+    conn = db(client, settings)
+    a, b = add_page(conn, tmp_path, "one"), add_page(conn, tmp_path, "one")
+    pair(conn, a, b)
+    assert client.post("/api/undo").status_code == 404  # nothing to undo yet
+    set_id = client.get("/api/duplicates").json()["sets"][0]["id"]
+    batch = client.post(f"/api/duplicates/{set_id}/keep", json={"page_id": b}).json()["undo"]
+    assert client.get("/api/undo").json() == {
+        "batch": batch,
+        "actions": ["set_aside_duplicate", "keep_duplicate"],
+    }
+    r = client.post(f"/api/undo/{batch}")
+    assert r.status_code == 200 and r.json()["pages"] == [a]
+    assert client.get("/api/duplicates").json()["count"] == 1
+    assert client.post(f"/api/undo/{batch}").status_code == 409  # already undone
+    assert client.get("/api/undo").json()["batch"] is None

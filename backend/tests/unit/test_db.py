@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 
 import pytest
@@ -183,23 +184,48 @@ def test_a_duplicate_pair_is_stored_once(conn):
     assert tuple(row) == ("open", None)
 
 
-def test_v2_database_gains_the_duplicate_tables(tmp_path):
+def old_schema(*, duplicates: bool) -> str:
+    """Today's schema as an older version had it: no history.batch (v3), no Duplicates (v2)."""
     from importlib.resources import files
 
     schema = files("lindley.db").joinpath("schema.sql").read_text(encoding="utf-8")
-    rule = "-- " + "-" * 64
-    before, after = schema.split(rule + " Duplicates")
-    v2 = before + after[after.index(rule) :]  # the schema without the Duplicates section
+    schema = re.sub(r"(after\s+TEXT),([^\n]*)\n\s+batch\s+INTEGER[^\n]*", r"\1 \2", schema)
+    schema = re.sub(r"CREATE INDEX IF NOT EXISTS idx_history_batch[^\n]*\n", "", schema)
+    if not duplicates:
+        rule = "-- " + "-" * 64
+        before, after = schema.split(rule + " Duplicates")
+        schema = before + after[after.index(rule) :]
+    return schema
+
+
+def test_v2_database_gains_the_duplicate_tables(tmp_path):
     db = tmp_path / "v2.db"
     c = sqlite3.connect(db)
-    c.executescript(v2 + "\nPRAGMA user_version = 2;")
+    c.executescript(old_schema(duplicates=False) + "\nPRAGMA user_version = 2;")
     assert "duplicates" not in {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
     c.close()
     init_db(db)
     c = connect(db)
     names = {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
     assert {"duplicates", "duplicate_checks", "text_sketch"} <= names
-    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 3
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    c.close()
+
+
+def test_v3_database_gains_history_batches(tmp_path):
+    db = tmp_path / "v3.db"
+    c = sqlite3.connect(db)
+    c.executescript(old_schema(duplicates=True) + "\nPRAGMA user_version = 3;")
+    c.execute(
+        "INSERT INTO history (actor, action, target_type) VALUES ('user', 'rename', 'document')"
+    )
+    c.commit()
+    c.close()
+    init_db(db)
+    c = connect(db)
+    assert "batch" in {r["name"] for r in c.execute("PRAGMA table_info(history)")}
+    assert c.execute("SELECT action, batch FROM history").fetchone()[:] == ("rename", None)
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 4
     c.close()
 
 

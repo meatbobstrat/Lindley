@@ -1,4 +1,4 @@
--- Lindley schema, version 3 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
+-- Lindley schema, version 4 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
 -- Applied idempotently at startup by lindley.db.database.init_db.
 -- Design notes: design/database.md.
 --
@@ -250,9 +250,11 @@ CREATE TABLE IF NOT EXISTS history (
     target_type  TEXT NOT NULL,                     -- page, document, folder, ...
     target_id    INTEGER,
     before       TEXT,                              -- JSON
-    after        TEXT                               -- JSON
+    after        TEXT,                              -- JSON
+    batch        INTEGER                            -- one decision's rows, undone together
 );
 CREATE INDEX IF NOT EXISTS idx_history_target ON history(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_history_batch ON history(batch);
 
 -- ---------------------------------------------------------------- Search
 

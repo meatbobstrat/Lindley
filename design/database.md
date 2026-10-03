@@ -77,15 +77,23 @@ on real scans.
 - `phash` is a 64-bit difference hash. Hashes within 4 bits of each other are the same picture
   (a `duplicate` link). Near-empty pages all hash alike, so they're never compared.
 - `detected_rotation` comes from Tesseract's orientation check: the degrees clockwise that turn the
-  page upright. It's used only when Tesseract is confident; otherwise it's 0. Pages with
+  page upright. A confident answer is used as it is. An unsure one (confidence under 2) is only
+  a guess, and on real scans it was as often wrong as right. So when a page reads poorly as
+  scanned, it's also read turned the way Tesseract guessed, and the turn is kept only if that
+  reads at least 10 points better. Pages with
   `detected_rotation + user_rotation` (or an EXIF orientation) are read from a turned copy in the
   processing folder, which is deleted afterwards. **Word boxes are therefore in upright
   coordinates.** `width_px` and `height_px` are the image as a viewer shows it (EXIF applied),
   before either rotation.
-- `script` is set after reading, from Tesseract's confidence line by line. Mostly confident lines
-  are `printed` and mostly poor ones are `handwritten`; a real share of both is `mixed`; a blank
-  page is `none`. If Tesseract can't tell, it stays NULL. `typed` isn't told apart from
-  `printed` yet.
+- `script` is set after reading, from Tesseract's confidence line by line. Lines under 50% look
+  handwritten and lines at 75% or more look printed; typewriting on old paper often falls in
+  between.
+  - Mostly handwritten lines (70%) make a page `handwritten`.
+  - A real share of both (20% each) makes it `mixed`, such as a typed page with handwritten
+    corrections.
+  - Otherwise, a page where at least 40% of lines clearly look printed is `printed`.
+  - A blank page is `none`.
+  - If Tesseract can't tell, it stays NULL. `typed` isn't told apart from `printed` yet.
 
 The step runs once per page. A scan that's read again after a failure doesn't check its pages again.
 

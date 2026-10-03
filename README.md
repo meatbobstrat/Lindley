@@ -30,7 +30,7 @@ Lindley is in early development and isn't usable end to end yet.
 | Intake (hash, EXIF, split) and Tesseract reading | Built; try it on your scans with `scripts/intake.py` |
 | Vision model reading (handwriting) | Wired into intake; the AI adapters are still stubs |
 | Folder watcher | Built; runs with the backend |
-| Image checks (blank pages, rotation, handwriting or print) | Built; thresholds still to tune on real scans |
+| Image checks (blank pages, rotation, handwriting or print) | Built, and tried on a first sample of real typewritten scans |
 | Searchable PDF export, search, AI chat | Not started |
 | Real UI (React) | Scaffold only; to be built from the mockup |
 

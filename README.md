@@ -25,8 +25,8 @@ Lindley is in early development and isn't usable end to end yet.
 | --- | --- |
 | Project scaffolding, CI | Done |
 | UI design | Clickable mockup, close to MVP ([design/mockup](design/mockup/index.html)) |
-| Database | Schema v2 designed and tested ([design/database.md](design/database.md)) |
-| Assembler (Inbox pages → documents) | Built and tested on synthetic batches |
+| Database | Schema v5 designed and tested ([design/database.md](design/database.md)) |
+| Assembler (Inbox pages → documents) | Built; scored on synthetic batches and on real assembled typescripts |
 | Intake (hash, EXIF, split) and Tesseract reading | Built; try it on your scans with `scripts/intake.py` |
 | Vision model reading (handwriting) | Wired into intake; the AI adapters are still stubs |
 | Folder watcher | Built; runs with the backend |
@@ -53,10 +53,14 @@ watched folders ─► watcher ─► intake ───────────�
    page (dates, names, places, letterheads, page numbers, signatures) is stored with its source
    and a confidence score.
 2. **Assembler.** Groups Inbox pages into documents.
-   - **Rules first.** Old-fashioned text rules do most of the work. A number standing alone at
-     the top or bottom of a page is a page number. "Dear Sister," starts a letter, and a closing
-     plus a signature ends one. A sentence cut off at the bottom of a page carries on at the top
-     of the next, and scanning order links neighbouring pages.
+   - **Rules first.** Old-fashioned text rules do most of the work. A number on a row of its
+     own at the top or bottom of a page is a page number, read past specks and OCR slips.
+     "Dear Sister," or a byline starts a document, and a closing plus a signature ends one. A
+     sentence cut off at the bottom of a page carries on at the top of the next, and scanning
+     order links neighbouring pages. Pages set out differently (margins, line spacing, line
+     length) are kept apart.
+   - **Weighed, not guessed.** Each piece of evidence has a weight in a small, explainable
+     model. A fitting script can set the weights from documents whose right answer is known.
    - **AI for the hard parts.** The AI is asked only about uncertain breaks, page order and
      names. It sees page text, never images, and its answers are checked before they're used.
    - **What you see.** Confident groups appear under In progress with italic, suggested names
@@ -88,11 +92,16 @@ watched folders ─► watcher ─► intake ───────────�
 - **Accessible.** The UI targets WCAG 2.2 AA, and status is never shown by colour alone.
 - **No AI calls without your OK.** AI calls can cost money, so by default Lindley makes none
   until you say so.
+  - Each AI connection says when Lindley may use it: *Ask me first* (the default), or
+    *Whenever it's needed*, with a daily limit after which it asks again.
   - Pages that need the vision model wait for you, with their Tesseract reading in use meanwhile.
-  - The assembler's AI step is off until you turn it on.
+    So do pages the AI could help sort.
+  - Questions you type in Ask Lindley are always sent: asking is your OK.
+  - Every call is recorded: which AI, what for, and whether you OKed it.
   - Pages are reduced before they're sent (2000 px on the longer side, as JPEG).
   - A call that failed is never repeated on its own.
-  - Sending automatically is a setting (`ocr.vision_mode`).
+- **Runs on an ordinary laptop.** Matching pages uses rules and a small model in plain Python,
+  with no graphics card and no heavy machine-learning packages. A local AI is optional.
 - **Private by default.** Lindley works with an AI on your own computer (Ollama, LM Studio).
   - Cloud AI (Anthropic, OpenAI and others) is supported, but setup and Settings warn plainly
     that your scans are then sent to that company and are no longer private. You must
@@ -171,7 +180,15 @@ python scripts\bench_assembler.py --ai settings   # include the chat AI from you
 ```
 
 The rules were written knowing what the bench generates, so its scores are a ceiling, not a
-forecast for real scans.
+forecast for real scans. To score it on real scans, read some documents you've already put
+together as PDFs into a scratch database with `scripts/intake.py`, then:
+
+```powershell
+python scripts\bench_assembler.py --real D:\scratch\lindley.db   # the PDFs are the answer key
+python scripts\fit_assembler.py --real D:\scratch\lindley.db     # fit the evidence weights to them
+```
+
+Results so far are in [design/database.md](design/database.md#the-assembler-from-inbox-pages-to-documents).
 
 ### Read your own scans
 
@@ -184,6 +201,7 @@ cd backend
 python scripts\intake.py D:\scans --settings D:\scratch\settings.json
 python scripts\intake.py D:\scans --settings D:\scratch\settings.json --no-ai   # rules and Tesseract only
 python scripts\intake.py --vision --settings D:\scratch\settings.json           # OK the waiting pages
+python scripts\intake.py D:\scans --settings D:\scratch\settings.json --ai      # OK the chat AI to help sort
 ```
 
 Folders are searched recursively in natural name order (`scan_2` before `scan_10`). It's safe
@@ -218,9 +236,9 @@ file in these places, in order:
 | `library_dir` | Lindley's library: its copies of scans, and exported PDFs |
 | `db_path` | SQLite database location |
 | `move_files` | `true` moves scans out of watched folders; `false` copies them and leaves the originals |
-| `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this, a page needs the vision model. `vision_mode`: `ask` (the default) waits for your OK; `auto` sends pages as they're read. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000) |
-| `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" hint (45). `ai_band`: which uncertain breaks are sent to the AI. `use_ai`: turns the AI step on (off by default) |
-| `ai` | Named providers, plus which one to use for chat and for embeddings |
+| `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this, a page needs the vision model. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000) |
+| `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" hint (45). `ai_band`: which uncertain breaks are sent to the AI |
+| `ai` | Named providers, plus which one to use for chat and for embeddings. Each provider's `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some), and `daily_limit` caps the calls it makes on its own each day |
 
 The review threshold (90%) is designed as a setting on the app's Settings screen. It isn't in
 `settings.json` yet.
@@ -263,5 +281,7 @@ folders.
 - [ ] Search and Ask Lindley (chat with your documents)
 - [ ] Details view: everything Lindley found about a page or document
 - [ ] Settings in the app, with API keys in Windows Credential Manager
-- [ ] AI spending controls: per-provider "local, so automatic", a monthly limit, and the cost of each call
+- [x] When each AI may be used: ask first or automatic, with a daily limit; every call recorded
+- [ ] AI spending: a monthly limit, and the cost of each call
+- [ ] Suggest groups of pages Lindley isn't sure of (typescripts, notes) for a person to confirm
 - [ ] One-click installer (Windows/Mac), with Tesseract included

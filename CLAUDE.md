@@ -11,7 +11,12 @@
   - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
     `pipeline.py` (step records, Tesseract/vision reading), `ocr/` engines
   - `watcher/`: watchdog folder watcher, started by the app lifespan (`create_app(watch=False)` in tests)
-  - `assembler/`: Inbox pages → documents; `search/`: stub for now
+  - `assembler/`: Inbox pages → documents. `clues.py` (rules per page), `evidence.py` (features
+    for a page pair, scored with `weights.py`), `layout.py`, `terms.py`, `segment.py`, `learn.py`
+    (fitting the weights). Benches: `scripts/bench_assembler.py` (made-up, or `--real DB` with
+    assembled PDFs as the answer key) and `scripts/fit_assembler.py`. `search/`: stub for now
+  - `providers/allowance.py`: when an AI may be called on its own (`allow`, `daily_limit`);
+    every call is recorded in `ai_calls`
   - `duplicates/`: `detect.py` (pages scanned twice, found by text), `resolve.py` (keep a copy or
     document, not duplicates). API in `api/duplicates.py`; page images in `api/pages.py`
   - `scripts/intake.py` reads real scans end to end; tests stub Tesseract (not installed in CI)
@@ -26,4 +31,5 @@
 - The repo is **public**. Never commit `settings.json`, `.env`, databases or scanned data.
   API keys come only from the env var named by a provider's `api_key_env`.
 - Tests use `FakeProvider` and temp dirs. They never touch real providers or the network.
+- Local AI and ML must run on an ordinary laptop: no GPU, no heavy ML packages.
 - Make one commit per logical step, after tests and lint pass, and push to `origin main`.

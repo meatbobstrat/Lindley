@@ -1,6 +1,6 @@
 # Lindley database design
 
-Schema version 2. The source of truth is [backend/src/lindley/db/schema.sql](../backend/src/lindley/db/schema.sql).
+Schema version 5. The source of truth is [backend/src/lindley/db/schema.sql](../backend/src/lindley/db/schema.sql).
 This document explains why the schema is shaped the way it is.
 
 ## Goals
@@ -46,6 +46,7 @@ erDiagram
 | `history` | action | Who did what (a person or Lindley), with before and after. A person's decision is one `batch` of rows, undone together. Used for undo and the audit trail. |
 | `duplicates` | page pair | Two pages that look like the same page scanned again (`same_page`), or that have very similar text (`similar`), with the evidence and a person's decision. |
 | `duplicate_checks`, `text_sketch` | page | Which reading each page was checked for duplicates with, and the page's text sketch for finding candidates. |
+| `ai_calls` | call to an AI | Which connection, what for (reading a page, sorting pages), whether Lindley made it on its own or a person OKed it, and whether it worked. Keeps the daily limit and shows what was sent where. |
 
 Settings stay in `settings.json`. API keys stay in Windows Credential Manager and never go in the database.
 
@@ -134,28 +135,30 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
 
 `lindley.assembler.assemble(conn, settings.assembler, chat)` runs once new scans have settled. It's safe to run as often as you like; a second run with nothing new changes nothing.
 
-1. **Clues** (`clues.py`, rules only). A number standing alone at the top or bottom of a page is a page number ("- 2 -", "Page 2 of 3", "ii"; with word positions, the top or bottom 12% of the page). The rules also find:
-   - greetings ("Dear Sister,"), letterheads and headings, which start a document;
+1. **Clues** (`clues.py`, rules only).
+   - **Page numbers.** A number on a row of its own in the top or bottom 12% of the page ("- 2 -", "Page 2 of 3", "ii"). Specks and smudges on that row don't count against it, and OCR slips next to a real digit are read through ("1l" is 11). A number inside a sentence, or in a typesetter's note like "Indent 1 em", isn't one. A number read with doubt is marked unsure and counts for less. When every page of a document is numbered, a gap is reported: "Page 4 seems to be missing".
+   - **Noise at the edges.** Lines of specks (the paper's edge, show-through, a hole punch) are dropped from the top and bottom before the first and last lines are taken, and so are stray marks before the first word. A scrap Tesseract read out of order goes back into the line it sits in.
+   - greetings ("Dear Sister,"), letterheads, headings and bylines ("By Lindley C. Branson"), which start a document;
    - closings and signatures ("Your loving son / John"), "Paid" and "Notary Public", which end one;
    - sentences cut off at the bottom of a page and picked up at the top of the next;
    - dates in old spellings, people, places, amounts, and file sequence numbers (`scan_0042`);
    - whether a page looks like a letter, receipt, deed, diary, stray note or blank.
 
    All of these are saved as `facts` with `source = 'rule'`.
-2. **Evidence** (`evidence.py`). Each pair of neighbouring pages gets a same-document score from 0 to 1:
-   - Scanned one after another: 0.62 to start with.
-   - A greeting on the second page, or a signature on the first: minus 0.45 or 0.4.
-   - Different kinds of page: minus 0.35.
-   - Page numbers running n → n+1: at least 0.95.
-   - A sentence carried over the break: plus 0.3.
-   - Shared names or the same letterhead add a little more.
+2. **Evidence** (`evidence.py`). Each pair of pages gets a same-document score from 0 to 1. Every piece of evidence is a named feature, and a small logistic model adds up their weights (`weights.py`, in log-odds) into the score:
+   - scanned one after another; a greeting on the second page or a signature on the first; different kinds of page;
+   - page numbers running n → n+1, close (a page swapped or missing) or far apart;
+   - a sentence carried over the break, counted for less between pages not scanned together (in a typescript nearly every page ends mid-sentence);
+   - the same letterhead, shared names, the same paper colour;
+   - the **layout fingerprint** (`layout.py`): where lines start and end as a share of the page width, line spacing in character widths, and characters in a full line. It's free of the scan's size and resolution. Pages set out differently (a single-spaced letter, a page of 40-character notes) are kept apart;
+   - **rare words** both pages use (`terms.py`, tf-idf over the pages being sorted), measured but not yet counted (see below).
 
-   Each signal is saved in `page_links` with a readable note.
+   A reason is shown to a person only when its evidence counts towards the pages going together. Each is saved in `page_links` with a readable note (`same_writer` for layout, `similar_text` for shared words).
 3. **Grouping** (`segment.py`). Pages are put in scan order and cut wherever the score falls below 0.5.
    - **Order within a group:** page numbers first, then greeting first and signature last, then scan order.
    - **Rejoining parts scanned apart:** a group that lacks its end is joined to a group that lacks its start when one clearly continues the other. This catches two pages fed through the scanner swapped.
    - **Confidence:** each group gets one (0–100), based on how sure the breaks inside and around it are. It drops when the group has no clear start or end (a page may be missing), except for diaries.
-4. **AI** (`ai.py`, only when a chat AI is set in Settings). The AI is asked only about breaks scoring 35–75 and groups whose order isn't settled. It gets page text and clues, never images.
+4. **AI** (`ai.py`), only when the chat AI may be used: its connection's `allow` is `auto` and today's limit isn't used up, or a person OKed it. The AI is asked only about breaks scoring 35–75 and groups whose order isn't settled. It gets page text and clues, never images.
    - Its reply must use every page given exactly once, and no others. Anything else is rejected and the rules' answer stands.
    - It also suggests names where the rules could only guess.
 5. **Saving** (`apply.py`), in one transaction:
@@ -182,7 +185,19 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
 | Rules only | 0.94 | 240 | 0 | 96% | 4.5% |
 | Rules + stand-in AI that is always right | 0.97 | 249 | 0 | 96% | 0.3% |
 
-The rules were written knowing what the bench generates, so these numbers are a ceiling, not a forecast. Real scans carry OCR errors, odd layouts and messier scanning order. The bench's job is to catch regressions and to measure a real model (`--ai settings`) once OCR is running.
+The rules were written knowing what the bench generates, so these numbers are a ceiling, not a forecast. The bench's job is to catch regressions and to measure a real model (`--ai settings`).
+
+**Real scans.** `scripts/bench_assembler.py --real lindley.db` uses assembled PDFs as the answer key: each PDF read into a Lindley database is one document, in its page order. Its pages are fed back in as loose scans under made-up names: in reading order, with neighbours swapped here and there, or shuffled. With 7 typescripts (45 pages) by one author, all typed alike, the rules' proposals before any confidence threshold score:
+
+| Pages fed in | Pair F1 before | Pair F1 now | Rebuilt exactly now |
+|---|---|---|---|
+| In order | 0.70 | 0.79 | 63% |
+| Some swapped | 0.68 | 0.77 | 53% |
+| Shuffled | 0.19 | 0.16 | 1% |
+
+Almost none of it becomes a document yet. A group of pages that's no kind the rules know (letter, receipt, deed, diary) can't reach `group_at`, so typescripts stay in the Inbox. Shuffled pages have little to go on but page numbers, which few of these pages show.
+
+**Fitting the weights.** `scripts/fit_assembler.py` fits the weights to made-up batches and real PDFs (`learn.py`: Newton steps on the L2-penalised log-loss, in plain Python), and tests each real document left out in turn. Fitted weights predicted single pairs much better (89% right on documents left out, against 65%) but built worse documents on both benches, so the shipped weights are hand-set and checked on both. Shared rare words stay at 0: in the made-up batches, whose letters share one pool of sentences, they joined a late page to the wrong letter. With more labelled documents (for example, documents people confirm), fitting is the way to set them.
 
 ## Duplicates
 

@@ -94,7 +94,7 @@ def test_files_already_read_from_the_same_place_are_not_hashed_again(settings, i
     first.tick()
     assert first.tick() == [inbox / "a.png"]
     later = make_watcher(settings)
-    monkeypatch.setattr(watcher_mod, "ingest", lambda *a, **k: pytest.fail("re-imported"))
+    monkeypatch.setattr(watcher_mod, "import_file", lambda *a, **k: pytest.fail("re-imported"))
     later.sweep([inbox])
     assert later.tick() == [] and later.tick() == []
 
@@ -245,15 +245,15 @@ def test_an_empty_file_doesnt_hold_up_sorting(settings, inbox, monkeypatch):
 
 
 def test_one_file_that_fails_doesnt_lose_the_others(settings, inbox, monkeypatch):
-    real = watcher_mod.ingest
+    real = watcher_mod.import_file
     fail = {"a.png"}
 
-    def ingest(conn, settings, pipeline, path, origin):
+    def import_file(conn, settings, path, origin):
         if path.name in fail:
             raise sqlite3.OperationalError("database is locked")
-        return real(conn, settings, pipeline, path, origin)
+        return real(conn, settings, path, origin)
 
-    monkeypatch.setattr(watcher_mod, "ingest", ingest)
+    monkeypatch.setattr(watcher_mod, "import_file", import_file)
     w = make_watcher(settings, settle_s=3600)
     for name, color in (("a.png", "white"), ("b.png", "ivory"), ("c.png", "linen")):
         (inbox / name).write_bytes(png_bytes(color))
@@ -269,7 +269,7 @@ def test_one_file_that_fails_doesnt_lose_the_others(settings, inbox, monkeypatch
 
 def test_a_file_that_keeps_failing_is_given_up_on(settings, inbox, monkeypatch):
     tries = []
-    monkeypatch.setattr(watcher_mod, "ingest", lambda *a, **k: tries.append(1) / 0)
+    monkeypatch.setattr(watcher_mod, "import_file", lambda *a, **k: tries.append(1) / 0)
     w = make_watcher(settings, settle_s=3600)
     (inbox / "a.png").write_bytes(png_bytes())
     w.notice(inbox / "a.png")
@@ -388,7 +388,7 @@ def test_a_duplicate_file_isnt_hashed_again_on_each_start(settings, inbox, monke
     first.tick()
     first.tick()
     later = make_watcher(settings)
-    monkeypatch.setattr(watcher_mod, "ingest", lambda *a, **k: pytest.fail("hashed again"))
+    monkeypatch.setattr(watcher_mod, "import_file", lambda *a, **k: pytest.fail("hashed again"))
     later.sweep([inbox])
     assert later.tick() == [] and later.tick() == []
 

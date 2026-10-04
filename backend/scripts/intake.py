@@ -33,7 +33,7 @@ from lindley.providers import allowance
 from lindley.providers.base import ProviderError
 from lindley.providers.registry import get_provider
 from lindley.worker.image import BLANK_AT
-from lindley.worker.intake import ingest, is_supported
+from lindley.worker.intake import import_file, is_supported, needs_reading
 from lindley.worker.pipeline import Pipeline, vision_failures, waiting_for_vision
 
 MODES = {
@@ -120,26 +120,38 @@ def main() -> int:
             f" with {MODES[settings.ocr.engine]}{vision}\n"
         )
     counts = {"new": 0, "duplicate": 0, "failed": 0, "read": 0, "queued": 0}
+    imported = []  # every file first; then their scans are read a few at once
     for f in files:
-        r = ingest(conn, settings, pipe, f)
+        r = import_file(conn, settings, f)
         counts[r.status] += 1
-        line = f"  {f.name}: {r.status}"
-        if r.error:
-            line += f" ({r.error})"
-        if r.reading:
-            counts[r.reading if r.reading in ("read", "queued") else "failed"] += 1
-            scan = conn.execute(
-                "SELECT s.error, AVG(t.confidence) AS conf FROM scans s"
-                " LEFT JOIN pages p ON p.scan_id = s.id"
-                " LEFT JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
-                " WHERE s.id = ?",
-                (r.scan_id,),
-            ).fetchone()
-            line += f", {r.pages} page{'s' if r.pages != 1 else ''} {r.reading}"
-            line += f" ({scan['conf']:.0f}%)" if scan["conf"] is not None else ""
-            if r.reading == "failed":
-                line += f": {scan['error']}"
+        if needs_reading(conn, r):
+            imported.append(r)
+        else:
+            print(f"  {f.name}: {r.status}" + (f" ({r.error})" if r.error else ""))
+    by_scan = {r.scan_id: r for r in imported}
+    if imported:
+        workers = min(settings.ocr.reading_workers(), len(imported))
+        print(f"\nReading {len(imported)} scan(s), {workers} at once")
+
+    def done(scan_id: int, reading: str | None) -> None:
+        r = by_scan[scan_id]
+        r.reading = reading or "failed"
+        counts[r.reading if r.reading in ("read", "queued") else "failed"] += 1
+        scan = conn.execute(
+            "SELECT s.error, AVG(t.confidence) AS conf FROM scans s"
+            " LEFT JOIN pages p ON p.scan_id = s.id"
+            " LEFT JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
+            " WHERE s.id = ?",
+            (scan_id,),
+        ).fetchone()
+        line = f"  {r.path.name}: {r.status}, {r.pages} page{'s' if r.pages != 1 else ''}"
+        line += f" {r.reading}"
+        line += f" ({scan['conf']:.0f}%)" if scan["conf"] is not None else ""
+        if r.reading == "failed":
+            line += f": {scan['error'] or 'see the log'}"
         print(line)
+
+    pipe.process_scans(conn, list(by_scan), on_done=done)
 
     low = conn.execute(
         "SELECT COUNT(*) FROM v_current_text WHERE confidence < ? AND NOT reviewed", (REVIEW_BELOW,)

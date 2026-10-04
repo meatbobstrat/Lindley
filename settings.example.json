@@ -10,7 +10,8 @@
     "tesseract_path": null,
     "languages": ["eng"],
     "confidence_threshold": 70,
-    "vision_max_side": 2000
+    "vision_max_side": 2000,
+    "workers": null
   },
   "assembler": {
     "group_at": 75,

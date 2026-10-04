@@ -229,13 +229,20 @@ def ingest(
     path: Path,
     origin: Literal["watched", "added"] = "added",
 ) -> ImportResult:
-    """Import a file, then read any of its pages not read yet (a scan that failed is retried)."""
+    """Import a file, then read any of its pages not read yet (a scan that failed is retried).
+    Many files are better imported first and read together (Pipeline.process_scans)."""
     r = import_file(conn, settings, path, origin)
-    if r.scan_id and r.pages:
-        status = conn.execute("SELECT status FROM scans WHERE id = ?", (r.scan_id,)).fetchone()[0]
-        if status != "read":
-            r.reading = pipeline.process_scan(conn, r.scan_id)
+    if needs_reading(conn, r):
+        r.reading = pipeline.process_scan(conn, r.scan_id)
     return r
+
+
+def needs_reading(conn: sqlite3.Connection, r: ImportResult) -> bool:
+    """Whether an imported file's scan has pages still to read: new, or read before and failed."""
+    if not (r.scan_id and r.pages):
+        return False
+    status = conn.execute("SELECT status FROM scans WHERE id = ?", (r.scan_id,)).fetchone()[0]
+    return status != "read"
 
 
 def _library_copy(settings: Settings, path: Path, sha: str) -> Path:

@@ -4,9 +4,9 @@ watchdog reports new or changed files, and a sweep at start-up catches anything 
 Lindley was closed. A file is taken only once it has finished arriving: its size and time
 unchanged for `stable_s` seconds, and its ending there (worker.intake.looks_complete), since a
 scanner or a copy may still be writing it. A file that never finishes (empty, or kept locked)
-stops holding things up after `stuck_s` seconds. One background thread does the work, one file
-at a time. Once no new file has arrived for `settle_s` seconds, the assembler runs once over the
-whole Inbox.
+stops holding things up after `stuck_s` seconds. One background thread does the work: the files
+that have arrived are imported one at a time, then read a few at once. Once no new file has
+arrived for `settle_s` seconds, the assembler runs once over the whole Inbox.
 """
 
 from __future__ import annotations
@@ -27,7 +27,14 @@ from lindley.config import Settings
 from lindley.db.database import connect
 from lindley.duplicates import find_duplicates
 from lindley.providers.base import ChatProvider
-from lindley.worker.intake import already_seen, ingest, is_supported, looks_complete
+from lindley.worker.intake import (
+    ImportResult,
+    already_seen,
+    import_file,
+    is_supported,
+    looks_complete,
+    needs_reading,
+)
 from lindley.worker.pipeline import Pipeline, unfinished_scans, waiting_for_vision
 
 log = logging.getLogger(__name__)
@@ -160,15 +167,11 @@ class FolderWatcher:
         mode too, where the original has gone. Returns the scans picked up."""
         conn = self._db()
         scans = unfinished_scans(conn)
-        for scan_id in scans:
-            if self._stop.is_set():
-                break
-            try:
-                status = self.pipeline.process_scan(conn, scan_id)
-            except Exception:
-                log.exception("Couldn't pick up reading scan %d", scan_id)
-                continue
-            log.info("Picked up reading scan %d: %s", scan_id, status)
+        read = self.pipeline.process_scans(conn, scans, stop=self._stop)
+        for scan_id, status in read.items():
+            if status:
+                log.info("Picked up reading scan %d: %s", scan_id, status)
+        if read:
             self._unassembled = True
         return scans
 
@@ -186,21 +189,31 @@ class FolderWatcher:
     def tick(self) -> list[Path]:
         """Take the files that have finished arriving, then assemble once things settle.
 
+        The files are all imported first, then read a few at once (Pipeline.process_scans).
         Returns the files taken. Called by the background thread; tests call it directly.
         """
         conn = self._db()
         ready = self._arrived(conn)
+        taken: list[tuple[Path, ImportResult]] = []
         for i, path in enumerate(ready):
             if self._stop.is_set():  # the next watcher's start-up sweep finds the rest
                 del ready[i:]
                 break
             try:
-                r = ingest(conn, self.settings, self.pipeline, path, origin="watched")
+                taken.append((path, import_file(conn, self.settings, path, origin="watched")))
             except Exception:
                 log.exception("Couldn't take %s", path)
                 self._try_again(path)
-                continue
+        to_read = [r.scan_id for _, r in taken if needs_reading(conn, r)]
+        read = self.pipeline.process_scans(conn, to_read, stop=self._stop)
+        for path, r in taken:
             self._tries.pop(path, None)
+            if r.scan_id in to_read:
+                r.reading = read.get(r.scan_id)
+                if r.reading is None:
+                    # Stopped before it was read, or its reading raised (logged): the next
+                    # start picks it up from Lindley's own copy (unfinished_scans).
+                    continue
             log.info("%s: %s%s", path.name, r.status, f", {r.reading}" if r.reading else "")
             if r.status == "new" or r.reading:
                 self._unassembled = True

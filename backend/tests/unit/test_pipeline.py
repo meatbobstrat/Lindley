@@ -1,3 +1,5 @@
+import threading
+
 import pytest
 from PIL import Image, ImageDraw
 
@@ -546,3 +548,68 @@ def test_unfinished_scans_leave_out_pages_waiting_for_vision(conn, settings, sca
     Pipeline(settings, StubOcr(), FakeProvider()).process_scan(conn, done)
     # cut_off: imported, then Lindley closed before reading it
     assert unfinished_scans(conn) == [cut_off]
+
+
+# ---------------------------------------------------------------- A few scans at once
+
+
+class SideBySide:
+    """Reads a page only once `n` pages are being read together, so the test fails unless
+    they really are read side by side."""
+
+    name = "tesseract"
+    version = "tesseract v5.test eng"
+
+    def __init__(self, n: int, conf: float = 90.0) -> None:
+        self.together = threading.Barrier(n, timeout=10)
+        self.conf = conf
+
+    def recognize(self, image_path):
+        self.together.wait()
+        return [PageResult(1, "Dear Sister, we are well.", self.conf, self.name, [])]
+
+
+def test_scans_are_read_a_few_at_once(conn, settings, scan):
+    settings.ocr.workers = 3
+    sids = [scan(f"scan_000{i}.png") for i in range(1, 4)]
+    done = []
+    pipe = Pipeline(settings, SideBySide(3))
+    statuses = pipe.process_scans(conn, sids, on_done=lambda s, st: done.append((s, st)))
+    assert statuses == dict.fromkeys(sids, "read")
+    assert sorted(done) == sorted(statuses.items())  # each reported as it finished
+    assert all(status(conn, sid) == "read" for sid in sids)
+
+
+def test_scans_not_started_when_asked_to_stop_are_left(conn, settings, scan):
+    settings.ocr.workers = 2
+    sids = [scan("a.png"), scan("b.png")]
+    stop = threading.Event()
+    stop.set()
+    assert Pipeline(settings, StubOcr()).process_scans(conn, sids, stop=stop) == {}
+    assert unfinished_scans(conn) == sids
+
+
+def test_one_worker_reads_in_order_on_the_callers_connection(conn, settings, scan):
+    settings.ocr.workers = 1
+    sids = [scan("a.png"), scan("b.png")]
+    ocr = StubOcr(("first", 90.0), ("second", 90.0))
+    Pipeline(settings, ocr).process_scans(conn, sids)
+    assert [current_text(conn, sid) for sid in sids] == ["first", "second"]
+
+
+def test_scans_read_together_keep_to_the_vision_models_limit(conn, settings, scan):
+    settings.ocr.workers = 3
+    cfg = settings.ai.providers["local"]
+    cfg.allow, cfg.daily_limit = "auto", 1
+    sids = [scan(f"scan_000{i}.png") for i in range(1, 4)]
+    Pipeline(settings, SideBySide(3, conf=41.0), FakeProvider()).process_scans(conn, sids)
+    assert conn.execute("SELECT COUNT(*) FROM ai_calls WHERE automatic = 1").fetchone()[0] == 1
+    assert waiting_for_vision(conn) == 2
+
+
+def test_a_scan_whose_reading_raises_is_logged_and_left(conn, settings, scan, monkeypatch):
+    settings.ocr.workers = 1
+    sid = scan()
+    pipe = Pipeline(settings, StubOcr(("text", 90.0)))
+    monkeypatch.setattr(pipe, "_settle", lambda *a: 1 / 0)
+    assert pipe.process_scans(conn, [sid]) == {sid: None}

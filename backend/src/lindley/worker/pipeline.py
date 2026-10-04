@@ -11,8 +11,10 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import threading
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -20,6 +22,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from lindley.config import Settings
+from lindley.db.database import connect
 from lindley.providers import allowance
 from lindley.providers.base import ProviderError, VisionProvider
 from lindley.providers.registry import get_provider
@@ -246,6 +249,9 @@ class Pipeline:
         self.settings = settings
         self.tesseract = tesseract
         self.vision = vision
+        # Scans read side by side (process_scans) ask about the vision model one at a time, so
+        # together they never make more calls on their own than its limits allow.
+        self._vision_turn = threading.Lock()
 
     @property
     def vision_name(self) -> str | None:
@@ -261,6 +267,65 @@ class Pipeline:
             except ProviderError:
                 vision = None
         return cls(settings, TesseractEngine(settings.ocr), vision)
+
+    def process_scans(
+        self,
+        conn: sqlite3.Connection,
+        scan_ids: list[int],
+        *,
+        stop: threading.Event | None = None,
+        on_done: Callable[[int, str | None], None] | None = None,
+    ) -> dict[int, str | None]:
+        """Read several scans, a few at once (ocr.workers), each on a thread with a connection
+        of its own. Returns each scan's new status (process_scan); None for one whose reading
+        raised, which is logged and left for unfinished_scans to pick up. on_done(scan_id,
+        status) is called on this thread as each finishes. Once `stop` is set, scans not
+        started yet aren't, and aren't in the result.
+        """
+        workers = min(self.settings.ocr.reading_workers(), len(scan_ids))
+        done: dict[int, str | None] = {}
+
+        def finish(scan_id: int, status: str | None) -> None:
+            done[scan_id] = status
+            if on_done:
+                on_done(scan_id, status)
+
+        if workers <= 1:
+            for scan_id in scan_ids:
+                if stop and stop.is_set():
+                    break
+                finish(scan_id, self._process_logged(conn, scan_id))
+            return done
+
+        local, conns, made = threading.local(), [], threading.Lock()
+
+        def read(scan_id: int) -> tuple[bool, str | None]:
+            if stop and stop.is_set():
+                return False, None
+            if not hasattr(local, "conn"):
+                local.conn = connect(self.settings.db_path, any_thread=True)
+                with made:
+                    conns.append(local.conn)
+            return True, self._process_logged(local.conn, scan_id)
+
+        try:
+            with ThreadPoolExecutor(workers, thread_name_prefix="lindley-read") as pool:
+                futures = {pool.submit(read, scan_id): scan_id for scan_id in scan_ids}
+                for future in as_completed(futures):
+                    started, status = future.result()
+                    if started:
+                        finish(futures[future], status)
+        finally:
+            for c in conns:
+                c.close()
+        return done
+
+    def _process_logged(self, conn: sqlite3.Connection, scan_id: int) -> str | None:
+        try:
+            return self.process_scan(conn, scan_id)
+        except Exception:
+            log.exception("Reading scan %d stopped part way", scan_id)
+            return None
 
     def process_scan(self, conn: sqlite3.Connection, scan_id: int) -> str:
         """Read the scan's unread pages. Returns its new status: 'read', 'queued' or 'failed'."""
@@ -588,49 +653,50 @@ class Pipeline:
                     error="The page looks blank",
                 )
         elif ocr.engine == "vision" or conf is None or conf < ocr.confidence_threshold:
-            if self.vision is None:
-                if ocr.engine == "vision":
-                    raise RuntimeError("Reading is set to the vision model, but none is set up")
-                with conn:
-                    record_step(
-                        conn,
-                        scan_id,
-                        Step.VISION,
-                        StepStatus.SKIPPED,
-                        page_id=page_id,
-                        error="No vision model is set up",
-                    )
-            elif _last_vision_status(conn, page_id) in ("queued", "failed", "running"):
-                pass  # waiting for a person, or being read; never sent again on its own
-            elif not allowance.may_call(conn, self.settings, self.vision_name) or allowance.failing(
-                conn, self.vision_name
-            ):
-                with conn:
-                    conn.execute(
-                        "INSERT INTO intake_steps (scan_id, page_id, step, status, error)"
-                        " VALUES (?, ?, 'vision', 'queued', ?)",
-                        (
-                            scan_id,
-                            page_id,
-                            allowance.why_waiting(conn, self.settings, self.vision_name),
-                        ),
-                    )
-            else:
-                model = getattr(self.vision, "model", None) or "vision"
-                ok = False
-                try:
-                    with run_step(
-                        conn, scan_id, Step.VISION, page_id=page_id, engine_version=model
-                    ):
-                        readings.append(
-                            ("vision", model, self._vision_reader().recognize(image)[0])
-                        )
-                    ok = True
-                except Exception:
-                    pass  # recorded as failed; the page waits for a person to try again
-                finally:
+            with self._vision_turn:  # see __init__
+                if self.vision is None:
+                    if ocr.engine == "vision":
+                        raise RuntimeError("Reading is set to the vision model, but none is set up")
                     with conn:
-                        allowance.record(conn, self.vision_name, "vision", True, page_id, ok)
+                        record_step(
+                            conn,
+                            scan_id,
+                            Step.VISION,
+                            StepStatus.SKIPPED,
+                            page_id=page_id,
+                            error="No vision model is set up",
+                        )
+                elif _last_vision_status(conn, page_id) in ("queued", "failed", "running"):
+                    pass  # waiting for a person, or being read; never sent again on its own
+                elif not allowance.may_call(
+                    conn, self.settings, self.vision_name
+                ) or allowance.failing(conn, self.vision_name):
+                    with conn:
+                        conn.execute(
+                            "INSERT INTO intake_steps (scan_id, page_id, step, status, error)"
+                            " VALUES (?, ?, 'vision', 'queued', ?)",
+                            (
+                                scan_id,
+                                page_id,
+                                allowance.why_waiting(conn, self.settings, self.vision_name),
+                            ),
+                        )
+                else:
+                    model = getattr(self.vision, "model", None) or "vision"
+                    ok = False
+                    try:
+                        with run_step(
+                            conn, scan_id, Step.VISION, page_id=page_id, engine_version=model
+                        ):
+                            readings.append(
+                                ("vision", model, self._vision_reader().recognize(image)[0])
+                            )
+                        ok = True
+                    except Exception:
+                        pass  # recorded as failed; the page waits for a person to try again
+                    finally:
+                        with conn:
+                            allowance.record(conn, self.vision_name, "vision", True, page_id, ok)
 
         if not readings:
             return  # vision only, and the page is waiting for the vision model

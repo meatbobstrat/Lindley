@@ -305,6 +305,11 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 }
 .pg-hint span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pg-hint .lic { --lic-size: 16px; }
+/* A hint and, beside it, a menu of the other places Lindley thinks of, and "no" */
+.pg-hints { display: flex; gap: 4px; }
+.pg-hints .pg-hint { flex: 1; min-width: 0; }
+.pg-hints .pg-hint.more { flex: none; width: 28px; justify-content: center; padding: 0; }
+.pg-hint.more .ic { width: 14px; height: 14px; }
 .empty { padding: 48px 20px; text-align: center; color: var(--muted); }
 
 /* Reader */
@@ -481,6 +486,9 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .na-card > .dcard { padding: 0; border: 0; background: none; }
 .na-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .na-guess { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; }
+.na-cands { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 13.5px; }
+.na-cands li { display: flex; align-items: center; justify-content: space-between; gap: 4px 10px; flex-wrap: wrap; padding: 6px 8px; border-radius: 6px; background: var(--raise); }
+.na-cands small { display: block; color: var(--muted); }
 .na-to { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
 .conf.ai { color: var(--ink); background: var(--ai-soft); border-color: var(--ai); font-weight: 600; }
 .conf .lic, .t-flag .lic { --lic-size: 14px; }
@@ -867,7 +875,12 @@ function buildData() {
       id, file: `SCAN_${String(n).padStart(4, '0')}.tif`, kind, text,
       orient: o.orient || 0, rot: 0, conf,
       engine: o.engine || (kind === 'hand' || kind === 'note' ? 'vision' : 'tesseract'),
-      status: o.reading ? 'reading' : 'read', reviewed: false, scanned: day(n), hint: o.hint || null,
+      status: o.reading ? 'reading' : 'read', reviewed: false, scanned: day(n),
+      // Lindley's hints (GET /api/suggestions): hint, the document it most likely belongs in, with
+      // alts, the next likeliest (each {doc, conf, at, why}); asideWhy, why it could be set aside.
+      hint: o.hint || null, hintConf: o.hintConf || null, hintWhy: o.hintWhy || null, alts: o.alts || null, asideWhy: o.asideWhy || null,
+      // failed: the AI was asked to read it and didn't manage (it waits for you to try again).
+      failed: o.failed || null,
       // ink: what's really on the page, when the reading (text) got some of it wrong.
       // look: how a second scan with other settings differs (see finish).
       ink: o.ink || null, dpi: o.dpi || 300, look: o.look || null,
@@ -946,8 +959,10 @@ function buildData() {
   // scan was read on its own, so the texts differ a little.
   const misread = (t, k) => t.split(' ').map((w, i) => (i * 7 + k) % 13 === 3 && w.length > 3 ? w.replace(/[eo]/, m => m === 'e' ? 'c' : 'a') : w).join(' ');
   const again = TEXT.l1.map((t, i) => mk('hand', misread(t, i), { ink: t, dpi: 200, conf: [84, 81, 86][i], look: { grey: true, dark: .18, dx: 16, dy: -12, scale: .94 } }));
+  // The second time, its envelope went through too: a page only this copy of the letter has.
+  const envelope = mk('hand', 'Mr. John W. Branson\nc/o Xenia National Bank\nXenia, Ohio', { conf: 91 });
   doc('d6', {
-    name: 'Letter to John Branson, March 1892', conf: 88, pages: again,
+    name: 'Letter to John Branson, March 1892', conf: 88, pages: [...again, envelope],
     why: ['Same handwriting and ink on all three pages', 'Page 1 opens with "Dear John" and page 3 is signed by Mary A. Branson'],
     summary: docs.d1.summary,
   });
@@ -965,15 +980,21 @@ function buildData() {
     'Bellbrook, O.\nAug. 9th 1890\n\nDear Mother,\nThe harvest hands came Tuesday and we have the wheat in at last. Will says the yield is the best since we came here, and the oats are nearly ready.',
     'Mrs. Price sends her thanks for the jelly and says she will return the jars when John comes over for the mare.\n\nYour loving son\nJohn',
     'Recd. of J. W. Branson five dollars on account, for shoeing the bay team and mending the wagon tongue.\nA. Moore, Smith',
-  ].forEach((t, i) => inbox.push(mk('hand', smudge(t, i), { ink: t, engine: 'tesseract', conf: [41, 36, 44][i] })));
-  inbox.push(mk('hand', 'Jan. 13th\n\nCold again. J. hauled wood from the back lot. Wrote to Samuel Price that we cannot pay before the fall.', { hint: 'd3' }));
-  inbox.push(mk('hand', 'Jan. 14th\n\nWent to Xenia with J. to see Lawyer {Shoup} about the note. He says it is binding. Home by lamplight, very tired.', { hint: 'd3', orient: 270 }));
-  const p34 = mk('typed', 'John did not answer her. He was looking at the farm across the water, at the smoke going up straight from the Hale chimney, and thinking of the paper in his coat.\n\n- 34 -', { hint: 'd4' });
+  // The third was sent to the AI once already, and the call failed: it waits for you to try again.
+  ].forEach((t, i) => inbox.push(mk('hand', smudge(t, i), { ink: t, engine: 'tesseract', conf: [41, 36, 44][i], failed: i === 2 ? 'didn’t answer in time' : null })));
+  const diaryWhy = ['Short dated entry in the same hand as the diary', 'The dates run on from January 12, where the diary stops'];
+  inbox.push(mk('hand', 'Jan. 13th\n\nCold again. J. hauled wood from the back lot. Wrote to Samuel Price that we cannot pay before the fall.', { hint: 'd3', hintConf: 72, hintWhy: diaryWhy }));
+  inbox.push(mk('hand', 'Jan. 14th\n\nWent to Xenia with J. to see Lawyer {Shoup} about the note. He says it is binding. Home by lamplight, very tired.', { hint: 'd3', hintConf: 69, hintWhy: diaryWhy, orient: 270 }));
+  const p34 = mk('typed', 'John did not answer her. He was looking at the farm across the water, at the smoke going up straight from the Hale chimney, and thinking of the paper in his coat.\n\n- 34 -', { hint: 'd4', hintConf: 74, hintWhy: ['Same typewriter and margins', 'Typed page number 34 follows 33'] });
   inbox.push(p34);
   // An earlier draft of the same manuscript page: close, but reworded.
   const draft34 = mk('typed', 'John did not answer. He stood looking at the farm across the river, at the smoke going straight up from the Hale chimney, and he thought of the note folded in his coat.\n\n- 34 -', { conf: 90 });
   inbox.push(draft34);
-  inbox.push(mk('hand', 'P.S. Tell Mrs. Branson the dress goods she asked about will come in the same box as the harness.\nS. P.', { hint: 'd5' }));
+  // A postscript Lindley thinks goes with Samuel Price's letter, though it isn't sure which letter.
+  inbox.push(mk('hand', 'P.S. Tell Mrs. Branson the dress goods she asked about will come in the same box as the harness.\nS. P.', {
+    hint: 'd5', hintConf: 66, hintWhy: ['Signed “S. P.”, as Sam’l Price signs', 'Mentions the harness'],
+    alts: [{ doc: 'd1', conf: 31, at: 'end', why: ['A postscript can follow any letter', 'Mentions Mrs. Branson'] }],
+  }));
   PRINTS.forEach(t => inbox.push(mk('print', t)));
   const typed = TYPED.map(t => mk('typed', t));
   inbox.push(...typed);
@@ -991,6 +1012,8 @@ function buildData() {
   }
   // What Lindley's rules couldn't sort, and the AI hasn't been asked about (needs_ai in the app):
   // each with the rules' own guess, and, in this mockup, what the AI answers when it's asked.
+  const febPage = mk('hand', 'Feb. 2nd\n\nThaw at last. Mended the fence along the lane and wrote to Clara about the sale. J. home early with a cold.');
+  inbox.push(febPage);
   const letterName = ids => {
     const first = scans[ids[0]].text.split('\n'), last = scans[ids[ids.length - 1]].text.split('\n');
     const when = (first[1] || '').match(/^([A-Z][a-z]+)\.? \d+th (18\d\d)/);
@@ -1010,10 +1033,22 @@ function buildData() {
         { pages: [typed[0]], name: 'Manuscript: The River Road, chapter 5', type: 'Manuscript', conf: 84, why: ['The AI read it as a page of the novel: a chapter heading and a typed page number, 57'] },
         { pages: [typed[1]], name: 'Notes for chapter six', type: 'Notes', conf: 81, why: ['The AI read it as the author’s notes for the next chapter, not a page of it'] },
       ] },
+    // A "place" question: which of a few likely documents this page belongs in (lindley.assembler.place).
+    { id: 'n4', question: 'place', pages: [febPage], since: '2026-09-30 16:20', guess: [{ pages: [febPage], conf: 52 }],
+      why: ['A dated entry, but it doesn’t follow on from the page scanned before it'],
+      cands: [
+        { doc: 'd3', at: 'end', conf: 52, why: ['Short dated entry in the same hand as the diary', 'Three weeks after the diary’s last entry, so pages may be missing between them'] },
+        { doc: 'd1', at: 'end', conf: 27, why: ['Same hand as Mary’s letter'] },
+      ],
+      ai: [{ place: 'd3', why: ['The AI read it as a later entry in the same diary: the same hand and the same daily round'] }] },
   ];
+  // Lindley's hints, for a person to answer before any AI: these pages go together (group_pages).
+  const groups = [{ id: 'g1', pages: loose.slice(6, 9), name: letterName(loose.slice(6, 9)), conf: 64,
+    why: ['The first page opens with a date and greeting, and the last is signed', 'Same hand and paper', 'Scanned one after another'] }];
   for (let i = 0; i < 3; i++) inbox.push(mk('receipt', RECEIPT.replace('Apr 4', ['May 9', 'June 2', 'Oct 17'][i])));
-  for (let i = 0; i < 3; i++) inbox.push(mk('blank', ''));
-  inbox.push(mk('note', 'Box 4\ncheck the attic trunk for the rest of Mary\'s letters'));
+  // Scans Lindley thinks aren't part of any document (set_aside hints).
+  for (let i = 0; i < 3; i++) inbox.push(mk('blank', '', { asideWhy: 'It looks blank' }));
+  inbox.push(mk('note', 'Box 4\ncheck the attic trunk for the rest of Mary\'s letters', { asideWhy: 'A note, not part of a document' }));
   inbox.push(mk('print', 'THE XENIA NATIONAL BANK\n\nNo. 2217\n\nPay to the order of Thomas Hale\nOne Hundred and no/100 Dollars\n\nJ. W. Branson'));
 
   const aside = [mk('receipt', RECEIPT), mk('blank', ''), mk('note', 'Scanned twice?\nsee box 2')];
@@ -1030,7 +1065,7 @@ function buildData() {
     { id: 'u4', kind: 'same', copies: [deed1, deedAgain], score: 94, status: 'open' },
     { id: 'u5', kind: 'similar', copies: [p34, draft34], score: 58, status: 'open' },
   ];
-  return { scans, docs, inbox, aside, folders, dups, unsorted, rootFolders: ['f1', 'f2'], nextDoc: 7, nextFolder: 4 };
+  return { scans, docs, inbox, aside, folders, dups, unsorted, groups, rootFolders: ['f1', 'f2'], nextDoc: 7, nextFolder: 4 };
 }
 
 /* ================= Page images (canvas) ================= */
@@ -1191,8 +1226,9 @@ let AI_BELOW = 70;
 const aiConn = job => connById(SETUP, SETUP.use[job]);
 const aiAuto = job => aiConn(job)?.allow === 'auto';
 // "This scan needs an AI to look at it": Tesseract couldn't read it well enough, and an AI can.
-// With no AI to read it, it waits for your review instead.
-const needsAiRead = s => s.status === 'read' && !s.reviewed && s.engine === 'tesseract' && s.kind !== 'blank' && s.conf < AI_BELOW && !!aiConn('vision');
+// With no AI to read it, it waits for your review instead. As in the app (pipeline.follow_settings),
+// this follows the settings as they are now; a page whose AI call failed waits until you try again.
+const needsAiRead = s => s.status === 'read' && !s.reviewed && s.engine === 'tesseract' && s.kind !== 'blank' && (s.conf < AI_BELOW || !!s.failed) && !!aiConn('vision');
 const needsReview = s => s.status === 'read' && !s.reviewed && s.conf < REVIEW_BELOW && !needsAiRead(s);
 const docReview = d => d.status === 'progress' ? d.pages.filter(id => needsReview(D.scans[id])).length : 0;
 function reviewQueue(docId) {
@@ -1211,6 +1247,9 @@ const sortQueue = () => aiConn('assemble') ? D.unsorted.filter(x => x.pages.ever
 const sortItem = id => sortQueue().find(x => x.id === id);
 const sortItemOf = pid => sortQueue().find(x => x.pages.includes(pid));
 const sortPages = () => sortQueue().reduce((n, x) => n + x.pages.length, 0);
+// A "Do these go together?" hint whose scans are all still in the Inbox.
+const groupOf = id => D.groups.find(g => g.pages.includes(id) && g.pages.every(p => D.inbox.includes(p)));
+const hinted = id => { const s = D.scans[id]; return !!(s.hint && D.docs[s.hint]) || !!groupOf(id) || !!s.asideWhy; };
 const needsAiCount = () => aiReadQueue().length + sortPages();
 function curScan() {
   if (U.nav.t === 'scan') return U.nav.id;
@@ -1253,7 +1292,7 @@ function sortedInbox() {
   const a = [...D.inbox];
   if (U.sort === 'new') a.sort((x, y) => D.scans[y].scanned.localeCompare(D.scans[x].scanned));
   if (U.sort === 'old') a.sort((x, y) => D.scans[x].scanned.localeCompare(D.scans[y].scanned));
-  if (U.sort === 'match') a.sort((x, y) => (!!D.scans[y].hint) - (!!D.scans[x].hint));
+  if (U.sort === 'match') a.sort((x, y) => hinted(y) - hinted(x));
   return a;
 }
 function locate(id) {
@@ -1306,8 +1345,15 @@ function dupEntries() {
       byDocs[key].sets.push(x);
     } else out.push({ key: x.id, type: 'set', sets: [x] });
   });
+  // A document pair's extra pages: ones only one of the two documents has (`extra` in the app).
+  // They stay where they are whichever document is kept.
+  out.filter(e => e.type === 'doc').forEach(e => {
+    const matched = new Set(e.sets.flatMap(x => x.copies));
+    e.extra = Object.fromEntries(e.docs.map(d => [d, D.docs[d].pages.filter(p => !matched.has(p))]));
+  });
   return out;
 }
+const extraNote = e => e.docs.filter(d => e.extra[d].length).map(d => `Copy ${e.docs.indexOf(d) + 1} also has ${plural(e.extra[d].length, 'page')} the other doesn’t (page ${e.extra[d].map(p => D.docs[d].pages.indexOf(p) + 1).join(', ')}). ${e.extra[d].length === 1 ? 'It stays' : 'They stay'} where ${e.extra[d].length === 1 ? 'it is' : 'they are'}, whichever you keep.`).join(' ');
 const dupEntry = key => dupEntries().find(e => e.key === key);
 function docHome(d) {
   const f = folderOf(d.id);
@@ -1319,19 +1365,28 @@ function copyWhere(id) {
   if (l.where === 'doc') return `In “${l.doc.name}”, page ${l.doc.pages.indexOf(id) + 1}`;
   return l.where === 'aside' ? 'In Set aside' : 'In the Inbox';
 }
+const scanSize = s => PX[s.dpi].split(' × ').map(Number);
+const pixels = s => { const [w, h] = scanSize(s); return w * h; };
+// Imported first, then by id, as the app breaks the last tie.
+const importOrder = (id, ids) => [...ids].sort((a, b) => D.scans[a].scanned.localeCompare(D.scans[b].scanned) || a.localeCompare(b)).indexOf(id);
 function suggestKeep(ids) {
-  // As in the app: text you checked, the clearer reading, the sharper scan, colour, then place.
+  // As in the app (duplicates.resolve.suggest_keep): text you checked, the clearer reading (in
+  // steps of 5%), the bigger scan (in whole megapixels), colour, being in a document, then the
+  // copy imported first. The kept copy takes the best place any copy has either way.
   const s = id => D.scans[id];
-  const rank = id => [s(id).reviewed ? 1 : 0, Math.round(s(id).conf / 5), s(id).dpi, s(id).look?.grey ? 0 : 1, locate(id)?.where === 'doc' ? 1 : 0];
+  const rank = id => [s(id).reviewed ? 1 : 0, Math.round(s(id).conf / 5), Math.floor(pixels(s(id)) / 1e6), s(id).look?.grey ? 0 : 1, locate(id)?.where === 'doc' ? 1 : 0, -importOrder(id, ids)];
   const best = [...ids].sort((a, b) => { const ra = rank(a), rb = rank(b); const i = ra.findIndex((v, k) => v !== rb[k]); return i < 0 ? 0 : rb[i] - ra[i]; })[0];
-  const rest = ids.filter(i => i !== best), b = s(best), why = [];
-  const conf = Math.max(...rest.map(i => s(i).conf)), dpi = Math.max(...rest.map(i => s(i).dpi));
+  const rest = ids.filter(i => i !== best), b = s(best), lb = locate(best);
+  let why = [];
+  if (lb?.where === 'doc' && rest.every(i => locate(i)?.where !== 'doc')) why.push(`It’s already in “${lb.doc.name}”`);
   if (b.reviewed && !rest.some(i => s(i).reviewed)) why.push('You’ve checked its text');
+  const conf = Math.max(...rest.map(i => s(i).conf));
   if (b.conf >= conf + 3) why.push(`Read with ${b.conf}% confidence, against ${conf}%`);
-  if (b.dpi > dpi) why.push(`Sharper scan: ${b.dpi} dpi, against ${dpi}`);
+  const runner = s([...rest].sort((x, y) => pixels(s(y)) - pixels(s(x)))[0]);
+  if (pixels(b) >= pixels(runner) * 1.1) why.push(b.dpi !== runner.dpi ? `Sharper scan: ${b.dpi} dpi, against ${runner.dpi}` : `Bigger scan: ${PX[b.dpi]}, against ${PX[runner.dpi]}`);
   if (!b.look?.grey && rest.every(i => s(i).look?.grey)) why.push('Scanned in colour');
-  const lb = locate(best);
-  if (!why.length) why.push(lb?.where === 'doc' && rest.every(i => locate(i)?.where !== 'doc') ? `It’s already in “${lb.doc.name}”` : 'The copies look equally good');
+  if (!why.length) why.push(importOrder(best, ids) === 0 ? 'Imported first' : 'The copies look equally good');
+  why = why.slice(0, 3);
   const home = rest.map(locate).find(l => l?.where === 'doc');
   if (lb?.where !== 'doc' && home) why.push(`Keeping it puts it in its place in “${home.doc.name}”`);
   return { best, why };
@@ -1354,10 +1409,12 @@ function diffMarks(text, other) {
   return { html, n };
 }
 function placeKept(keep, others) {
-  // The kept scan takes the best place any copy had (a document position, else the Inbox); the
-  // others are set aside. Returns the documents that lost a page.
+  // The kept scan takes the best place any copy had (a document position, else the Inbox),
+  // preferring a document you've named or worked on; the others are set aside. Returns the
+  // documents that lost a page.
   const lk = locate(keep), touched = [];
-  const home = lk?.where === 'doc' ? null : others.find(o => locate(o)?.where === 'doc');
+  const inDoc = others.filter(o => locate(o)?.where === 'doc');
+  const home = lk?.where === 'doc' ? null : inDoc.find(o => !locate(o).doc.temp) || inDoc[0];
   if (home) { detach(keep); const lh = locate(home); lh.arr.splice(lh.arr.indexOf(home), 1, keep); }
   else if (lk?.where === 'aside' && others.some(o => locate(o)?.where === 'inbox')) { detach(keep); D.inbox.unshift(keep); }
   others.forEach(o => { const l = detach(o); if (l?.doc) touched.push(l.doc); D.aside.unshift(o); D.scans[o].dupOf = keep; });
@@ -1392,8 +1449,9 @@ function keepDoc(key, docId) {
       x.status = 'kept'; x.kept = keep; n += x.copies.length - 1;
     });
     const removed = dropEmptyDocs(touched);
+    const other = e.docs.find(d => d !== docId), left = D.docs[other]?.pages.length;
     U.nav = { t: 'dups', id: next }; U.cur = 0;
-    return `Set aside the other document’s ${plural(n, 'page')}. Nothing was deleted.${removed.length ? ' The other document had no pages left, so it was removed.' : ''}`;
+    return `Set aside the other document’s ${plural(n, 'page')}. Nothing was deleted.${removed.length ? ' The other document had no pages left, so it was removed.' : left ? ` It keeps the ${plural(left, 'page')} that had no copy.` : ''}`;
   });
 }
 function notDup(key) {
@@ -1427,22 +1485,33 @@ function aiRead(ids) {
   ids.forEach(id => {
     const s = D.scans[id];
     s.text = s.ink || s.text.replace(/[{}]/g, '');
-    s.ink = null; s.engine = 'vision'; s.conf = Math.max(s.conf, 84 + hash(id) % 11);
+    s.ink = null; s.engine = 'vision'; s.conf = Math.max(s.conf, 84 + hash(id) % 11); s.failed = null;
   });
 }
 function aiSort(items) {
-  // What the sorting AI answers: documents, made with italic names, as Lindley's own are.
-  let made = 0;
+  // What the sorting AI answers: documents, made with italic names, as Lindley's own are; or,
+  // for a "place" question, which of the likely documents the pages go in.
+  const out = { made: 0, placed: [] };
   items.forEach(x => {
     x.ai.forEach(a => {
+      if (a.place && D.docs[a.place]) {
+        x.pages.forEach(p => { detach(p); D.docs[a.place].pages.push(p); D.scans[p].hint = null; });
+        out.placed.push(D.docs[a.place].name);
+        return;
+      }
       const id = 'd' + D.nextDoc++;
       a.pages.forEach(p => { detach(p); D.scans[p].hint = null; });
       D.docs[id] = { id, name: a.name, temp: true, status: 'progress', conf: a.conf, pages: [...a.pages], type: a.type || '', date: '', people: '', place: '', tags: [], notes: '', ready: false, dismissed: [], note: null, why: a.why, suggest: {}, summary: '' };
-      made++;
+      out.made++;
     });
     D.unsorted = D.unsorted.filter(y => y !== x);
   });
-  return made;
+  return out;
+}
+function sortedWords(items, r) {
+  const n = items.reduce((k, x) => k + (x.question === 'place' ? 0 : x.pages.length), 0);
+  const p = items.reduce((k, x) => k + (x.question === 'place' ? x.pages.length : 0), 0);
+  return [n && `sorted ${plural(n, 'page')} into ${plural(r.made, 'document')}`, p && `placed ${plural(p, 'page')} in “${shortName(r.placed[0])}”${r.placed.length > 1 ? ' and others' : ''}`].filter(Boolean).join(' and ');
 }
 function sendToAi(read, items, label) {
   if (read.length && !aiConn('vision') || items.length && !aiConn('assemble')) { toast('No AI is set up for that. Choose one in Settings › AI and privacy.'); return; }
@@ -1450,7 +1519,7 @@ function sendToAi(read, items, label) {
   commit(label, () => {
     const bits = [];
     if (read.length) { aiRead(read); bits.push(`read ${plural(read.length, 'page')}`); }
-    if (items.length) { const n = aiSort(items); bits.push(`sorted ${plural(items.reduce((k, x) => k + x.pages.length, 0), 'page')} into ${plural(n, 'document')}`); }
+    if (items.length) bits.push(sortedWords(items, aiSort(items)));
     if (U.nav.t === 'needsai' && U.nav.id && !sortItem(U.nav.id)) U.nav = { t: 'needsai', id: sortQueue()[0]?.id };
     U.sel.clear(); clampCur();
     return `The AI ${bits.join(' and ')}. Check its work: the documents are under In progress.`;
@@ -1460,9 +1529,20 @@ function sendToAi(read, items, label) {
 function aiOnItsOwn() {
   const out = [];
   const take = (job, list) => list.slice(0, aiConn(job)?.limit ?? list.length);
-  if (aiAuto('vision')) { const q = take('vision', aiReadQueue()); if (q.length) { aiRead(q); out.push(`read ${plural(q.length, 'hard page')}`); } }
-  if (aiAuto('assemble')) { const q = take('assemble', sortQueue()); if (q.length) { const n = aiSort(q); out.push(`sorted ${plural(q.reduce((k, x) => k + x.pages.length, 0), 'page')} into ${plural(n, 'document')}`); } }
+  // A page whose call failed is never sent again on its own: it waits for you.
+  if (aiAuto('vision')) { const q = take('vision', aiReadQueue().filter(id => !D.scans[id].failed)); if (q.length) { aiRead(q); out.push(`read ${plural(q.length, 'hard page')}`); } }
+  if (aiAuto('assemble')) { const q = take('assemble', sortQueue()); if (q.length) out.push(sortedWords(q, aiSort(q))); }
   return out;
+}
+// Why work waits for you though the AI may run on its own (allowance.why_waiting): its calls
+// keep failing, so Lindley leaves it alone for a while, or this month's or today's limit is used up.
+function autoWaitWhy(job, read = []) {
+  const c = aiConn(job), who = esc(aiWho(job)), u = usage(c);
+  const failed = read.filter(id => D.scans[id].failed);
+  if (job === 'vision' && aiReadQueue().filter(id => D.scans[id].failed).length >= 3) return `The last 3 calls to ${who} failed, so Lindley tries it on its own again in 15 minutes. These wait for you meanwhile.`;
+  if (job === 'vision' && failed.length === read.length) return `${who} was asked and didn’t manage, so ${read.length === 1 ? 'it waits' : 'they wait'} for you to try again.`;
+  if (c.monthly && u.month >= c.monthly) return `This month’s ${c.monthly.toLocaleString()} calls on its own to ${who} are used up, so these wait for you.`;
+  return `Today’s limit for ${who} is used up, so these wait for you.`;
 }
 
 /* ================= History / undo ================= */
@@ -1509,7 +1589,7 @@ function moveTo(ids, docId, opts = {}) {
   commit(label, () => {
     if (!target) {
       const id = 'd' + D.nextDoc++;
-      D.docs[id] = { id, name: opts.name || `Untitled document ${D.nextDoc - 6}`, temp: !opts.name, status: 'progress', conf: 50, pages: [], type: '', date: '', people: '', place: '', tags: [], notes: '', ready: false, dismissed: [], note: null, why: ['You grouped these pages yourself'], suggest: {}, summary: 'You started this document by hand. Lindley will suggest a name and date once it has read the pages together.' };
+      D.docs[id] = { id, name: opts.name || `Untitled document ${D.nextDoc - 6}`, temp: !opts.name || !!opts.temp, status: 'progress', conf: 50, pages: [], type: '', date: '', people: '', place: '', tags: [], notes: '', ready: false, dismissed: [], note: null, why: ['You grouped these pages yourself'], suggest: {}, summary: 'You started this document by hand. Lindley will suggest a name and date once it has read the pages together.' };
       target = D.docs[id];
       if (opts.folder) D.folders[opts.folder].docs.push(id);
     }
@@ -1678,6 +1758,7 @@ function confChip(s) {
   const how = s.engine === 'vision' ? 'AI' : 'OCR';
   const long = `${s.engine === 'vision' ? 'Read by the AI vision model' : 'Read by Tesseract OCR'}, ${s.conf}% confident`;
   if (s.reviewed) return `<span class="conf mine" title="${long}. You checked the text.">${icon('check')}Checked</span>`;
+  if (needsAiRead(s) && s.failed) return `<span class="conf ai" data-nav="needsai" title="The AI was asked to read this scan and ${esc(s.failed)}. ${long}. Click to try again.">${icon('warn')}AI failed · ${how} ${s.conf}%</span>`;
   if (needsAiRead(s)) return `<span class="conf ai" data-nav="needsai" title="This scan needs an AI to look at it. ${long}. Click to see what's waiting for the AI.">${lic()}Needs AI · ${how} ${s.conf}%</span>`;
   if (needsReview(s)) return `<span class="conf flag" data-review="${s.id}" title="${long}. Click to review this page.">${icon('flag')}Review · ${how} ${s.conf}%</span>`;
   return `<span class="conf" title="${long}">${how} ${s.conf}%</span>`;
@@ -1696,9 +1777,50 @@ function card(id, i, o) {
       <span class="pg-f"><span class="pg-lbl ${o.numbered ? '' : 'mono'}">${label}</span>${confChip(s)}</span>
       ${s.dupOf && locate(id)?.where === 'aside' ? `<span class="pg-dup" title="A duplicate you set aside">${icon('dup')}<span>Copy of <span class="mono">${D.scans[s.dupOf].file}</span></span></span>` : ''}
     </button>
-    ${hintDoc ? `<button class="pg-hint" data-place="${id}:${hintDoc.id}" title="Lindley thinks this belongs in “${esc(hintDoc.name)}”">${lic()}<span>Add to “${esc(shortName(hintDoc.name))}”</span></button>`
-      : o.hints && sortItemOf(id) ? `<button class="pg-hint" data-nav="needsai:${sortItemOf(id).id}" title="This scan needs an AI to look at it: Lindley couldn't tell which document it belongs in">${lic()}<span>Needs AI to sort</span></button>` : ''}
+    ${o.hints ? cardHint(s, hintDoc) : ''}
   </div>`;
+}
+// Lindley's hint under an Inbox scan (GET /api/suggestions): the document it most likely goes in
+// (add_to_document), the scans it goes with (group_pages), or that it isn't part of any document
+// (set_aside). The button beside it lists the other likely places, and lets you say no, so it's
+// never suggested again. Scans the rules couldn't place at all wait for an AI instead.
+function cardHint(s, doc) {
+  const more = `<button class="pg-hint more" data-hintmenu="${s.id}" aria-label="More choices for this suggestion" title="Other places Lindley thinks of, or say no">${icon('more')}</button>`;
+  const wrap = b => `<div class="pg-hints">${b}${more}</div>`;
+  const why = (n, w) => `${n}% sure${w?.length ? `: ${esc(w.join('. '))}` : ''}`;
+  if (doc) return wrap(`<button class="pg-hint" data-place="${s.id}:${doc.id}" title="Lindley thinks this belongs in “${esc(doc.name)}”, ${why(s.hintConf, s.hintWhy)}">${lic()}<span>Add to “${esc(shortName(doc.name))}”</span></button>`);
+  const g = groupOf(s.id);
+  if (g) return wrap(`<button class="pg-hint" data-act="groupHint" data-id="${g.id}" title="Lindley thinks these ${g.pages.length} scans are one document, “${esc(g.name)}”, ${why(g.conf, g.why)}">${lic()}<span>Goes with ${plural(g.pages.length - 1, 'other scan')}</span></button>`);
+  if (s.asideWhy) return wrap(`<button class="pg-hint" data-act="asideHint" data-id="${s.id}" title="${esc(s.asideWhy)}, so Lindley thinks it could be set aside">${lic()}<span>Set aside? ${esc(s.asideWhy)}</span></button>`);
+  const x = sortItemOf(s.id);
+  if (x) return `<button class="pg-hint" data-nav="needsai:${x.id}" title="This scan needs an AI to look at it: Lindley couldn't tell which document it belongs in">${lic()}<span>Needs AI to sort</span></button>`;
+  return '';
+}
+function hintMenuItems(id) {
+  const s = D.scans[id], g = groupOf(id), items = [];
+  if (s.hint && D.docs[s.hint]) {
+    items.push({ head: 'Where Lindley thinks it goes' });
+    [{ doc: s.hint, conf: s.hintConf }, ...(s.alts || [])].filter(c => D.docs[c.doc]).forEach(c => items.push({ label: `Add to “${shortName(D.docs[c.doc].name)}”, ${c.conf}% sure`, icon: 'doc', fn: () => moveTo([id], c.doc) }));
+    items.push('-', { label: 'Not in any of these', icon: 'close', fn: () => dismissHint(id) });
+  } else if (g) {
+    items.push({ head: `Lindley thinks these ${g.pages.length} scans go together` }, { label: 'Group them…', icon: 'newdoc', fn: () => newDocDialog(g.pages, g.name) },
+      { label: 'Show them', icon: 'eye', fn: () => showScans(g.pages) }, '-', { label: 'They don’t go together', icon: 'close', fn: () => dismissHint(id) });
+  } else if (s.asideWhy) {
+    items.push({ head: s.asideWhy }, { label: 'Set it aside', icon: 'aside', fn: () => setAside([id]) }, '-', { label: 'Keep it in the Inbox', icon: 'close', fn: () => dismissHint(id) });
+  }
+  return items;
+}
+function dismissHint(id) {
+  // Dismissing a hint means Lindley never makes it again (POST /api/suggestions/{id}/dismiss).
+  const s = D.scans[id], g = groupOf(id);
+  commit('Okay. Lindley won’t suggest that again.', () => {
+    if (s.hint) { s.hint = null; s.alts = null; } else if (g) D.groups = D.groups.filter(x => x !== g); else s.asideWhy = null;
+  });
+}
+function showScans(ids) {
+  go({ t: 'inbox' }, { sort: 'match' });
+  ids.forEach(x => U.sel.add(x));
+  render();
 }
 function grid(ids, o = {}) {
   if (!ids.length) return `<div class="empty">${o.empty || 'Nothing here.'}</div>`;
@@ -1759,10 +1881,11 @@ function dock() {
       + `<span class="dock-prog"><span>${k + 1} of ${plural(es.length, 'duplicate')}</span><b style="--v:${Math.round((k + 1) / es.length * 100)}%" aria-hidden="true"></b></span>`
       + tbBtn('chev', 'Next', 'dupNext', k >= es.length - 1, 'next');
   } else if (t === 'needsai' && U.nav.id && sortItem(U.nav.id)) {
-    const q = sortQueue(), k = q.findIndex(x => x.id === U.nav.id);
+    const q = sortQueue(), k = q.findIndex(x => x.id === U.nav.id), place = q[k].question === 'place';
     name = 'Pages to sort';
     inner = tbBtn('prev', 'Previous', 'aiPrev', k === 0) + SEP
-      + tbBtn('lindley', 'Ask the AI to sort these', 'aiItem', false, 'ai') + tbBtn('newdoc', 'Group them myself…', 'aiMine') + SEP
+      + (place ? tbBtn('lindley', 'Ask the AI which', 'aiItem', false, 'ai') + tbBtn('newdoc', 'Start a new document…', 'aiMine')
+        : tbBtn('lindley', 'Ask the AI to sort these', 'aiItem', false, 'ai') + tbBtn('newdoc', 'Group them myself…', 'aiMine')) + SEP
       + `<span class="dock-prog"><span>${k + 1} of ${q.length} to sort</span><b style="--v:${Math.round((k + 1) / q.length * 100)}%" aria-hidden="true"></b></span>`
       + tbBtn('chev', 'Next', 'aiNext', k >= q.length - 1, 'next');
   } else if (t === 'needsai') {
@@ -1834,20 +1957,25 @@ function aiBanner(read, items, what, act, detail) {
   if (read.length) parts.push(`${plural(read.length, 'page')} ${read.length === 1 ? 'was' : 'were'} too hard to read`);
   if (items.length) parts.push(`${plural(n - read.length, 'page')} couldn’t be sorted into documents`);
   const who = [...new Set([read.length && aiWho('vision'), items.length && aiWho('assemble')].filter(Boolean))].join(' and ');
-  // Left over with an AI that runs on its own: its daily limit is used up, so they wait for you.
-  const auto = (read.length && aiAuto('vision')) || (items.length && aiAuto('assemble'));
-  const wait = auto ? `Today’s limit for ${esc(who)} is used up, so these wait for you.` : `Lindley asks you first, so nothing is sent to ${esc(who)} until you say so.`;
+  // Left over with an AI that runs on its own: a limit is used up, or its calls keep failing.
+  const autoJob = read.length && aiAuto('vision') ? 'vision' : items.length && aiAuto('assemble') ? 'assemble' : null;
+  const wait = autoJob ? autoWaitWhy(autoJob, read) :`Lindley asks you first, so nothing is sent to ${esc(who)} until you say so.`;
   return `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>${what || `${plural(n, 'scan')} ${n === 1 ? 'needs' : 'need'} an AI to look at ${n === 1 ? 'it' : 'them'}.`}</b> ${detail || parts.join(', and ') + '.'} ${wait}</div><span class="b-acts"><button class="btn ai" data-act="${act}">${lic()} Ask the AI</button><button class="btn ghost" data-nav="needsai">See what’s waiting</button></span></div></div>`;
 }
 function viewInbox() {
-  const hints = D.inbox.filter(id => D.scans[id].hint).length;
+  const hints = D.inbox.filter(id => D.scans[id].hint && D.docs[D.scans[id].hint]).length;
+  const gs = D.groups.filter(g => g.pages.every(p => D.inbox.includes(p)));
+  const asides = D.inbox.filter(id => D.scans[id].asideWhy);
+  const groupBanners = gs.map(g => `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Do these ${plural(g.pages.length, 'scan')} go together?</b> Lindley thinks they’re one document, <i>${esc(g.name)}</i>, ${g.conf}% sure. ${esc(g.why.join('. '))}.</div><span class="b-acts"><button class="btn" data-act="groupHint" data-id="${g.id}">Group them…</button><button class="btn ghost" data-act="showGroup" data-id="${g.id}">Show them</button><button class="btn ghost" data-act="noGroup" data-id="${g.id}">No</button></span></div></div>`).join('');
+  const asideBanner = asides.length ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Lindley thinks ${plural(asides.length, 'scan')} ${asides.length === 1 ? 'isn’t' : 'aren’t'} part of any document.</b> ${esc([...new Set(asides.map(id => D.scans[id].asideWhy))].join('; '))}.</div><span class="b-acts"><button class="btn" data-act="asideAll">Set ${asides.length === 1 ? 'it' : 'them'} aside</button><button class="btn ghost" data-act="showAside">Show ${asides.length === 1 ? 'it' : 'them'}</button></span></div></div>` : '';
   return `
   <div class="head">
     <div class="crumbs">Inbox</div>
     <div class="title-row"><h1 class="title">${plural(D.inbox.length, 'scan')} waiting</h1></div>
     <p class="sub">New scans land here. Lindley reads each one and groups pages into documents, but you don't have to wait: select scans and start a document yourself, or double-click one to read and correct it.</p>
     ${aiBanner(aiReadQueue().filter(id => D.inbox.includes(id)), sortQueue(), '', 'aiInbox')}
-    ${hints ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Lindley found ${plural(hints, 'scan')} that probably belong to documents in progress.</b> Look for the suggestion under each page.</div><span class="b-acts"><button class="btn" data-act="sortMatch">Show them first</button></span></div></div>` : ''}
+    ${hints ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Lindley found ${plural(hints, 'scan')} that probably belong to documents in progress.</b> Look for the suggestion under each page. The button beside it has the other likely places.</div><span class="b-acts"><button class="btn" data-act="sortMatch">Show them first</button></span></div></div>` : ''}
+    ${groupBanners}${asideBanner}
     <div class="viewbar"><label>Sort <select id="sort"><option value="new" ${U.sort === 'new' ? 'selected' : ''}>Newest scans first</option><option value="old" ${U.sort === 'old' ? 'selected' : ''}>Oldest scans first</option><option value="match" ${U.sort === 'match' ? 'selected' : ''}>Suggested matches first</option></select></label>${sizeCtl()}</div>
   </div>
   <div class="scroll">${grid(sortedInbox(), { hints: true, empty: 'The Inbox is empty. Every scan has a home.' })}</div>`;
@@ -1937,7 +2065,7 @@ function txPanel(s, o) {
   const body = s.reviewed ? esc(s.text.replace(/[{}]/g, '')) : esc(s.text).replace(/\{([^}]*)\}/g, '<mark title="Lindley wasn\'t sure of this word">$1</mark>');
   const kind = { hand: 'Handwriting', print: 'Printed text', typed: 'Typewritten text' }[s.kind] || 'Scan';
   const state = needsAiRead(s)
-    ? `<div class="rv-state flag">${lic()}<div><b>This scan needs an AI to look at it.</b> Tesseract read it with only ${s.conf}% confidence, so this text is a rough guess. Once the AI has read it, check its text here.</div></div>`
+    ? `<div class="rv-state flag">${lic()}<div><b>This scan needs an AI to look at it.</b> Tesseract read it with only ${s.conf}% confidence, so this text is a rough guess.${s.failed ? ` The AI was asked to read it and ${esc(aiWho('vision'))} ${esc(s.failed)}, so it waits for you to try again.` : ''} Once the AI has read it, check its text here. If you check it yourself first, the AI isn’t needed.</div></div>`
     : flag
     ? `<div class="rv-state flag">${icon('flag')}<div><b>Needs your review.</b> Lindley read this page with ${s.conf}% confidence${unsure ? ` and wasn't sure of ${plural(unsure, 'word')}` : ''}. Compare the text with the scan and fix anything that's wrong.</div></div>`
     : s.reviewed ? `<div class="rv-state mine">${icon('check')}<div>You checked this page. Your text is used for search and chat.</div></div>` : '';
@@ -2023,13 +2151,18 @@ function viewNeedsAiList() {
   const readCard = x => {
     const confs = x.ids.map(id => D.scans[id].conf), lo = Math.min(...confs), hi = Math.max(...confs);
     const open = x.d ? `doc:${x.d.id}` : 'inbox';
-    return `<div class="na-card"><button class="dcard" data-nav="${open}">${thumbs(x.ids)}<span><b style="${x.d?.temp ? 'font-style:italic' : ''}">${esc(x.d ? x.d.name : 'Inbox')}</b><small>${icon('eye')} ${plural(x.ids.length, 'page')} Tesseract read with ${lo === hi ? lo : `${lo}–${hi}`}% confidence</small><small>${esc(x.d ? docHome(x.d) : 'Scans not in a document yet')}</small></span></button>
-      <div class="na-acts"><button class="btn ai" data-act="aiReadGroup" data-id="${x.d ? x.d.id : 'inbox'}">${lic()} Ask the AI to read ${x.ids.length === 1 ? 'it' : 'them'}</button></div></div>`;
+    // Pages whose call failed are listed with what went wrong (`failed` and `why` in the app).
+    const failed = x.ids.filter(id => D.scans[id].failed);
+    const fail = failed.length ? `<small>${icon('warn')} ${esc(aiWho('vision'))} ${esc(D.scans[failed[0]].failed)} on ${plural(failed.length, 'page')}. Lindley won’t try again on its own.</small>` : '';
+    return `<div class="na-card"><button class="dcard" data-nav="${open}">${thumbs(x.ids)}<span><b style="${x.d?.temp ? 'font-style:italic' : ''}">${esc(x.d ? x.d.name : 'Inbox')}</b><small>${icon('eye')} ${plural(x.ids.length, 'page')} Tesseract read with ${lo === hi ? lo : `${lo}–${hi}`}% confidence</small>${fail}<small>${esc(x.d ? docHome(x.d) : 'Scans not in a document yet')}</small></span></button>
+      <div class="na-acts"><button class="btn ai" data-act="aiReadGroup" data-id="${x.d ? x.d.id : 'inbox'}">${lic()} ${failed.length === x.ids.length ? 'Try again' : `Ask the AI to read ${x.ids.length === 1 ? 'it' : 'them'}`}</button></div></div>`;
   };
   const sortCard = x => {
-    const docs = x.guess.length;
-    return `<div class="na-card"><button class="dcard" data-nav="needsai:${x.id}">${thumbs(x.pages)}<span><b>${plural(x.pages.length, 'page')}: maybe ${plural(docs, 'document')}</b><small>${lic()} Lindley is ${Math.max(...x.guess.map(g => g.conf))}% sure at best</small><small>In the Inbox since ${esc(x.since)}</small></span></button>
-      <div class="na-acts"><button class="btn ghost" data-nav="needsai:${x.id}">Look at them</button><button class="btn ai" data-act="aiItem" data-id="${x.id}">${lic()} Ask the AI to sort them</button></div></div>`;
+    const place = x.question === 'place', them = x.pages.length === 1 ? 'it' : 'them';
+    const title = place ? `${plural(x.pages.length, 'page')}: which document?` : `${plural(x.pages.length, 'page')}: maybe ${plural(x.guess.length, 'document')}`;
+    const sure = place ? Math.max(...x.cands.map(c => c.conf)) : Math.max(...x.guess.map(g => g.conf));
+    return `<div class="na-card"><button class="dcard" data-nav="needsai:${x.id}">${thumbs(x.pages)}<span><b>${title}</b><small>${lic()} Lindley is ${sure}% sure at best${place ? `, of ${plural(x.cands.length, 'likely document')}` : ''}</small><small>In the Inbox since ${esc(x.since)}</small></span></button>
+      <div class="na-acts"><button class="btn ghost" data-nav="needsai:${x.id}">Look at ${them}</button><button class="btn ai" data-act="aiItem" data-id="${x.id}">${lic()} ${place ? 'Ask the AI which' : 'Ask the AI to sort them'}</button></div></div>`;
   };
   return `
   <div class="head">
@@ -2040,18 +2173,24 @@ function viewNeedsAiList() {
   </div>
   <div class="scroll">${n ? `<div class="na-list">
     ${groups.length ? `<section><h2>${icon('eye')}Too hard to read</h2><p class="sub">Tesseract read these with less than ${AI_BELOW}% confidence, usually handwriting or a faint copy. Its rough reading is used until the AI reads them properly.</p>${aiConnLine('vision', 'reading hard pages')}<div class="docs">${groups.map(readCard).join('')}</div></section>` : ''}
-    ${q.length ? `<section><h2>${lic()}Couldn’t be sorted</h2><p class="sub">Lindley’s rules couldn’t tell where one document ends and the next begins, or which document these belong in. The AI reads them together and says.</p>${aiConnLine('assemble', 'sorting pages')}<div class="docs">${q.map(sortCard).join('')}</div></section>` : ''}
+    ${q.length ? `<section><h2>${lic()}Couldn’t be sorted</h2><p class="sub">Lindley’s rules couldn’t tell where one document ends and the next begins, or which of a few likely documents these belong in. The AI reads them together and says.</p>${aiConnLine('assemble', 'sorting pages')}<div class="docs">${q.map(sortCard).join('')}</div></section>` : ''}
   </div>` : `<div class="rv-done">${icon('checkc')}<h2>Nothing is waiting for an AI</h2><p>${aiAuto('vision') || aiAuto('assemble') ? 'Your AI runs on its own, so Lindley sends it scans as they arrive.' : 'Every scan has been read and sorted, by Lindley, the AI or you.'}</p><button class="btn primary" data-nav="inbox">Go to the Inbox</button></div>`}</div>`;
 }
 function viewNeedsAiItem() {
   const x = sortItem(U.nav.id);
-  const guess = x.guess.map(g => `<li>${plural(g.pages.length, 'page')}: <i>${esc(guessName(g.pages))}</i>, ${g.conf}% sure</li>`).join('');
+  const place = x.question === 'place', one = x.pages.length === 1;
+  // A "place" question lists the likely documents ("candidates"), each with its reasons.
+  const guess = place
+    ? `<b>Where Lindley thinks ${one ? 'it goes' : 'they go'}, not sure enough to act on:</b><ul class="na-cands">${x.cands.filter(c => D.docs[c.doc]).map(c => `<li><span><b>${esc(D.docs[c.doc].name)}</b>, at the ${c.at}, ${c.conf}% sure<small>${esc(c.why.join('. '))}</small></span>${one ? `<button class="btn" data-place="${x.pages[0]}:${c.doc}">Add it here</button>` : ''}</li>`).join('')}</ul>`
+    : `<b>Lindley’s guess, not sure enough to act on:</b><ul class="na-guess">${x.guess.map(g => `<li>${plural(g.pages.length, 'page')}: <i>${esc(guessName(g.pages))}</i>, ${g.conf}% sure</li>`).join('')}</ul>`;
   return `
   <div class="head">
-    <div class="crumbs"><button class="crumb" data-nav="needsai">Needs AI</button> › ${plural(x.pages.length, 'page')} to sort</div>
-    <div class="title-row"><h1 class="title">These scans need an AI to look at them</h1></div>
-    <p class="sub">Lindley’s rules couldn’t tell whether these pages are one document, or several. Ask the AI to read them together, or group them yourself. Either way you can change it after.</p>
-    <div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Lindley’s guess, not sure enough to act on:</b><ul class="na-guess">${guess}</ul><span>${esc(x.why.join('. '))}.</span></div></div></div>
+    <div class="crumbs"><button class="crumb" data-nav="needsai">Needs AI</button> › ${plural(x.pages.length, 'page')} to ${place ? 'place' : 'sort'}</div>
+    <div class="title-row"><h1 class="title">${one ? 'This scan needs' : 'These scans need'} an AI to look at ${one ? 'it' : 'them'}</h1></div>
+    <p class="sub">${place
+      ? `Lindley’s rules couldn’t tell which of these documents ${one ? 'this page belongs' : 'these pages belong'} in. Ask the AI to read ${one ? 'it' : 'them'} beside them, or choose one yourself. Either way you can change it after.`
+      : 'Lindley’s rules couldn’t tell whether these pages are one document, or several. Ask the AI to read them together, or group them yourself. Either way you can change it after.'}</p>
+    <div class="banner ai">${lic()}<div class="b-body"><div class="b-text">${guess}<span>${esc(x.why.join('. '))}.</span></div></div></div>
     ${aiConnLine('assemble', 'sorting pages')}
     <div class="viewbar">${sizeCtl()}</div>
   </div>
@@ -2066,7 +2205,8 @@ function dupCard(e) {
   if (e.type === 'doc') {
     const [a, b] = e.docs.map(d => D.docs[d]);
     title = `“${a.name}” was scanned twice`;
-    what = `${icon('dup')} The same ${plural(e.sets.length, 'page')} in two documents`;
+    const extra = e.docs.reduce((n, d) => n + e.extra[d].length, 0);
+    what = `${icon('dup')} The same ${plural(e.sets.length, 'page')} in two documents${extra ? `, and ${plural(extra, 'page')} only one has` : ''}`;
     where = `${docHome(a)} · ${docHome(b)}`;
   } else {
     title = x.kind === 'same' ? 'The same page, scanned twice' : 'Very similar text';
@@ -2102,7 +2242,7 @@ function viewDup() {
   let title, sub;
   if (doc) {
     title = `“${D.docs[e.docs[0]].name}” was scanned twice`;
-    sub = `Both documents have the same ${plural(e.sets.length, 'page')}. Compare them page by page (← and → move between pages), then keep one document, or the better scan of each page.`;
+    sub = `Both documents have the same ${plural(e.sets.length, 'page')}. Compare them page by page (← and → move between pages), then keep one document, or the better scan of each page. ${extraNote(e)}`;
   } else if (x.kind === 'same') {
     title = 'The same page, scanned twice';
     sub = `${x.score}% of the words match, in the same order. The scans look different because the scanner settings were. Keep the better copy; the other is set aside. ← and → move between duplicates.`;
@@ -2131,7 +2271,7 @@ function viewDup() {
     const homeId = l?.where !== 'doc' && others.find(o => locate(o)?.where === 'doc');
     const home = homeId && locate(homeId).doc;
     const note = doc
-      ? 'Keeping this document sets the other one’s matching pages aside.'
+      ? `Keeping this document sets the other one’s matching pages aside${e.extra[e.docs.find(dd => dd !== l.doc.id)].length ? '; its pages with no copy stay where they are' : ''}.`
       : home ? `Keeping this one puts it in its place in “${home.name}”, page ${home.pages.indexOf(homeId) + 1}, and sets the other copy aside.`
         : `Keeping this one sets the other ${others.length === 1 ? 'copy' : 'copies'} aside.`;
     const keep = doc
@@ -2177,7 +2317,8 @@ function viewScan() {
     <div class="crumbs"><button class="crumb" data-nav="${aside ? 'aside' : 'inbox'}">${aside ? 'Set aside' : 'Inbox'}</button> › ${s.file}</div>
     <div class="title-row"><h1 class="title">${s.file}</h1></div>
     <p class="sub">This scan isn't in a document yet. Correct its text here if you like, then start a new document with it or add it to one you already have.</p>
-    ${hint ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text">Lindley thinks this belongs in “${esc(hint.name)}”.</div><span class="b-acts"><button class="btn" data-place="${s.id}:${hint.id}">Add it there</button></span></div></div>` : ''}
+    ${hint ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text">Lindley thinks this belongs in “${esc(hint.name)}”, ${s.hintConf}% sure.${s.hintWhy ? ` ${esc(s.hintWhy.join('. '))}.` : ''}</div><span class="b-acts"><button class="btn" data-place="${s.id}:${hint.id}">Add it there</button><button class="btn ghost" data-hintmenu="${s.id}">Other choices</button></span></div></div>` : ''}
+    ${!aside && !hint && (groupOf(s.id) || s.asideWhy) ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text">${groupOf(s.id) ? `Lindley thinks this goes with ${plural(groupOf(s.id).pages.length - 1, 'other scan')}: <i>${esc(groupOf(s.id).name)}</i>.` : `${esc(s.asideWhy)}, so Lindley thinks it could be set aside.`}</div><span class="b-acts"><button class="btn" data-hintmenu="${s.id}">Choose…</button></span></div></div>` : ''}
     ${needsAiRead(s) ? aiBanner([s.id], [], 'This scan needs an AI to look at it.', 'aiScan', `Tesseract read it with only ${s.conf}% confidence, so its text is only a rough guess.`) : ''}
     ${!aside && sortItemOf(s.id) ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>This scan needs an AI to look at it.</b> Lindley couldn’t tell which document it belongs in, or whether the scans with it are one document.</div><span class="b-acts"><button class="btn ai" data-nav="needsai:${sortItemOf(s.id).id}">${lic()} See the pages with it</button></span></div></div>` : ''}
     ${aside && s.dupOf ? `<div class="banner ok">${icon('dup')}<div class="b-body"><div class="b-text">This is a copy you set aside. You kept <span class="mono">${D.scans[s.dupOf].file}</span>: ${esc(copyWhere(s.dupOf))}.</div></div></div>` : ''}
@@ -2382,10 +2523,14 @@ function addScans(files, mode) {
 }
 
 /* Settings, shared by first-run setup and the Settings screen. The real app keeps them in settings.json,
-   except API keys, which go in Windows Credential Manager and never into a file. */
+   except API keys, which go in Windows Credential Manager and never into a file, and the theme, which
+   the app keeps on this computer. In settings.json: folders is watch_folders, mode is move_files,
+   addMode is add_mode, threshold is ocr.review_below, aiBelow is ocr.confidence_threshold, langs is
+   ocr.languages, library is library_dir, db is db_path, conns is ai.providers, and use and models
+   are ai.jobs. */
 const SETUP = {
   folders: ['D:\\Scans\\Attic box 4', 'D:\\Scans\\Courthouse'], mode: 'copy', addMode: 'ask',
-  threshold: 90, aiBelow: 70, langs: ['eng'], library: 'D:\\Lindley library', theme: 'system',
+  threshold: 90, aiBelow: 70, langs: ['eng'], library: 'D:\\Lindley\\library', db: 'D:\\Lindley\\lindley.db', theme: 'system',
   conns: [{ id: 'c1', kind: 'local', vendor: 'local', name: 'Ollama on this computer', url: 'http://localhost:11434/v1', model: 'llama3.2-vision', key4: '', allow: 'ask', limit: null, monthly: null, perMin: null, atOnce: 2 }],
   // Which connection does each job (ai.jobs in settings.json), and the job's own model ('': the connection's).
   use: { vision: 'c1', assemble: 'c1', chat: 'c1', embed: 'c1' },
@@ -2400,6 +2545,7 @@ function upgradeSaved(st) {
   if (st.use && !('assemble' in st.use)) st.use.assemble = st.use.chat;
   st.models ??= { vision: '', assemble: '', chat: '', embed: '' };
   st.aiBelow ??= 70;
+  st.db ??= SETUP.db;
   return st;
 }
 function saveSettings() { try { localStorage.setItem('lindley-settings', JSON.stringify(SETUP)); } catch (e) { /* settings last until the page is closed */ } }
@@ -2409,6 +2555,8 @@ const changedKeys = () => U.sdraft ? SET_KEYS.filter(k => JSON.stringify(U.sdraf
 
 // The AI services Lindley can connect to. This mirrors GET /api/connectors, which lists the files in
 // backend/src/lindley/providers/connectors/: a new file there shows up here with no change to the UI.
+// short is the API's `short` (a new connection's name), needsKey its `needs_key`, url its
+// `default_base_url`, and models its `default_models`.
 const ALL_JOBS = ['vision', 'assemble', 'chat', 'embed'];
 const CONNECTORS = {
   local: { label: 'Ollama or LM Studio on a computer you own', short: 'AI on this computer', where: 'local', company: '', jobs: ALL_JOBS, url: 'http://localhost:11434/v1', needsKey: false,
@@ -2574,8 +2722,12 @@ function limitsTag(c) {
   return `<span class="ptag">${icon(auto ? 'send' : 'flag')}${parts.join(' · ')}</span>`;
 }
 // Calls so far, as GET /api/settings/ai-calls reports them. The mockup makes up the numbers.
+function usage(c) {
+  const n = [...c.id].reduce((a, ch) => a + ch.charCodeAt(0), 0);
+  return { today: n % 13, month: 40 + n % 160 };
+}
 function usageLine(c) {
-  const n = [...c.id].reduce((a, ch) => a + ch.charCodeAt(0), 0), today = n % 13, month = 40 + n % 160;
+  const { today, month } = usage(c);
   const of = lim => lim ? ` of ${lim.toLocaleString()}` : '';
   return c.allow === 'auto' ? `Calls on its own: ${today}${of(c.limit)} today · ${month}${of(c.monthly)} this month` : `Calls you OKed: ${today} today · ${month} this month`;
 }
@@ -2685,7 +2837,7 @@ function flaggedAt(t) {
   return n;
 }
 function thrPreview(t) { return `At ${t}%, ${plural(flaggedAt(t), 'page')} would need your review. Right now it's ${flaggedAt(REVIEW_BELOW)}, at ${REVIEW_BELOW}%.`; }
-function libPaths(lib) { return ['Scans', 'lindley.db', 'Exports'].map((x, i) => `<li>${['Lindley’s copies of your scans', 'The database of everything it read', 'PDFs you export'][i]}: <span class="mono">${esc(lib)}\\${x}</span></li>`).join(''); }
+function libPaths(lib) { return ['scans', 'pages', 'Exports'].map((x, i) => `<li>${['Lindley’s copies of your scans', 'Each page as an image', 'PDFs you export'][i]}: <span class="mono">${esc(lib)}\\${x}</span></li>`).join(''); }
 function aiSummary(d) {
   const cloud = cloudInUse(d);
   if (cloud.length) {
@@ -2754,15 +2906,18 @@ function setReading(d) {
     <p class="fld-note" id="st-aibp">${v.allow === 'auto' ? `${esc(v.name)} runs on its own, so these pages go to it as soon as they're read.` : `${esc(v.name)} asks first, so these pages wait in Needs AI until you send them.`} Tesseract's rough reading is used meanwhile.</p>` : ''}`;
 }
 function setLibrary(d) {
-  return `<p class="set-p">Lindley's copies of your scans, its database and the PDFs you export all live in one folder. Back up that folder and you've backed up everything.</p>
+  return `<p class="set-p">Lindley's copies of your scans and the PDFs you export live in its library folder. Its database, of everything it read and every change you made, is a file of its own. Back up both and you've backed up everything.</p>
     <label class="fld" for="st-lib">Library folder</label>
     <div class="setup-add"><input class="fld-in" id="st-lib" data-bind="d.library" value="${esc(d.library)}" spellcheck="false"><button class="btn" data-set="libBrowse">${icon('folder')} Browse…</button></div>
     <ul class="kv-list" id="st-libpaths">${libPaths(d.library)}</ul>
+    <label class="fld" for="st-db">Database</label>
+    <div class="setup-add"><input class="fld-in" id="st-db" data-bind="d.db" value="${esc(d.db)}" spellcheck="false"><button class="btn" data-set="dbBrowse">${icon('folder')} Browse…</button></div>
+    <p class="fld-note">The database of everything Lindley read and every change you made: names, page order, corrections.</p>
     <h3>Keeping your originals safe</h3>
     <ul class="safe">
       <li>${icon('check')}<span>Lindley never changes a scan. Rotating, correcting text and putting pages in order are saved alongside it.</span></li>
       <li>${icon('check')}<span>Nothing is deleted. Set aside keeps scans you don't need, and you can bring them back at any time.</span></li>
-      <li>${icon('check')}<span>API keys are never stored in the library, so it's safe to back up or copy to another computer.</span></li>
+      <li>${icon('check')}<span>API keys are never stored in the library or the database, so both are safe to back up or copy to another computer.</span></li>
     </ul>`;
 }
 function setLook(d) {
@@ -2886,17 +3041,19 @@ function openReview(id) {
   if (i > 0) { U.cur = i; render(); }
 }
 
-function newDocDialog(ids) {
+function newDocDialog(ids, name) {
+  // `name`: the name Lindley gave pages it thinks go together. Kept as it is, it stays in italics.
   if (!ids.length) return;
-  const sugg = suggestDocName(ids);
+  const sugg = name || suggestDocName(ids);
   modalReturn = document.activeElement;
   modal.setAttribute('aria-labelledby', 'modal-h');
   modal.dataset.ids = ids.join(',');
+  modal.dataset.lindley = name || '';
   modal.innerHTML = `<h2 id="modal-h">Start a new document</h2>
     <p>${ids.length === 1 ? 'The selected scan moves' : `The ${ids.length} selected scans move`} into it, in the order shown. You can change the order afterwards.</p>
     <label class="fld" for="nd-name">Name</label>
     <input class="fld-in" id="nd-name" value="${esc(sugg)}" placeholder="For example: Letters from Will, 1890" ${sugg ? 'aria-describedby="nd-hint"' : ''}>
-    ${sugg ? `<p class="fld-hint" id="nd-hint">${lic()} Lindley suggested this from the first page. Change it to anything you like.</p>` : ''}
+    ${sugg ? `<p class="fld-hint" id="nd-hint">${lic()} Lindley suggested this from ${name ? 'the pages' : 'the first page'}. Change it to anything you like.</p>` : ''}
     <label class="fld" for="nd-folder">Put it in</label>
     <select class="fld-in" id="nd-folder"><option value="">In progress (no folder)</option>${folderOptions()}</select>
     <div class="actions"><button class="btn" data-act="modalClose">Cancel</button><button class="btn primary" data-act="modalNewDoc">Create document</button></div>`;
@@ -3085,7 +3242,7 @@ document.addEventListener('click', e => {
   const sa = t.closest('[data-set]');
   if (sa) {
     if (sa.dataset.set === 'resetDock') resetDock();
-    else toast(sa.dataset.set === 'tess' ? 'The real app opens a file dialog here to find tesseract.exe.' : 'The real app opens the system folder dialog here. For now, type the path.');
+    else toast(sa.dataset.set === 'tess' ? 'The real app opens a file dialog here to find tesseract.exe.' : sa.dataset.set === 'dbBrowse' ? 'The real app opens the system file dialog here. For now, type the path.' : 'The real app opens the system folder dialog here. For now, type the path.');
     return;
   }
   if (t.closest('[data-grip]')) return;
@@ -3103,6 +3260,8 @@ document.addEventListener('click', e => {
   }
   const place = t.closest('[data-place]');
   if (place) { const [sid, did] = place.dataset.place.split(':'); moveTo([sid], did); return; }
+  const hm = t.closest('[data-hintmenu]');
+  if (hm) { const r = hm.getBoundingClientRect(); openMenu(hintMenuItems(hm.dataset.hintmenu), r.left, r.bottom + 4); return; }
   const open = t.closest('[data-open]');
   if (open) { openScan(open.dataset.open); return; }
   const view = t.closest('[data-view]');
@@ -3153,7 +3312,13 @@ document.addEventListener('click', e => {
     up: () => shift(ids, -1), down: () => shift(ids, 1),
     inbox: () => toInbox(ids), aside: () => setAside(ids),
     newDoc: () => newDocDialog(ids),
-    modalNewDoc: () => { const sel = modal.dataset.ids.split(','); const name = $('#nd-name').value.trim(); const folder = $('#nd-folder').value || null; modal.hidden = true; syncScrim(); moveTo(sel, null, { name, folder }); },
+    modalNewDoc: () => { const sel = modal.dataset.ids.split(','); const name = $('#nd-name').value.trim(); const folder = $('#nd-folder').value || null; modal.hidden = true; syncScrim(); moveTo(sel, null, { name, folder, temp: !!name && name === modal.dataset.lindley }); },
+    groupHint: () => { const g = D.groups.find(x => x.id === a.dataset.id); if (g) newDocDialog(g.pages, g.name); },
+    showGroup: () => { const g = D.groups.find(x => x.id === a.dataset.id); if (g) showScans(g.pages); },
+    noGroup: () => { const g = D.groups.find(x => x.id === a.dataset.id); if (g) dismissHint(g.pages[0]); },
+    asideHint: () => setAside([a.dataset.id]),
+    asideAll: () => setAside(D.inbox.filter(id => D.scans[id].asideWhy)),
+    showAside: () => showScans(D.inbox.filter(id => D.scans[id].asideWhy)),
     moveMenu: () => menuAt(moveItems(ids)),
     pageMore: () => menuAt(pageMenuItems(ids, true)),
     addScans: () => $('#file-in').click(),

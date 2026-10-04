@@ -234,8 +234,9 @@ to run again: files already read are skipped, and failed ones are tried again. O
 never changed, and with `move_files` they're removed only once their copy is checked.
 
 Before a page is read, Lindley checks the image. Blank pages are noted and aren't sent to the
-vision model. Sideways or upside-down pages are read from a turned copy (Tesseract's orientation
-check needs `osd.traineddata`, which the UB-Mannheim installer includes). Each page is also
+vision model. Tesseract finds which way up a page is as it reads it; an upside-down page's words
+are turned back with it, and a sideways page is read again from a turned copy (this needs
+`osd.traineddata`, which the UB-Mannheim installer includes). Each page is also
 marked handwritten, printed or mixed. The script's summary counts blank pages, turned pages and
 each kind of writing.
 

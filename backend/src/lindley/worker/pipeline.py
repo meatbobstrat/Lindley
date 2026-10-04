@@ -35,8 +35,8 @@ class Step(StrEnum):
     HASH = "hash"  # sha256; a known hash is a duplicate file
     EXIF = "exif"  # scanner, scan time, file times
     SPLIT = "split"  # one page image per page of a PDF or TIFF
-    IMAGE = "image"  # size, dpi, perceptual hash, paper colour, blank score, rotation, script
-    OCR = "ocr"  # Tesseract reading of printed pages
+    IMAGE = "image"  # size, dpi, perceptual hash, paper colour, blank score, script
+    OCR = "ocr"  # Tesseract reading of printed pages, and which way up they are
     VISION = "vision"  # vision model for handwriting and low-confidence pages
     FACTS = "facts"  # dates, names, places, letterheads, page markers, first and last lines
     EMBED = "embed"  # text embedding for similarity
@@ -416,19 +416,56 @@ class Pipeline:
 
     def _read_page(self, conn: sqlite3.Connection, scan_id: int, page_id: int, image: Path) -> None:
         page = self._page(conn, page_id)
-        guess = None  # a turn Tesseract suggested without being sure
         if page["blank_score"] is None:  # not checked yet (a retry doesn't check it again)
             with run_step(
                 conn, scan_id, Step.IMAGE, page_id=page_id, engine_version=pageimage.ENGINE
             ):
-                guess = self._check_image(conn, page_id, image, page["dpi"])
+                self._check_image(conn, page_id, image, page["dpi"])
             page = self._page(conn, page_id)
         rotation = (page["detected_rotation"] + page["user_rotation"]) % 360
         first = None
-        if guess and self.settings.ocr.engine != "vision":
-            rotation, first = self._try_turning(conn, scan_id, page_id, image, page, guess)
+        if self.settings.ocr.engine != "vision":
+            rotation, first = self._read_any_way_up(conn, scan_id, page_id, image, page)
         with self._upright(page_id, image, rotation, page["dpi"]) as upright:
             self._read_upright(conn, scan_id, page_id, upright, page["blank_score"], first)
+
+    def _read_any_way_up(
+        self, conn: sqlite3.Connection, scan_id: int, page_id: int, image: Path, page: sqlite3.Row
+    ) -> tuple[int, PageResult]:
+        """Tesseract's reading, and the rotation that puts the page upright.
+
+        Tesseract reads the page whichever way up it is and says which way that was, in one
+        run; a page on its side is read again, turned upright. It only turns a page when it's
+        sure, so a page it didn't turn that reads poorly may still be the wrong way up: its
+        orientation check is asked for a guess, which the reading then decides (_try_turning).
+        A turn a person set is trusted, and the page read that way.
+        """
+        rotation = (page["detected_rotation"] + page["user_rotation"]) % 360
+        dpi = page["dpi"]
+        oriented = getattr(self.tesseract, "oriented_reading", None)
+        if oriented is None or page["user_rotation"]:
+            return rotation, self._tesseract_reading(conn, scan_id, page_id, image, rotation, dpi)
+        version = getattr(self.tesseract, "version", self.tesseract.name)
+        with (
+            run_step(conn, scan_id, Step.OCR, page_id=page_id, engine_version=version),
+            self._upright(page_id, image, rotation, dpi) as upright,
+        ):
+            turn, reading = oriented(upright)
+        if turn:
+            self._detected(conn, page_id, (page["detected_rotation"] + turn) % 360)
+            rotation = (rotation + turn) % 360
+            if reading is None:  # on its side
+                reading = self._tesseract_reading(conn, scan_id, page_id, image, rotation, dpi)
+            return rotation, reading
+        if (
+            page["blank_score"] >= pageimage.BLANK_AT
+            or (reading.confidence or 0) >= self.settings.ocr.confidence_threshold
+        ):
+            return rotation, reading
+        found = self._orientation(page_id, image, rotation, dpi)
+        if not (found and found[0]):
+            return rotation, reading
+        return self._try_turning(conn, scan_id, page_id, image, page, reading, found[0])
 
     def _try_turning(
         self,
@@ -437,25 +474,36 @@ class Pipeline:
         page_id: int,
         image: Path,
         page: sqlite3.Row,
+        as_is: PageResult,
         guess: int,
     ) -> tuple[int, PageResult]:
-        """Tesseract wasn't sure which way up the page is. If it reads poorly as it is, read it
-        turned the way Tesseract guessed too, and keep the turn only if it reads clearly better.
-        Returns the rotation to use and its Tesseract reading."""
+        """The page reads poorly as it is: read it turned the way Tesseract guessed too, and
+        keep the turn only if it reads clearly better. Returns the rotation to use and its
+        Tesseract reading."""
         rotation = (page["detected_rotation"] + page["user_rotation"]) % 360
-        as_is = self._tesseract_reading(conn, scan_id, page_id, image, rotation, page["dpi"])
-        if (as_is.confidence or 0) >= self.settings.ocr.confidence_threshold:
-            return rotation, as_is
         turned_to = (rotation + guess) % 360
         turned = self._tesseract_reading(conn, scan_id, page_id, image, turned_to, page["dpi"])
         if (turned.confidence or 0) < (as_is.confidence or 0) + TURN_MARGIN:
             return rotation, as_is
+        self._detected(conn, page_id, (page["detected_rotation"] + guess) % 360)
+        return turned_to, turned
+
+    def _detected(self, conn: sqlite3.Connection, page_id: int, rotation: int) -> None:
         with conn:
             conn.execute(
                 "UPDATE pages SET detected_rotation = ?, updated_at = datetime('now') WHERE id = ?",
-                ((page["detected_rotation"] + guess) % 360, page_id),
+                (rotation, page_id),
             )
-        return turned_to, turned
+
+    def _orientation(
+        self, page_id: int, image: Path, rotation: int, dpi: int | None
+    ) -> tuple[int, float] | None:
+        """Tesseract's orientation check, on the page turned `rotation`, if it has one."""
+        orientation = getattr(self.tesseract, "orientation", None)
+        if orientation is None:
+            return None
+        with self._upright(page_id, image, rotation, dpi) as upright:
+            return orientation(upright)
 
     def _tesseract_reading(
         self,
@@ -492,28 +540,22 @@ class Pipeline:
 
     def _check_image(
         self, conn: sqlite3.Connection, page_id: int, image: Path, dpi: int | None
-    ) -> int | None:
-        """Blank score, paper colour and hash; and, for a page with writing, which way up it is.
-
-        Returns a turn Tesseract suggested without being sure, for the reading to decide.
-        """
+    ) -> None:
+        """Blank score, paper colour and hash. Tesseract finds which way up a page is as it
+        reads it (_read_any_way_up); a page only the vision model reads is checked here, and
+        turned when Tesseract is sure."""
         info = pageimage.analyse(image)
-        rotation, guess = 0, None
-        orientation = getattr(self.tesseract, "orientation", None)
-        if orientation and info.blank_score < pageimage.BLANK_AT:
-            with self._upright(page_id, image, 0, dpi) as upright:
-                found = orientation(upright)
+        rotation = 0
+        if self.settings.ocr.engine == "vision" and info.blank_score < pageimage.BLANK_AT:
+            found = self._orientation(page_id, image, 0, dpi)
             if found and found[1] >= ORIENTATION_MIN_CONF:
                 rotation = found[0]
-            elif found and found[0]:
-                guess = found[0]
         with conn:
             conn.execute(
                 "UPDATE pages SET phash = ?, paper_color = ?, blank_score = ?,"
                 " detected_rotation = ?, updated_at = datetime('now') WHERE id = ?",
                 (info.phash, info.paper_color, info.blank_score, rotation, page_id),
             )
-        return guess
 
     def _read_upright(
         self,

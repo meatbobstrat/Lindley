@@ -17,7 +17,10 @@ from lindley.worker.pipeline import (
 
 
 class StubOcr:
-    """Hands out prepared readings in order, like Tesseract reading one page after another."""
+    """Hands out prepared readings in order, like Tesseract reading one page after another.
+
+    `turn` is the way Tesseract turns a page it's sure of as it reads it (oriented_reading);
+    `osd` is what its separate orientation check says, (rotation, confidence)."""
 
     name = "tesseract"
     version = "tesseract v5.test eng"
@@ -25,15 +28,25 @@ class StubOcr:
     def __init__(
         self,
         *readings: tuple[str, float | None] | Exception,
-        rotation: int | None = None,
-        sure: float = 9.0,
+        turn: int = 0,
+        osd: tuple[int, float] | None = None,
     ) -> None:
         self.readings = list(readings)
-        self.rotation, self.sure = rotation, sure
+        self.turn, self.osd = turn, osd
         self.seen: list[tuple] = []  # (image path, its size) for each page read
+        self.checked = 0  # orientation checks asked for
 
     def orientation(self, image_path):
-        return None if self.rotation is None else (self.rotation, self.sure)
+        self.checked += 1
+        return self.osd
+
+    def oriented_reading(self, image_path):
+        turn, self.turn = self.turn, 0  # only the first page read is turned
+        if turn in (90, 270):
+            with Image.open(image_path) as img:
+                self.seen.append((image_path, img.size))
+            return turn, None
+        return turn, self.recognize(image_path)[0]
 
     def recognize(self, image_path):
         with Image.open(image_path) as img:
@@ -226,36 +239,67 @@ def test_the_image_is_checked_before_it_is_read(conn, settings, scan):
     assert steps(conn, sid, "image") == [("done", None)]
 
 
-def test_a_sideways_page_is_read_from_an_upright_copy(conn, settings, scan):
+def test_a_sideways_page_is_read_again_from_an_upright_copy(conn, settings, scan):
     sid = scan()
-    ocr = StubOcr(("Dear Sister, we are well.", 92.0), rotation=90)
+    ocr = StubOcr(("Dear Sister, we are well.", 92.0), turn=90)
     assert Pipeline(settings, ocr).process_scan(conn, sid) == "read"
     assert page_row(conn, sid)["detected_rotation"] == 90
-    [(path, size)] = ocr.seen
-    assert size == (560, 400) and path.parent == settings.processing_dir
+    [(_, first), (path, size)] = ocr.seen
+    assert first == (400, 560) and size == (560, 400) and path.parent == settings.processing_dir
     assert not path.exists()  # the turned copy is removed; the original is untouched
     original = conn.execute("SELECT image_path FROM pages").fetchone()[0]
     with Image.open(original) as img:
         assert img.size == (400, 560)
+    assert steps(conn, sid, "ocr") == [("done", None), ("done", None)]
+    assert ocr.checked == 0
 
 
-def test_a_turn_set_by_a_person_is_added_to_the_detected_one(conn, settings, scan):
+def test_an_upside_down_page_is_read_once(conn, settings, scan):
     sid = scan()
-    conn.execute("UPDATE pages SET user_rotation = 180")
-    conn.commit()
-    ocr = StubOcr(("text", 92.0), rotation=90)
+    ocr = StubOcr(("Dear Sister, we are well.", 92.0), turn=180)
+    assert Pipeline(settings, ocr).process_scan(conn, sid) == "read"
+    assert page_row(conn, sid)["detected_rotation"] == 180
+    assert len(ocr.seen) == 1 and steps(conn, sid, "ocr") == [("done", None)]
+    assert current_text(conn, sid) == "Dear Sister, we are well."
+
+
+def test_a_page_that_reads_well_has_no_separate_orientation_check(conn, settings, scan):
+    sid = scan()
+    ocr = StubOcr(("Dear Sister, we are well.", 92.0), osd=(180, 9.0))
     Pipeline(settings, ocr).process_scan(conn, sid)
-    assert ocr.seen[0][1] == (560, 400)  # 90 + 180 = 270: still sideways
+    assert ocr.checked == 0 and page_row(conn, sid)["detected_rotation"] == 0
+
+
+def test_a_turn_set_by_a_person_is_trusted(conn, settings, scan):
+    sid = scan()
+    conn.execute("UPDATE pages SET user_rotation = 270")
+    conn.commit()
+    ocr = StubOcr(("Dcar Sistcr", 30.0), turn=180, osd=(90, 9.0))
+    Pipeline(settings, ocr).process_scan(conn, sid)
+    assert ocr.seen[0][1] == (560, 400)  # read the way the person turned it
+    assert len(ocr.seen) == 1 and ocr.checked == 0
+    assert page_row(conn, sid)["detected_rotation"] == 0
 
 
 def test_a_blank_page_is_not_sent_to_the_vision_model(conn, settings, scan):
     sid = scan(img=Image.new("RGB", (400, 560), "white"))
-    pipe = Pipeline(settings, StubOcr(("", None), rotation=90), FakeProvider())
+    pipe = Pipeline(settings, StubOcr(("", None), osd=(90, 1.0)), FakeProvider())
     assert pipe.process_scan(conn, sid) == "read"
     assert steps(conn, sid, "vision") == [("skipped", "The page looks blank")]
     p = page_row(conn, sid)
     assert (p["blank_score"], p["detected_rotation"], p["script"]) == (1.0, 0, "none")
     assert [r["source"] for r in readings(conn, sid)] == ["tesseract"]
+    assert pipe.tesseract.checked == 0
+
+
+def test_a_page_only_the_vision_model_reads_is_turned_when_tesseract_is_sure(conn, settings, scan):
+    settings.ocr.engine = "vision"
+    settings.ai.providers["local"].allow = "auto"
+    sure, unsure = scan("a.png"), scan("b.png")
+    Pipeline(settings, StubOcr(osd=(90, 9.0)), FakeProvider()).process_scan(conn, sure)
+    Pipeline(settings, StubOcr(osd=(90, 1.0)), FakeProvider()).process_scan(conn, unsure)
+    assert page_row(conn, sure)["detected_rotation"] == 90
+    assert page_row(conn, unsure)["detected_rotation"] == 0
 
 
 def test_handwriting_is_noticed_from_tesseracts_confidence(conn, settings, scan):
@@ -376,7 +420,7 @@ def current_text(conn, scan_id):
 
 def test_an_unsure_turn_is_kept_when_the_page_reads_clearly_better(conn, settings, scan):
     sid = scan()
-    ocr = StubOcr(("6&o qno gut", 28.0), ("Dear Sister, we are well.", 60.0), rotation=90, sure=1.1)
+    ocr = StubOcr(("6&o qno gut", 28.0), ("Dear Sister, we are well.", 60.0), osd=(90, 1.1))
     assert Pipeline(settings, ocr).process_scan(conn, sid) == "read"
     assert [size for _, size in ocr.seen] == [(400, 560), (560, 400)]
     assert page_row(conn, sid)["detected_rotation"] == 90
@@ -387,19 +431,24 @@ def test_an_unsure_turn_is_kept_when_the_page_reads_clearly_better(conn, setting
 
 def test_an_unsure_turn_is_not_tried_on_a_page_that_reads_well(conn, settings, scan):
     sid = scan()
-    ocr = StubOcr(("Dear Sister, we are well.", 88.0), rotation=180, sure=0.8)
+    ocr = StubOcr(("Dear Sister, we are well.", 88.0), osd=(180, 0.8))
     Pipeline(settings, ocr).process_scan(conn, sid)
     assert len(ocr.seen) == 1 and page_row(conn, sid)["detected_rotation"] == 0
 
 
 def test_an_unsure_turn_that_reads_no_better_is_dropped(conn, settings, scan):
     sid = scan()
-    ocr = StubOcr(
-        ("He had been a mule driver", 61.0), ("fiostoa0 Sf", 26.0), rotation=180, sure=0.8
-    )
+    ocr = StubOcr(("He had been a mule driver", 61.0), ("fiostoa0 Sf", 26.0), osd=(180, 0.8))
     Pipeline(settings, ocr).process_scan(conn, sid)
     assert len(ocr.seen) == 2 and page_row(conn, sid)["detected_rotation"] == 0
     assert current_text(conn, sid) == "He had been a mule driver"
+
+
+def test_a_sure_turn_tesseract_did_not_make_while_reading_is_only_a_guess(conn, settings, scan):
+    sid = scan()
+    ocr = StubOcr(("He had been a mule driver", 61.0), ("fiostoa0 Sf", 26.0), osd=(180, 9.0))
+    Pipeline(settings, ocr).process_scan(conn, sid)
+    assert ocr.checked == 1 and page_row(conn, sid)["detected_rotation"] == 0
 
 
 def test_a_page_another_thread_is_reading_isnt_sent_twice(conn, settings, scan):

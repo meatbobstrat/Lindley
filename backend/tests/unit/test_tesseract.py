@@ -10,6 +10,7 @@ from lindley.worker.ocr import tesseract
 from lindley.worker.ocr.tesseract import (
     TesseractEngine,
     TesseractNotFound,
+    parse_hocr_turn,
     parse_osd,
     parse_tsv,
 )
@@ -153,7 +154,99 @@ def test_orientation_is_unknown_when_tesseract_cannot_tell(tmp_path, monkeypatch
     assert missing.orientation(tmp_path / "page.png") is None
 
 
+def hocr(angle: int | None, lines: int = 3, size=(1000, 1400)) -> str:
+    """Tesseract's hOCR for a page whose lines were read turned `angle` (None: upright)."""
+    turned = f"; textangle {angle}" if angle is not None else ""
+    spans = "".join(
+        f"<span class='ocr_line' id='line_1_{i}' title=\"bbox 10 {i * 40} 900 {i * 40 + 30}"
+        f'{turned}; x_size 30">words</span>'
+        for i in range(lines)
+    )
+    return (
+        f"<div class='ocr_page' id='page_1' title='image \"page.png\"; bbox 0 0 {size[0]}"
+        f" {size[1]}; ppageno 0'>{spans}</div>"
+    )
+
+
+def test_parse_hocr_turn_reads_which_way_up_the_page_was_read():
+    assert parse_hocr_turn(hocr(None)) == (0, (1000, 1400))
+    assert parse_hocr_turn(hocr(180)) == (180, (1000, 1400))
+    assert parse_hocr_turn(hocr(90, size=(1400, 1000))) == (90, (1400, 1000))
+    upright_line = "<span class='ocr_line' id='line_1_9' title=\"bbox 1 2 3 4\">a</span>"
+    mixed = hocr(180, lines=3).replace("</div>", upright_line + "</div>")
+    assert parse_hocr_turn(mixed)[0] == 180  # most lines decide
+    assert parse_hocr_turn("") == (0, None)
+
+
+def oriented_tesseract(tmp_path, monkeypatch, angle, adaptive_tsv=None):
+    """A Tesseract that writes the TSV and hOCR files --psm 1 asks for."""
+    exe = tmp_path / "tesseract.exe"
+    exe.touch()
+    seen = []
+
+    def fake_run(args, **kw):
+        seen.append(args)
+        out = Path(args[2])
+        adaptive = "thresholding_method=1" in args
+        tsv = adaptive_tsv if adaptive_tsv is not None and not adaptive else TSV
+        out.with_suffix(".tsv").write_text(tsv, encoding="utf-8")
+        out.with_suffix(".hocr").write_text(hocr(angle), encoding="utf-8")
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(tesseract.subprocess, "run", fake_run)
+    return TesseractEngine(OcrSettings(tesseract_path=exe)), seen
+
+
+def test_an_upright_page_is_read_and_oriented_in_one_run(tmp_path, monkeypatch):
+    engine, seen = oriented_tesseract(tmp_path, monkeypatch, None)
+    turn, page = engine.oriented_reading(tmp_path / "page.png")
+    assert turn == 0 and page and page.text.startswith("Dear Sister,")
+    assert page.words[0]["bbox"] == [100, 60, 60, 20]
+    # one run makes both files (a second, adaptive one follows: the made-up page has few words)
+    assert seen[0][3:] == ["-l", "eng", "--psm", "1", "tsv", "hocr"]
+
+
+def test_an_upside_down_page_has_its_words_turned_with_it(tmp_path, monkeypatch):
+    engine, _ = oriented_tesseract(tmp_path, monkeypatch, 180)
+    turn, page = engine.oriented_reading(tmp_path / "page.png")
+    assert turn == 180 and page and page.text.startswith("Dear Sister,")
+    assert page.words[0] == {"text": "Dear", "conf": 96.2, "bbox": [840, 1320, 60, 20]}
+
+
+def test_a_sideways_page_is_left_to_be_read_again_upright(tmp_path, monkeypatch):
+    engine, _ = oriented_tesseract(tmp_path, monkeypatch, 270)
+    assert engine.oriented_reading(tmp_path / "page.png") == (270, None)
+
+
+def test_an_oriented_reading_of_almost_nothing_is_tried_with_an_adaptive_threshold(
+    tmp_path, monkeypatch
+):
+    engine, seen = oriented_tesseract(tmp_path, monkeypatch, None, adaptive_tsv=HEADER)
+    turn, page = engine.oriented_reading(tmp_path / "page.png")
+    assert len(seen) == 2 and page and page.text.startswith("Dear Sister,")
+
+
+def test_an_oriented_reading_needs_tesseract(tmp_path):
+    engine = TesseractEngine(OcrSettings(tesseract_path=tmp_path / "nope.exe"))
+    with pytest.raises(TesseractNotFound):
+        engine.oriented_reading(tmp_path / "page.png")
+
+
 real = TesseractEngine(OcrSettings())
+
+
+@pytest.mark.skipif(not real.is_available(), reason="Tesseract isn't installed")
+def test_real_tesseract_reads_an_upside_down_page_and_says_so(tmp_path: Path):
+    img = Image.new("L", (1700, 2200), 255)
+    font = ImageFont.load_default(size=48)
+    draw = ImageDraw.Draw(img)
+    for i in range(14):
+        draw.text((120, 200 + i * 110), "We are all well and the river came up again.", 0, font)
+    img.rotate(180).save(tmp_path / "page.png", dpi=(300, 300))
+    turn, page = real.oriented_reading(tmp_path / "page.png")
+    assert turn == 180 and page and "river" in page.text
+    top = min(page.words, key=lambda w: w["bbox"][1])
+    assert top["bbox"][1] < 400  # the first line is at the top again
 
 
 @pytest.mark.skipif(not real.is_available(), reason="Tesseract isn't installed")

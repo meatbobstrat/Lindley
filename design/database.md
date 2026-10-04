@@ -82,11 +82,17 @@ on real scans.
 - `paper_color` is the mean colour of the background pixels.
 - `phash` is a 64-bit difference hash. Hashes within 4 bits of each other are the same picture
   (a `duplicate` link). Near-empty pages all hash alike, so they're never compared.
-- `detected_rotation` comes from Tesseract's orientation check: the degrees clockwise that turn the
-  page upright. A confident answer is used as it is. An unsure one (confidence under 2) is only
-  a guess, and on real scans it was as often wrong as right. So when a page reads poorly as
-  scanned, it's also read turned the way Tesseract guessed, and the turn is kept only if that
-  reads at least 10 points better. Pages with
+- `detected_rotation` is the degrees clockwise that turn the page upright. Tesseract finds it as
+  it reads the page, in one run (`--psm 1`, about 25% quicker than an orientation check
+  followed by a reading), and says so in its hOCR (`textangle`). It only turns a page it's sure
+  of. An upside-down page's word boxes are turned back with it; a sideways page is read again
+  from an upright copy, since Tesseract reads its lines as vertical. A page it didn't turn but
+  that reads poorly may still be the wrong way up: its orientation check (`--psm 0`) is asked
+  for a guess, which on real scans was as often wrong as right, so the page is also read
+  turned that way, and the turn kept only if that reads at least 10 points better. A turn a
+  person set (`user_rotation`) is trusted and not looked for again. A page only the vision
+  model reads gets the orientation check alone, and is turned when Tesseract is sure (2 or
+  more). Pages with
   `detected_rotation + user_rotation` (or an EXIF orientation) are read from a turned copy in the
   processing folder, which is deleted afterwards. **Word boxes are therefore in upright
   coordinates.** `width_px` and `height_px` are the image as a viewer shows it (EXIF applied),

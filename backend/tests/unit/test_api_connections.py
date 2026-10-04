@@ -14,6 +14,13 @@ def test_connectors_offered(client):
     assert found["anthropic"]["needs_key"] and found["anthropic"]["where"] == "cloud"
     assert found["local"]["where"] == "local" and not found["local"]["needs_key"]
     assert found["local"]["default_models"]["embed"] == "nomic-embed-text"
+    assert found["openai_compat"]["needs_key"] and found["openai_compat"]["where"] == "cloud"
+    assert [found[c]["short"] for c in ("local", "anthropic", "google", "openai_compat")] == [
+        "AI on this computer",
+        "Claude",
+        "Gemini",
+        "Cloud AI",
+    ]
 
 
 def test_setup_is_needed_until_settings_are_saved(client):

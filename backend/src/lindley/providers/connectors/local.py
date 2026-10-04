@@ -9,6 +9,7 @@ from lindley.providers.connectors._openai_chat import OpenAIChat
 INFO = ConnectorInfo(
     id="local",
     label="Ollama or LM Studio on a computer you own",
+    short="AI on this computer",
     where="local",
     jobs=frozenset(JOBS),
     default_models={

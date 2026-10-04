@@ -9,8 +9,10 @@ from lindley.providers.connectors._openai_chat import OpenAIChat
 INFO = ConnectorInfo(
     id="openai_compat",
     label="Another OpenAI-compatible service",
+    short="Cloud AI",
     where="cloud",
     jobs=frozenset(JOBS),
+    needs_key=True,  # a service on a computer you control is a `local` connection instead
 )
 
 

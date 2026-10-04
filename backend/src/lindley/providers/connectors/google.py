@@ -18,6 +18,7 @@ from lindley.providers.prompts import transcribe_prompt
 INFO = ConnectorInfo(
     id="google",
     label="Google (Gemini)",
+    short="Gemini",
     where="cloud",
     company="Google",
     jobs=frozenset(JOBS),

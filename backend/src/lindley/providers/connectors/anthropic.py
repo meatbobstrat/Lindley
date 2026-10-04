@@ -14,6 +14,7 @@ from lindley.providers.prompts import transcribe_prompt
 INFO = ConnectorInfo(
     id="anthropic",
     label="Anthropic (Claude)",
+    short="Claude",
     where="cloud",
     company="Anthropic",
     jobs=frozenset({"vision", "assemble", "chat"}),

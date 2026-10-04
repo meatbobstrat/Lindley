@@ -26,6 +26,7 @@ def list_connectors() -> list[dict]:
             {
                 "id": i.id,
                 "label": i.label,
+                "short": i.short or i.label,
                 "where": i.where,
                 "company": i.company,
                 "jobs": [j for j in JOBS if j in i.jobs],

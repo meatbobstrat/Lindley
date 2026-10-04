@@ -15,6 +15,7 @@ from lindley.providers.prompts import transcribe_prompt
 INFO = ConnectorInfo(
     id="openai",
     label="OpenAI",
+    short="OpenAI",
     where="cloud",
     company="OpenAI",
     jobs=frozenset(JOBS),

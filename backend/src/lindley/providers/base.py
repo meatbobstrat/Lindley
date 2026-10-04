@@ -60,6 +60,7 @@ class ConnectorInfo:
     needs_key: bool = False
     key_url: str | None = None  # where to get a key
     hidden: bool = False  # not offered in the UI (the fake connector for tests)
+    short: str | None = None  # a new connection's name, e.g. "Claude" (None: the label)
 
 
 class ProviderError(RuntimeError):

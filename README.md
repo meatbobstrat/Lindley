@@ -285,16 +285,14 @@ file in these places, in order:
 | `watch_folders` | Folders to watch for new scans |
 | `processing_dir` | Working area for files being processed |
 | `quarantine_dir` | Where files that fail processing are put |
-| `library_dir` | Lindley's library: its copies of scans, and exported PDFs (in `Exports`) |
-| `db_path` | SQLite database location |
+| `library_dir` | Lindley's library: its copies of scans (in `scans`), each page as an image (in `pages`), and exported PDFs (in `Exports`) |
+| `db_path` | SQLite database location. It's kept outside the library, so back up both |
 | `move_files` | `true` moves scans out of watched folders; `false` copies them and leaves the originals |
-| `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this, a page needs the vision model. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000). `workers`: scans read at once; Tesseract uses one core a page, so a few side by side finish sooner (`null`: one fewer than the computer's cores, at most 3) |
+| `add_mode` | Files added with Add scans… in the Inbox: `ask` each time (the default), or always `copy` or `move` them |
+| `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this (20 to 95; 70), a page needs the vision model. `review_below`: a page whose reading falls below this (50 to 99; 90) waits for a person's review. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000). `workers`: scans read at once; Tesseract uses one core a page, so a few side by side finish sooner (`null`: one fewer than the computer's cores, at most 3) |
 | `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" or "Do these go together?" hint (45). `ai_band`: which uncertain breaks may be sent to the AI. `ask_ai_after_days`: when the sorting AI may run on its own, how long pages wait for a person first (0: at once) |
 | `ai.providers` | Named AI connections. `type` is a connector (`local`, `anthropic`, `openai`, `google`, `openai_compat`), with `base_url` and `model` where needed. `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some). `daily_limit` and `monthly_limit` cap the calls it makes on its own. `per_minute` and `at_once` throttle every call |
 | `ai.jobs` | Which connection does each job: `vision` (reading hard pages), `assemble` (sorting pages into documents), `chat` (Ask Lindley) and `embed` (finding related pages), each with an optional `model` of its own. Out of the box there are none |
-
-The review threshold (90%) is designed as a setting on the app's Settings screen. It isn't in
-`settings.json` yet.
 
 **API keys never go in `settings.json`.** They're kept in Windows Credential Manager (the
 Keychain on a Mac), under "Lindley", with the connection's name. Save one through the API

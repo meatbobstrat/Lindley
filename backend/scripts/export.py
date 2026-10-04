@@ -19,7 +19,7 @@ from pathlib import Path
 
 from lindley.config import load_settings
 from lindley.db.database import connect, init_db
-from lindley.db.progress import REVIEW_BELOW, document_progress
+from lindley.db.progress import document_progress
 from lindley.export import export_document
 
 
@@ -43,7 +43,7 @@ def main() -> int:
         "SELECT d.id, d.name, d.status, COUNT(p.id) AS pages FROM documents d"
         " LEFT JOIN pages p ON p.document_id = d.id GROUP BY d.id ORDER BY d.id"
     ).fetchall()
-    progress = {d["id"]: document_progress(conn, d["id"], REVIEW_BELOW) for d in docs}
+    progress = {d["id"]: document_progress(conn, d["id"], settings.ocr.review_below) for d in docs}
 
     if not (a.doc or a.ready or a.all):
         if not docs:
@@ -74,7 +74,7 @@ def main() -> int:
     failed = 0
     for doc_id in ids:
         try:
-            e = export_document(conn, settings.library_dir, doc_id)
+            e = export_document(conn, settings.library_dir, doc_id, settings.ocr.review_below)
         except ValueError as err:
             failed += 1
             print(f"  {doc_id}: not exported: {err}")

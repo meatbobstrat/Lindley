@@ -5,10 +5,6 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 
-# A reading below this confidence waits for a person's review: the threshold the Settings screen
-# will own.
-REVIEW_BELOW = 90
-
 
 @dataclass
 class Check:

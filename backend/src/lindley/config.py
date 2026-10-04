@@ -16,6 +16,7 @@ from lindley.providers.base import JOBS, Job
 APP_NAME = "Lindley"
 SETTINGS_ENV_VAR = "LINDLEY_SETTINGS"
 SETTINGS_FILENAME = "settings.json"
+REVIEW_BELOW = 90  # ocr.review_below out of the box
 
 
 class OcrSettings(BaseModel):
@@ -23,7 +24,11 @@ class OcrSettings(BaseModel):
     tesseract_path: Path | None = None
     languages: list[str] = Field(default_factory=lambda: ["eng"])
     # Pages whose Tesseract confidence (0-100) falls below this need the vision provider.
-    confidence_threshold: int = Field(default=70, ge=0, le=100)
+    # Settings › Reading and review offers 20 to 95.
+    confidence_threshold: int = Field(default=70, ge=20, le=95)
+    # A page whose reading in use falls below this waits for a person's review before it's
+    # trusted for search and chat. Settings › Reading and review offers 50 to 99.
+    review_below: int = Field(default=REVIEW_BELOW, ge=50, le=99)
     # Which AI reads them is ai.jobs.vision; whether they're sent at once or wait for a person's
     # OK is that connection's `allow`.
     # Pages are reduced to this many pixels on their longer side before they're sent.
@@ -124,7 +129,11 @@ class Settings(BaseModel):
     quarantine_dir: Path = Path("data/quarantine")
     library_dir: Path = Path("data/library")
     db_path: Path = Path("data/lindley.db")
+    # Files arriving in a watched folder are moved into the library, or else copied.
     move_files: bool = False
+    # Files a person adds with Add scans… in the Inbox: "ask" each time, or always "copy" or
+    # "move" them.
+    add_mode: Literal["ask", "copy", "move"] = "ask"
     ocr: OcrSettings = Field(default_factory=OcrSettings)
     ai: AiSettings = Field(default_factory=AiSettings)
     assembler: AssemblerSettings = Field(default_factory=AssemblerSettings)

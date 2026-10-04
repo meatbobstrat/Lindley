@@ -5,11 +5,13 @@
   "library_dir": "./data/library",
   "db_path": "./data/lindley.db",
   "move_files": false,
+  "add_mode": "ask",
   "ocr": {
     "engine": "hybrid",
     "tesseract_path": null,
     "languages": ["eng"],
     "confidence_threshold": 70,
+    "review_below": 90,
     "vision_max_side": 2000,
     "workers": null
   },

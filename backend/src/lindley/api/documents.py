@@ -24,7 +24,8 @@ def not_implemented() -> None:
 @router.post("/{doc_id}/export")
 def export(doc_id: int, conn: Conn, request: Request) -> dict:
     try:
-        e = export_document(conn, request.app.state.settings.library_dir, doc_id)
+        settings = request.app.state.settings
+        e = export_document(conn, settings.library_dir, doc_id, settings.ocr.review_below)
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
     except ValueError as err:

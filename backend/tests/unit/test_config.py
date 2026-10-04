@@ -29,6 +29,16 @@ def test_out_of_the_box_there_is_no_ai():
     assert s.ocr.vision_max_side == 2000
 
 
+def test_reading_and_review_settings_keep_to_what_settings_offers():
+    s = Settings()
+    assert (s.ocr.review_below, s.ocr.confidence_threshold, s.add_mode) == (90, 70, "ask")
+    for bad in ({"review_below": 49}, {"review_below": 100}, {"confidence_threshold": 19}):
+        with pytest.raises(ValueError):
+            Settings.model_validate({"ocr": bad})
+    with pytest.raises(ValueError):
+        Settings(add_mode="sometimes")
+
+
 def test_no_ai_calls_unless_a_person_oks_them():
     cfg = ProviderConfig(type="local")
     assert cfg.allow == "ask" and cfg.daily_limit is None and cfg.monthly_limit is None

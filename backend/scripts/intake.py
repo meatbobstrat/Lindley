@@ -27,7 +27,6 @@ from pathlib import Path
 from lindley.assembler import assemble
 from lindley.config import load_settings
 from lindley.db.database import connect, init_db
-from lindley.db.progress import REVIEW_BELOW
 from lindley.duplicates import find_duplicates
 from lindley.providers import allowance
 from lindley.providers.base import ProviderError
@@ -154,13 +153,14 @@ def main() -> int:
     pipe.process_scans(conn, list(by_scan), on_done=done)
 
     low = conn.execute(
-        "SELECT COUNT(*) FROM v_current_text WHERE confidence < ? AND NOT reviewed", (REVIEW_BELOW,)
+        "SELECT COUNT(*) FROM v_current_text WHERE confidence < ? AND NOT reviewed",
+        (settings.ocr.review_below,),
     ).fetchone()[0]
     if files:
         print(
             f"\n{counts['new']} new, {counts['duplicate']} already imported, {counts['read']} read,"
             f" {counts['queued']} waiting for the vision model, {counts['failed']} failed."
-            f" Pages below {REVIEW_BELOW}% waiting for review: {low}"
+            f" Pages below {settings.ocr.review_below}% waiting for review: {low}"
         )
 
     if a.vision:

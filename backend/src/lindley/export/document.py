@@ -19,7 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from lindley import history
-from lindley.db.progress import REVIEW_BELOW, pages_to_review
+from lindley.config import REVIEW_BELOW
+from lindley.db.progress import pages_to_review
 from lindley.export.pdf import PdfInfo, PdfPage, build_pdf
 from lindley.export.textlayer import page_text
 

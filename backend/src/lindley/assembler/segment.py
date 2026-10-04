@@ -286,14 +286,17 @@ def make_group(
     return g
 
 
-def rescans(ordered: list[Page]) -> dict[int, Page]:
-    """Pages that are another scan of a page earlier in the stream, each with that page. A
-    page is often scanned again when the first scan came out badly."""
+def rescans(ordered: list[Page]) -> dict[int, str]:
+    """Pages that are another scan of a page filed in a document already, or of one earlier in
+    the stream, each with that copy in words. A page is often scanned again when the first
+    scan came out badly, and a document when its scans were lost track of."""
     kept: dict[int, Page] = {}
-    out: dict[int, Page] = {}
+    out: dict[int, str] = {}
     for p in ordered:
-        if first := next((kept[i] for i in sorted(p.copies) if i in kept), None):
-            out[p.id] = first
+        if p.filed_copy:
+            out[p.id] = p.filed_copy
+        elif first := next((kept[i] for i in sorted(p.copies) if i in kept), None):
+            out[p.id] = first.file_name
         else:
             kept[p.id] = p
     return out
@@ -315,7 +318,7 @@ def segment(pages: list[Page]) -> tuple[list[Group], list[Pair], list[Page]]:
         if first := again.get(p.id):
             g = make_group([p], [], None, None)
             g.set_aside = True
-            g.reasons = [f"It looks like {first.file_name} scanned again"]
+            g.reasons = [f"It looks like {first} scanned again"]
             groups.append(g)
     return groups, pairs, stream
 

@@ -216,7 +216,7 @@ def suggest_keep(copies: list[Copy]) -> tuple[int, list[str]]:
     best, rest = ranked[0], ranked[1:]
     why: list[str] = []
     if best.where == "document" and all(c.where != "document" for c in rest):
-        why.append(f"It's already in {_quoted(best.document_name or '')}")
+        why.append(f"It's already in {quoted(best.document_name or '')}")
     if best.corrected and not any(c.corrected for c in rest):
         why.append("You've checked its text")
     others_conf = [c.confidence for c in rest if c.confidence is not None]
@@ -240,11 +240,11 @@ def suggest_keep(copies: list[Copy]) -> tuple[int, list[str]]:
     why = why[:3]
     home = next((c for c in rest if c.where == "document"), None)
     if best.where != "document" and home:
-        why.append(f"Keeping it puts it in its place in {_quoted(home.document_name or '')}")
+        why.append(f"Keeping it puts it in its place in {quoted(home.document_name or '')}")
     return best.page_id, why
 
 
-def _quoted(name: str) -> str:
+def quoted(name: str) -> str:
     """A name in quotes, unless it already has some (Lindley's guesses can)."""
     return name if "“" in name else f"“{name}”"
 

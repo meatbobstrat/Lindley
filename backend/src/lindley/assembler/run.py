@@ -21,6 +21,7 @@ from lindley.assembler.place import Candidate, DocEnds, candidates
 from lindley.assembler.segment import segment
 from lindley.assembler.terms import Library
 from lindley.config import AssemblerSettings
+from lindley.duplicates.resolve import quoted
 from lindley.providers.base import ChatProvider
 
 MAX_AI_PAGES = 40  # pages per AI question; larger tangles are left to the rules
@@ -130,12 +131,25 @@ def library_terms(conn: sqlite3.Connection) -> Library:
     return Library.of(t for (t,) in conn.execute("SELECT text FROM v_current_text"))
 
 
+def _filed(conn: sqlite3.Connection) -> dict[int, str]:
+    """Every page in a document, with where it is in words: "page 2 of “Letter”"."""
+    return {
+        r[0]: f"page {r[1]} of {quoted(r[2])}"
+        for r in conn.execute(
+            "SELECT p.id, p.position, d.name FROM pages p JOIN documents d ON d.id = p.document_id"
+        )
+    }
+
+
 def load_inbox(conn: sqlite3.Connection) -> list[Page]:
     rows = conn.execute(
         _PAGE_SQL + " WHERE p.document_id IS NULL AND p.set_aside_at IS NULL AND s.status = 'read'"
     ).fetchall()
-    copies, sizes = _copies(conn), folder_sizes(conn)
-    return [_page(r, copies, sizes) for r in rows]
+    copies, sizes, filed = _copies(conn), folder_sizes(conn), _filed(conn)
+    pages = [_page(r, copies, sizes) for r in rows]
+    for p in pages:
+        p.filed_copy = next((filed[i] for i in sorted(p.copies) if i in filed), None)
+    return pages
 
 
 def load_open_documents(conn: sqlite3.Connection) -> list[DocEnds]:

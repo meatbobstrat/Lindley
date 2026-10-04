@@ -39,6 +39,8 @@ class Page:
     # few pages of many is likely one document's; one holding all of them says nothing.
     folder_pages: int = 0
     library_pages: int = 0
+    # Where a copy of this page is filed already ("page 2 of “Letter”"): it's a scan made again.
+    filed_copy: str | None = None
     clues: PageClues = field(init=False)
     layout: Layout | None = field(init=False)
     # Rare words, weighed against the other pages being sorted (see weigh_terms)

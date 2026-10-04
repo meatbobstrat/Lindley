@@ -12,6 +12,7 @@ from lindley.assembler.model import Group, Page
 from lindley.assembler.run import load_inbox
 from lindley.config import AssemblerSettings
 from lindley.db.database import SCHEMA_VERSION, connect, init_db
+from lindley.duplicates.resolve import quoted
 
 LETTER = [
     "Xenia, O., March 4 1892\nDear Sister,\nWe are all well and the river came up over the",
@@ -390,6 +391,25 @@ def test_a_page_scanned_again_is_set_aside_and_the_pages_around_it_still_join(co
     aside = open_suggestions(conn, "set_aside")
     assert [s["page_id"] for s in aside] == [ids[2]]
     assert "scan_0002.jpg scanned again" in aside[0]["reasons"]
+
+
+def test_a_page_whose_copy_is_already_in_a_document_is_set_aside_not_grouped(conn):
+    # A document scanned again later, after the first scan was sorted: no second document.
+    first = list(load(conn, pages(LETTER + [LAST])))
+    assemble(conn)
+    again = list(load(conn, pages(LETTER + [LAST], "again"), start_seq=90))
+    conn.executemany(
+        "INSERT INTO duplicates (page_a, page_b, kind, score) VALUES (?, ?, 'same_page', 95)",
+        list(zip(first, again, strict=True)),
+    )
+    conn.commit()
+    assemble(conn)
+    assert conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 1
+    aside = open_suggestions(conn, "set_aside")
+    assert sorted(s["page_id"] for s in aside) == sorted(again)
+    (name,) = conn.execute("SELECT name FROM documents").fetchone()
+    reasons = [r for s in aside for r in json.loads(s["reasons"])]
+    assert f"It looks like page 1 of {quoted(name)} scanned again" in reasons
 
 
 def test_copies_are_a_hard_break():

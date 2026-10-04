@@ -1,23 +1,50 @@
-# Keeps the AI companies' libraries current: a pull request when one has a new release, which CI
-# then tests against the connectors' made-up servers.
+# Keeps every dependency current: a pull request when one has a new release, which CI then tests.
+# New features and fixes are grouped into one pull request per ecosystem; a new major version,
+# which can break things, comes on its own. Each waits a few days after a release, in case it's
+# pulled or found to be bad.
 version: 2
 updates:
+  # Backend: everything in pyproject.toml, the dev and embed extras included
   - package-ecosystem: pip
     directory: /backend
     schedule:
       interval: weekly
-    allow:
-      - dependency-name: anthropic
-      - dependency-name: openai
-      - dependency-name: google-genai
     # Raise the lowest version in pyproject.toml, so each release gets its own pull request and
-    # CI run, even when it's already inside the allowed range.
+    # CI run, even when it's already inside the allowed range (there's no lock file to update).
     versioning-strategy: increase
     groups:
-      # New features and fixes together; a new major version, which can break things, on its own
+      # The AI companies' libraries, tested against the connectors' made-up servers
       ai-libraries:
         patterns: [anthropic, openai, google-genai]
         update-types: [minor, patch]
-    # Wait a few days after a release, in case it's pulled or found to be bad
+      python:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    cooldown:
+      default-days: 3
+
+  # Frontend: package.json and package-lock.json
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      # React and its types move together, major versions included
+      react:
+        patterns: [react, react-dom, "@types/react", "@types/react-dom"]
+      npm:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    cooldown:
+      default-days: 3
+
+  # The actions CI uses (checkout, setup-python, setup-node)
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
     cooldown:
       default-days: 3

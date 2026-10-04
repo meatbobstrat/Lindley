@@ -89,7 +89,11 @@ on real scans.
   from an upright copy, since Tesseract reads its lines as vertical. A page it didn't turn but
   that reads poorly may still be the wrong way up: its orientation check (`--psm 0`) is asked
   for a guess, which on real scans was as often wrong as right, so the page is also read
-  turned that way, and the turn kept only if that reads at least 10 points better. A turn a
+  turned that way, and the turn kept only if that reads at least 10 points better. When the
+  check says the page is upright, the guess is upside down: on typed pages lying upside down
+  on the scanner it said "0 degrees", once at confidence 4.3. Of 344 real scans, 4 such pages
+  read at 19–27 as they were (taken for handwriting, and left waiting for the vision model) and
+  at 56–79 turned, while pages that were upright fell to 25–35. A turn a
   person set (`user_rotation`) is trusted and not looked for again. A page only the vision
   model reads gets the orientation check alone, and is turned when Tesseract is sure (2 or
   more). Pages with
@@ -301,6 +305,76 @@ With the stand-in AI that is always right (`bench_placing.py --ai oracle`), aske
 | Mixed | 57 | 105 | 0 |
 
 Each question shows it at most 3 documents of the 25. The stand-in shows what the step can add, not what a real model will do; `--ai settings` on `bench_assembler.py` measures a real one.
+
+**A bigger answer key from hand-made PDFs** (`bench.scan_answers`, used by `real_answers` first). Some sorted folders also hold a PDF a person made from their scans, in reading order. Each PDF page is matched to the scan it was made from: by text (`duplicates.detect.likeness`, letter grams or words in order, 0.3 or more, the most alike first and one each), then, for pages with little text, by picture (`image_signature`, 0.9 or more). The folder's document is those scans in the PDF's order; scans the PDF left out (scanned again, or not used) aren't in it. Other folders are in file name order, as before, and a folder that holds other folders (loose scans waiting to be sorted) is no document. On `test_scans` (344 files) this gives 23 documents of 147 pages, 11 in the order their PDFs give, where the PDFs' own pages gave 7 documents of 45. One PDF's order differs from its file names throughout (Image, Image (4), Image (5) … Image (3), Image (2)). Only one of the 12 PDFs has a text layer (made with Print to PDF or from Word, the rest are pictures), so they say nothing about how well pages are read.
+
+The rules on it, 3 runs (compare the 7 typescripts above):
+
+| Fed in | Proposed: precision, recall, exact | Documents made, wrong | Rebuilt exactly |
+|---|---|---|---|
+| One folder, in order | 0.82, 0.89, 59% | 0, 0 | 0% |
+| One folder, swapped | 0.79, 0.79, 51% | 0, 0 | 0% |
+| A folder per document, in order | 1.00, 0.92, 87% | 63, 0 | 87% |
+| A folder per document, swapped | 1.00, 0.94, 90% | 64, 0 | 90% |
+
+Placing pages scanned later, in one folder: the right document first 50%, among the first 3 73%; with a folder per document, first 93%, every one listed at 75 or more right.
+
+## Local models
+
+Small models that run on a laptop's CPU, tried against each part of intake (October 2026, Ollama 0.33 on an i5-9400 with 6 cores; times on the CPU alone unless said). The benches: `bench_assembler.py --ai settings`, `bench_placing.py --ai settings`, `bench_continues.py`, `bench_meaning.py` and `bench_reading.py`.
+
+**Speed.** None makes intake quicker: Tesseract is the time, and every model adds to it.
+
+**Thinking.** Thinking models (Qwen3.5, Gemma 4) use up Ollama's 4096-token context thinking and send back nothing ("ran out of room"): every sorting question to Qwen3.5 4B and Gemma 4 12B failed. The local connector turns thinking off (`reasoning_effort: none`) for page reading and sorting questions alike; a streamed answer (Ask Lindley) may still think. A small model also answered "unplaced" with objects instead of page ids, which `ai.refine` now turns down instead of crashing on.
+
+**The sorting AI** (`assemble`), thinking off, pages fed in one stream in order, one run. On the 7 typescripts, where the rules alone make no document:
+
+| Model | Documents made | Wrong | Rebuilt exactly | Pages scanned later placed (wrongly) |
+|---|---|---|---|---|
+| gemma4:e4b | 9 | 0 | 43% | 3 (1) |
+| gemma4:12b | 9 | 0 | 14% | 3 (1) |
+| gemma4:e2b | 3 | 0 | 43% | 0 |
+| qwen3.5:4b | 3 | 0 | 0% | 0 |
+| phi4-mini | 2 | 0 | 0% | 2 (2) |
+| qwen3.5:2b | 0 | 0 | 0% | 0 |
+
+On the 23 documents: gemma4:e4b made 16, 2 wrong (26% rebuilt exactly); qwen3.5:4b 16, none wrong (17%); gemma4:12b 24, 1 wrong (39%). Gemma 4 E4B is the local connector's default: Apache 2.0, image input, and laptop-sized. It's better than nothing but makes wrong documents, so a local sorting AI should stay at "ask first".
+
+**Does page B carry straight on from page A?** (`bench_continues.py`). The rules' `runs_on` only sees that A stops mid-sentence and B starts mid-sentence, which in a typescript is nearly every page. A model is shown A's last 4 lines and B's first 4 and asked "yes or no"; the score is its chance of "yes", read from its token probabilities (Ollama's own `/api/chat`: its OpenAI-compatible endpoint drops them). Pairs: every page and the next page of its document, against 150 pairs of one document's last page and another's first, and 150 pairs of different documents where `runs_on` fires. AUC on the 23 documents (0.5 a coin toss, 1 perfect):
+
+| Score | All pairs | Where `runs_on` fires (206 pairs, 55 go together) | Seconds a pair, CPU |
+|---|---|---|---|
+| The rules' pair score | 0.72 | 0.82 | — |
+| qwen3.5:0.8b (7 typescripts) | 0.63 | 0.64 | 1.9 |
+| qwen3.5:2b | 0.74 | 0.79 | 4.1 |
+| gemma4:e2b | 0.80 | 0.86 | 4.1 |
+| qwen3.5:4b | 0.85 | 0.92 | 6.7 |
+| gemma4:e4b | 0.83 | 0.88 | 8.6 |
+| Rules + qwen3.5:4b (log-odds added) | 0.85 | 0.94 | 6.7 |
+
+The model sees what the rules can't: whether the sentence really runs on. Under 2B it's too weak (0.8B did worse with more lines). It would be a new piece of evidence (`lm_continues`), off unless a local model is set up, asked only about pairs whose score is uncertain (a few each new scan, at about 7 seconds each), kept by text like `ai_answers`, and weighed by fitting like the rest. Not built yet.
+
+**What pages are about** (`bench_meaning.py`): how often a page's most alike page is from its own document.
+
+| Way | 7 typescripts (44 pages) | 23 documents (147 pages) | Seconds for all, GPU |
+|---|---|---|---|
+| Rare words (`terms.py`) | 38 | 113 | 2.5 |
+| potion-base-8M (`meaning.py`) | 35 | 85 | 0 |
+| nomic-embed-text | 37 | 114 | 2.7 |
+| embeddinggemma (300M) | 39 | 125 | 7.2 |
+| qwen3-embedding:0.6b | 39 | 114 | 13.3 |
+
+EmbeddingGemma finds a page's document a little more often than rare words, and potion-base-8M, the model `meaning.py` uses now, much less often. Whether that helps build documents (rather than find a page's company) isn't measured: `topic_alike` is weighed at 0.
+
+**Reading hard pages** (`bench_reading.py`, the vision job's prompt, on the CPU alone, at most 2048 tokens a page). Six pages: two handwritten notes, a typed page lying upside down, a typed title page with handwriting on it, and a two-page typed letter whose typed transcription is the right answer. On the letter, character error rate: Tesseract 6.3%, GLM-OCR 4.0%, Gemma 4 E4B 15.7% (it left text out), and Gemma 4 E2B and 12B over 100% (they repeated themselves until stopped).
+
+| Model | Seconds a page | What it did |
+|---|---|---|
+| glm-ocr (0.9B) | 48–361, 188 on average | The best on type, and the only one to read the upside-down page (in 6 minutes); read a handwritten note right, then repeated its last line until stopped |
+| gemma4:e2b | 10–124, 36 on average | Left words and half a page out; on the upside-down page it gave back the prompt |
+| gemma4:e4b | 23–114, 53 on average | Read the handwritten note whole and right in 28 seconds, where Tesseract read nothing; good on the title page; nothing on the upside-down page |
+
+So printed and typed pages stay with Tesseract: it's nearly as good, in seconds. For the few handwritten pages Tesseract can't read, Gemma 4 E4B, the local connector's default, is a free and private vision model at about half a minute a page on a laptop. The pipeline already keeps a vision reading only when it's better than Tesseract's. Six pages is a first look, not a measure: pages whose text a person checks are `bench_reading.py`'s answer key.
 
 ## Duplicates
 

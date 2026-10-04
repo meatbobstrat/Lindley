@@ -359,6 +359,12 @@ folders.
 
 ## Roadmap
 
+The MVP is what the top of this page promises, for someone who isn't a developer: drop scans
+in a folder, and Lindley reads them, sorts the pages into documents and makes searchable PDFs,
+and you can ask it about them. All of it from a one-click install.
+
+### Done
+
 - [x] Project scaffolding and CI
 - [x] UI design (clickable mockup)
 - [x] Database design
@@ -371,18 +377,26 @@ folders.
 - [x] Vision model reading for handwriting
 - [x] API and the real React UI, built from the mockup
 - [x] Searchable PDF export, built from stored readings (no Ghostscript)
-- [ ] Searchable text for every alphabet: ship a glyphless font, so text outside Windows-1252
-  (Greek, Cyrillic, Hebrew and so on) goes into the PDF as it was read
 - [x] Search: full text, over every page's reading in use
-- [ ] Ask Lindley (chat with your documents)
-- [ ] Details view: everything Lindley found about a page or document
 - [x] API keys in Windows Credential Manager
 - [x] Settings in the app, built from the mockup
-- [ ] Advanced settings (hidden from standard users): an interface for creating custom connectors. They're files too, built the same way as the built-in ones
 - [x] When each AI may be used: ask first or automatic, with a daily and a monthly limit; every call recorded
 - [x] Throttling each AI: calls a minute and at once
+
+### For the MVP
+
+- [ ] The app tried end to end on real scans, and what breaks fixed
+- [ ] Ask Lindley (chat with your documents)
+- [ ] One-click installer (Windows/Mac), with Tesseract included
+
+### After the MVP
+
+- [ ] Searchable text for every alphabet: ship a glyphless font, so text outside Windows-1252
+  (Greek, Cyrillic, Hebrew and so on) goes into the PDF as it was read
+- [ ] Details view: everything Lindley found about a page or document
+- [ ] Advanced settings (hidden from standard users): an interface for creating custom connectors. They're files too, built the same way as the built-in ones
 - [ ] Settings lists the models each AI offers (each library can list them), so the defaults
   can't go out of date
 - [ ] AI spending: a monthly limit, and the cost of each call
 - [ ] Suggest groups of pages Lindley isn't sure of (typescripts, notes) for a person to confirm
-- [ ] One-click installer (Windows/Mac), with Tesseract included
+- [ ] Local AI models for intake, tuned on real scans

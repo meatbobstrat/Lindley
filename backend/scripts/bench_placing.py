@@ -4,6 +4,7 @@ python scripts/bench_placing.py                    # 30 made-up batches
 python scripts/bench_placing.py --real lindley.db  # real scans (PDFs or sorted folders)
 python scripts/bench_placing.py --habits per_document --seeds 5
 python scripts/bench_placing.py --ai oracle        # with a stand-in AI that is always right
+python scripts/bench_placing.py --ai settings      # with the sorting AI in your settings.json
 
 Each batch's documents are made first, as if already in the library, all but a page here and
 there: about half of those of two or more pages hold back their first or last page. Those
@@ -39,8 +40,9 @@ from lindley.assembler.model import weigh_terms
 from lindley.assembler.place import TOP, candidates
 from lindley.assembler.run import library_terms, load_inbox, load_open_documents
 from lindley.assembler.segment import segment
-from lindley.config import AssemblerSettings
+from lindley.config import AssemblerSettings, load_settings
 from lindley.db.database import connect, init_db
+from lindley.providers.registry import get_provider
 
 
 def hold_back(docs: list[list], seed: int) -> tuple[list, list]:
@@ -143,7 +145,11 @@ def run(seed: int, habit: str, real=None, ai: str = "none") -> Counter:
             out["first_sure"] += bool(ranked) and ranked[0].score >= 75
             out["first_sure_right"] += bool(ranked) and ranked[0].score >= 75 and right(ranked[0])
         truth = truth | late
-        chat = CountingOracle(truth) if ai == "oracle" else None
+        chat = None
+        if ai == "oracle":
+            chat = CountingOracle(truth)
+        elif ai == "settings":  # asking for --ai is the OK to call it, whatever its "allow"
+            chat = get_provider(load_settings().ai, "assemble")
         r = assemble(conn, AssemblerSettings(ask_ai_after_days=0), chat)
         for pid, doc in conn.execute(
             "SELECT id, document_id FROM pages WHERE document_id IS NOT NULL"
@@ -156,7 +162,7 @@ def run(seed: int, habit: str, real=None, ai: str = "none") -> Counter:
         out["late_pages"] += sum(1 for tp in late.values() if tp.kind not in ("blank", "notes"))
         out["ai_calls"] += r.ai_calls
         out["ai_placed"] += r.ai_placed
-        out["shown"] += chat.shown if chat else 0
+        out["shown"] += getattr(chat, "shown", 0)
         conn.close()
         return out
 
@@ -188,7 +194,7 @@ def main() -> None:
     ap.add_argument("--real", type=Path)
     ap.add_argument("--seeds", type=int, default=None, help="default 30, or 10 with --real")
     ap.add_argument("--habits", default=",".join(HABITS))
-    ap.add_argument("--ai", choices=["none", "oracle"], default="none")
+    ap.add_argument("--ai", choices=["none", "oracle", "settings"], default="none")
     a = ap.parse_args()
     real = None
     if a.real:

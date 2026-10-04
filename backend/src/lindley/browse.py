@@ -6,7 +6,9 @@ Each page has a `state`, the one thing the UI shows beside it, in this order of 
 - checked: a person checked or corrected its text
 - ai_reading: the vision model is reading it now
 - needs_ai / ai_failed: waiting for the vision model, or its call failed (see Needs AI)
-- review: read with less than ocr.review_below, so a person should check it
+- review: read with less than ocr.review_below, so a person should check it: in the Inbox or
+  a document in progress, as the review queue has them. A completed document's pages, and
+  pages set aside, don't wait for review.
 - ok
 """
 
@@ -26,9 +28,10 @@ SELECT p.id, p.scan_id, p.page_index, s.original_name AS file, s.origin, s.impor
        p.dpi, p.color_mode, p.script, p.blank_score, p.detected_rotation, p.user_rotation,
        p.document_id, p.position, p.set_aside_at, c.page_id IS NOT NULL AS has_text, c.source,
        c.confidence, coalesce(c.reviewed, 0) AS reviewed, v.status AS vision_status,
-       v.error AS vision_error
+       v.error AS vision_error, d.status AS document_status
 FROM pages p
 JOIN scans s ON s.id = p.scan_id
+LEFT JOIN documents d ON d.id = p.document_id
 LEFT JOIN v_current_text c ON c.page_id = p.id
 LEFT JOIN ({_LAST_VISION}) v ON v.page_id = p.id
 """
@@ -47,7 +50,8 @@ def state(r: sqlite3.Row, review_below: float) -> str:
     if r["vision_status"] in ("queued", "failed") and r["set_aside_at"] is None:
         return "ai_failed" if r["vision_status"] == "failed" else "needs_ai"
     # As lindley.db.progress counts them: a reading with no confidence (a blank page) isn't one
-    if r["confidence"] is not None and r["confidence"] < review_below:
+    waits = r["set_aside_at"] is None and r["document_status"] in (None, "progress")
+    if waits and r["confidence"] is not None and r["confidence"] < review_below:
         return "review"
     return "ok"
 

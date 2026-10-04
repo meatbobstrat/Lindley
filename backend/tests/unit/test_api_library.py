@@ -80,6 +80,24 @@ def test_a_reading_with_no_confidence_isnt_waiting_for_review(client, settings, 
     assert client.get("/api/review").json()["count"] == 0
 
 
+def test_only_pages_the_review_queue_has_are_marked_for_review(client, settings, tmp_path):
+    conn = db(client, settings)
+    going, done = document(conn), document(conn, "Receipt", status="complete")
+    open_page = add_page(conn, tmp_path, "the rivcr", going, 0, conf=60)
+    done_page = add_page(conn, tmp_path, "Rcceived", done, 0, conf=60)
+    aside = add_page(conn, tmp_path, "Dcar", conf=60)
+    conn.execute("UPDATE pages SET set_aside_at = datetime('now') WHERE id = ?", (aside,))
+    conn.commit()
+    [p] = client.get(f"/api/documents/{going}").json()["pages"]
+    assert p["id"] == open_page and p["state"] == "review"
+    # Completing a document is a person's word that it's done; set aside is out of the way
+    [p] = client.get(f"/api/documents/{done}").json()["pages"]
+    assert p["id"] == done_page and p["state"] == "ok"
+    [p] = client.get("/api/aside").json()["pages"]
+    assert p["id"] == aside and p["state"] == "ok"
+    assert client.get("/api/review").json()["count"] == 1
+
+
 def test_a_page_in_full(client, settings, tmp_path):
     conn = db(client, settings)
     d = document(conn)

@@ -61,6 +61,7 @@ class ConnectorInfo:
     key_url: str | None = None  # where to get a key
     hidden: bool = False  # not offered in the UI (the fake connector for tests)
     short: str | None = None  # a new connection's name, e.g. "Claude" (None: the label)
+    timeout_s: int = 120  # how long to wait for an answer, unless the connection says
 
 
 class ProviderError(RuntimeError):

@@ -19,8 +19,13 @@ INFO = ConnectorInfo(
         "embed": "nomic-embed-text",
     },
     default_base_url="http://localhost:11434/v1",
+    # A laptop with no graphics card may take minutes over a page
+    timeout_s=600,
 )
 
 
 class Provider(OpenAIChat):
     info = INFO
+    # Reading a page needs no thinking, and a thinking model can use up a local AI's small
+    # context thinking and send back nothing. "none" turns it off on Ollama (and LM Studio).
+    transcribe_options = {"reasoning_effort": "none"}

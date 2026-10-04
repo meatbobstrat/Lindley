@@ -22,6 +22,9 @@ class OpenAIChat:
     """Implements ChatProvider, VisionProvider and EmbeddingProvider over the OpenAI API."""
 
     info: ConnectorInfo
+    # Sent with each page to read, e.g. to turn a local model's thinking off. A server that
+    # doesn't take them is asked again without them, once, and isn't sent them again.
+    transcribe_options: dict = {}
 
     def __init__(
         self,
@@ -42,7 +45,7 @@ class OpenAIChat:
                 # which mustn't reach another service. Local servers ignore it.
                 api_key=api_key or "none",
                 base_url=self.base_url,
-                timeout=config.timeout_s if config else 120,
+                timeout=(config.timeout_s if config else None) or self.info.timeout_s,
                 max_retries=0,  # see _common: a busy AI is tried again by the throttle
                 http_client=http_client,
             )
@@ -59,9 +62,18 @@ class OpenAIChat:
     def _errors(self):
         return sdk_errors(openai, self.who, self.base_url)
 
-    def _complete(self, messages: list[dict]) -> str:
+    def _complete(self, messages: list[dict], **options) -> str:
         with self._errors():
-            r = self.client.chat.completions.create(model=self.model, messages=messages)
+            try:
+                r = self.client.chat.completions.create(
+                    model=self.model, messages=messages, **options
+                )
+            except (openai.BadRequestError, openai.UnprocessableEntityError):
+                if not options:
+                    raise
+                # Refused before the AI did any work, so this isn't repeating a failed call
+                self.transcribe_options = {}
+                r = self.client.chat.completions.create(model=self.model, messages=messages)
         if not r.choices:
             raise ProviderError(f"{self.who} sent back an answer with no text")
         self._finished(r.choices[0].finish_reason)
@@ -98,7 +110,7 @@ class OpenAIChat:
             {"type": "text", "text": transcribe_prompt(hints)},
             {"type": "image_url", "image_url": {"url": url}},
         ]
-        text = self._complete([{"role": "user", "content": content}])
+        text = self._complete([{"role": "user", "content": content}], **self.transcribe_options)
         return Transcription(text=text.strip(), metadata={"model": self.model})
 
     def embed(self, texts: list[str]) -> list[list[float]]:

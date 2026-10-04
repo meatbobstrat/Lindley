@@ -119,7 +119,7 @@ class Provider:
                 api_key=api_key,
                 http_options=types.HttpOptions(
                     base_url=(config.base_url if config else None) or INFO.default_base_url,
-                    timeout=(config.timeout_s if config else 120) * 1000,  # milliseconds
+                    timeout=((config.timeout_s if config else None) or INFO.timeout_s) * 1000,
                     # One try: the library would repeat a call that took too long, too (see
                     # _common). A busy Gemini is tried again by the throttle.
                     retry_options=types.HttpRetryOptions(attempts=1),

@@ -68,7 +68,8 @@ class ProviderConfig(BaseModel):
     # number), and at most this many waiting for an answer at once.
     per_minute: int | None = Field(default=None, ge=1)
     at_once: int = Field(default=2, ge=1, le=32)
-    timeout_s: int = Field(default=120, ge=5, le=3600)
+    # Seconds to wait for an answer. None: the connector's own (longer for an AI on a laptop).
+    timeout_s: int | None = Field(default=None, ge=5, le=3600)
 
     def api_key(self, name: str | None = None) -> str | None:
         """The key: from api_key_env if it's set, else saved for connection `name`."""
@@ -160,6 +161,9 @@ class Settings(BaseModel):
         # Google connections once went through Google's OpenAI-compatible address; its own
         # library uses its own.
         for p in providers.values() if isinstance(providers, dict) else ():
+            # Saved when every connection waited 120 s: an AI on a laptop has its own now
+            if isinstance(p, dict) and p.get("type") == "local" and p.get("timeout_s") == 120:
+                del p["timeout_s"]
             old_url = isinstance(p, dict) and (p.get("base_url") or "").rstrip("/")
             if old_url and p.get("type") == "google" and old_url.endswith("/openai"):
                 p["base_url"] = None

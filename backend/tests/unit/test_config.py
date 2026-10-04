@@ -118,3 +118,19 @@ def test_google_through_its_openai_address_moves_to_its_own(tmp_path: Path):
     ai = load_settings(path).ai
     assert ai.providers["gemini"].base_url is None
     assert ai.providers["proxy"].base_url == "https://gemini.example.com"
+
+
+def test_an_ai_on_a_laptop_waits_longer_unless_the_connection_says(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        '{"ai": {"providers": {'
+        '   "ollama": {"type": "local", "timeout_s": 120},'
+        '   "slow": {"type": "local", "timeout_s": 900},'
+        '   "claude": {"type": "anthropic", "timeout_s": 120}}}}',
+        encoding="utf-8",
+    )
+    ai = load_settings(path).ai
+    # 120 was every connection's default once, saved with the rest: a local one drops it
+    assert ai.providers["ollama"].timeout_s is None
+    assert ai.providers["slow"].timeout_s == 900
+    assert ai.providers["claude"].timeout_s == 120

@@ -67,7 +67,7 @@ class Provider:
             anthropic.Anthropic(
                 api_key=api_key,
                 base_url=(config.base_url if config else None) or INFO.default_base_url,
-                timeout=config.timeout_s if config else 120,
+                timeout=(config.timeout_s if config else None) or INFO.timeout_s,
                 max_retries=0,  # see _common: a busy AI is tried again by the throttle
                 http_client=http_client,
             )

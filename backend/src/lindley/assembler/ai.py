@@ -161,7 +161,9 @@ def refine(
         )
         groups.append(g)
     unplaced = data.get("unplaced", [])
-    if not isinstance(unplaced, list) or any(i not in by_id or i in seen for i in unplaced):
+    if not isinstance(unplaced, list) or any(
+        not isinstance(i, int) or i not in by_id or i in seen for i in unplaced
+    ):
         return AiResult(None, "the unplaced list was wrong")
     if seen | set(unplaced) != set(by_id):
         return AiResult(None, "the reply left pages out")

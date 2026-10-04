@@ -223,8 +223,10 @@ def _pages():
         json.dumps({"documents": [{"pages": [1, 1], "confidence": 90}], "unplaced": [2]}),
         json.dumps({"documents": [{"pages": [1], "confidence": 90}], "unplaced": []}),
         json.dumps({"documents": [{"pages": ["1", 2]}], "unplaced": []}),
+        # as Qwen3.5 4B answered: pages it couldn't place, as objects
+        json.dumps({"documents": [{"pages": [1]}], "unplaced": [{"id": 2, "reason": "?"}]}),
     ],
-    ids=["not json", "unknown id", "id twice", "page left out", "id not a number"],
+    ids=["not json", "unknown id", "id twice", "page left out", "id not a number", "unplaced"],
 )
 def test_bad_ai_replies_are_rejected(reply):
     ps = _pages()

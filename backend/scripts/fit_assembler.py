@@ -3,11 +3,13 @@
 python scripts/fit_assembler.py                       # made-up batches only
 python scripts/fit_assembler.py --real lindley.db     # plus real scans (PDFs or sorted folders)
 python scripts/fit_assembler.py --real lindley.db --write
+python scripts/fit_assembler.py --real lindley.db --only folder_shared,folder_differs
 
 Pages are filed by each scanning habit in turn (HABITS in lindley.assembler.bench), or those
 given with --habits. Real scans count as much as all the made-up batches together. Each real
 document is also left out in turn and its pairs predicted by weights fitted without it, which
-says how well the weights should do on documents they've never seen. --write saves them to
+says how well the weights should do on documents they've never seen. --only fits just the
+weights named, holding the rest at what weights.py has now. --write saves them to
 src/lindley/assembler/weights.py. Only the weights are saved: no text from any scan.
 """
 
@@ -89,6 +91,7 @@ def main() -> None:
     ap.add_argument("--l2", type=float, default=L2)
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--habits", default=",".join(HABITS))
+    ap.add_argument("--only", default="", help="fit only these weights, comma-separated")
     a = ap.parse_args()
 
     habits = a.habits.split(",")
@@ -99,7 +102,9 @@ def main() -> None:
         share = sum(e.w for e in synthetic) / len(tagged)
         for _, e in tagged:
             e.w = share
-    weights = fit(synthetic + [e for _, e in tagged], a.l2)
+    only = set(a.only.split(",")) - {""}
+    held = {k: v for k, v in WEIGHTS.items() if k not in only} if only else None
+    weights = fit(synthetic + [e for _, e in tagged], a.l2, fixed=held)
 
     print(f"\n{'evidence':16} {'fitted':>8} {'before':>8}")
     for k in FEATURES:
@@ -115,7 +120,7 @@ def main() -> None:
         for d in docs:
             train = synthetic + [e for ds, e in tagged if d not in ds]
             test = [e for ds, e in tagged if d in ds]
-            fold = fit(train, a.l2)
+            fold = fit(train, a.l2, fixed=held)
             k = len(test)
             loss += k * log_loss(test, fold)
             right += k * accuracy(test, fold)

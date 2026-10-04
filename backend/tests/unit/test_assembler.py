@@ -525,3 +525,68 @@ def test_the_bench_files_scans_by_each_habit():
     assert any(p[0][0] == "D:/Scans" for p in mixed) and any(p[0][0] != "D:/Scans" for p in mixed)
     # Pages of a document scanned later go in the same folder, numbered on
     assert folder_plan(["a"], "per_document", start=90) == [("D:/Scans/a", "Image (90).jpg")]
+
+
+QUIET = [  # two pages with little on them to say whether they go together
+    "The wagons came on over the hill at noon and the men stopped\nto water the horses at"
+    " the ford below the old stone mill.",
+    "We went down to the river after dinner and sat a while\nin the shade of the sycamores"
+    " until the bell rang for supper.",
+]
+
+
+def _filed(folder, size, library=500, texts=QUIET, first=1):
+    return [
+        Page(i, i, f"Image ({i}).jpg", t, folder=folder, folder_pages=size, library_pages=library)
+        for i, t in enumerate(texts, first)
+    ]
+
+
+def test_a_small_folder_counts_towards_pages_going_together_and_a_big_one_hardly_at_all():
+    small = pair(*_filed("D:/Scans/Letter to Will", 3), False).score
+    big = pair(*_filed("D:/Scans", 400), False).score
+    unknown = pair(*_filed("", 0, 0), False).score
+    assert small > unknown + 0.1
+    assert abs(big - unknown) < 0.03
+
+
+def test_one_folder_everything_goes_into_says_nothing_however_few_pages_it_holds_yet():
+    unknown = pair(*_filed("", 0, 0), False).score
+    assert pair(*_filed("D:/Scans", 2, 2), False).score == unknown
+    assert pair(*_filed("D:/Scans", 500, 500), False).score == unknown
+
+
+def test_pages_from_different_folders_are_less_likely_to_go_together():
+    a, b = _filed("D:/Scans/Letter to Will", 3)
+    b.folder = "D:/Scans/Deed"
+    assert pair(a, b, False).features["folder_differs"] == 1.0
+    assert pair(a, b, False).score < pair(*_filed("", 0, 0), False).score - 0.1
+
+
+def test_a_group_that_is_a_whole_small_folder_says_so():
+    from lindley.assembler.segment import segment
+
+    letter = _filed("D:/Scans/Letter to Will", 3, texts=LETTER)
+    big = _filed(
+        "D:/Scans/Receipts", 120, texts=[RECEIPT, RECEIPT.replace("1.20", "2.40")], first=9
+    )
+    groups = {tuple(g.ids): g for g in segment(letter + big)[0]}
+    g = groups[(1, 2, 3)]
+    assert g.features["whole_folder"] == 1.0 and g.features["folders_mixed"] == 0.0
+    assert "They're every scan in the folder Letter to Will" in g.reasons
+    assert g.confidence >= 90  # enough to become a document on its own
+    # A big folder may hold many documents, so being all of it being sorted says nothing
+    assert not any(g.features["whole_folder"] for ids, g in groups.items() if 9 in ids)
+
+
+def test_each_page_knows_how_many_pages_its_folder_and_the_library_hold(conn):
+    load(conn, pages(LETTER, "will") + pages([RECEIPT], "store"), habit="per_document")
+    sizes = {p.text: (p.folder_pages, p.library_pages) for p in load_inbox(conn)}
+    assert sizes[LETTER[0]] == (3, 4) and sizes[RECEIPT] == (1, 4)
+
+
+def test_a_shared_folder_doesnt_carry_pages_over_a_letters_greeting():
+    a, b = _filed("D:/Scans/Letters", 3, texts=[QUIET[0], "Dear Mother,\n" + QUIET[1]])
+    assert pair(a, b, False).features["folder_shared"] == 0.0
+    a, b = _filed("D:/Scans/Letters", 3, texts=[QUIET[0], QUIET[1]])
+    assert pair(a, b, False).features["folder_shared"] > 0.5

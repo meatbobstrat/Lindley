@@ -77,10 +77,12 @@ def answer_key(conn: sqlite3.Connection) -> list[list[int]]:
 
 
 def _pages(conn: sqlite3.Connection, ids: list[int]):
-    from lindley.assembler.run import _PAGE_SQL, _page, library_terms
+    from lindley.assembler.run import _PAGE_SQL, _page, folder_sizes, library_terms
 
-    marks = ",".join("?" * len(ids))
-    pages = [_page(r) for r in conn.execute(_PAGE_SQL + f" WHERE p.id IN ({marks})", ids)]
+    marks, sizes = ",".join("?" * len(ids)), folder_sizes(conn)
+    pages = [
+        _page(r, None, sizes) for r in conn.execute(_PAGE_SQL + f" WHERE p.id IN ({marks})", ids)
+    ]
     weigh_terms(pages, library_terms(conn))
     return pages
 

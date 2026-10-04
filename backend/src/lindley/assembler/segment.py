@@ -15,13 +15,15 @@ from __future__ import annotations
 
 import math
 from collections import Counter
+from pathlib import PurePath
 
 from lindley.assembler.clues import MONTH_NAMES
-from lindley.assembler.evidence import STRONG_KINDS, Pair, adjacent, pair, score
+from lindley.assembler.evidence import STRONG_KINDS, Pair, adjacent, folder_says, pair, score
 from lindley.assembler.model import Group, Page, weigh_terms
 from lindley.assembler.weights import GROUP_WEIGHTS
 
 CUT_BELOW = 0.5  # neighbouring pages scoring below this are split into different documents
+WHOLE_FOLDER = 0.9  # how sure a group is that is all of a folder that looks like one document's
 SURE_LINK = 0.7  # a group's order is settled when every step in it scores at least this
 JOIN_AT = 0.75  # pages scanned apart are joined when one continues the other this clearly
 SWAPPED_AT = 0.6  # the same for two pages fed through the scanner the wrong way round
@@ -117,7 +119,28 @@ GROUP_FEATURES = (
     "known_kind",  # a letter, receipt, deed or diary
     "numbered",  # page numbers run in order over two or more of its pages
     "length",  # how many pages, in log
+    "whole_folder",  # every page of a folder that looks like one document's, and only those
+    "folders_mixed",  # pages from more than one folder
 )
+
+Folders = Counter  # pages of each folder being sorted, blanks and notes aside (see in_folders)
+
+
+def in_folders(pages: list[Page]) -> Folders:
+    return Counter(p.folder for p in pages if p.clues.kind not in ("blank", "notes"))
+
+
+def whole_folder(pages: list[Page], folders: Folders | None) -> str | None:
+    """The folder, if these pages are every page of it being sorted and it looks like one
+    document's (folder_says)."""
+    names = {p.folder for p in pages}
+    if folders is None or len(pages) < 2 or len(names) != 1:
+        return None
+    (name,) = names
+    real = sum(1 for p in pages if p.clues.kind not in ("blank", "notes"))
+    if not name or real != folders[name] or folder_says(pages[0]) < 0.3:
+        return None
+    return name
 
 
 def _logit(p: float) -> float:
@@ -126,7 +149,11 @@ def _logit(p: float) -> float:
 
 
 def group_features(
-    pages: list[Page], inside: list[Pair], left: Pair | None, right: Pair | None
+    pages: list[Page],
+    inside: list[Pair],
+    left: Pair | None,
+    right: Pair | None,
+    folders: Folders | None = None,
 ) -> dict[str, float]:
     edge = max(left.score if left else 0.0, right.score if right else 0.0)
     markers = [p.clues.marker[0] for p in pages if p.clues.marker]
@@ -140,14 +167,20 @@ def group_features(
         "known_kind": float(any(p.clues.kind in STRONG_KINDS for p in pages)),
         "numbered": float(len(markers) >= 2 and markers == sorted(markers)),
         "length": math.log(len(pages)),
+        "whole_folder": float(whole_folder(pages, folders) is not None),
+        "folders_mixed": float(len({p.folder for p in pages}) > 1),
     }
 
 
 def _confidence(
-    pages: list[Page], inside: list[Pair], left: Pair | None, right: Pair | None
+    pages: list[Page],
+    inside: list[Pair],
+    left: Pair | None,
+    right: Pair | None,
+    folders: Folders | None = None,
 ) -> int:
     if GROUP_WEIGHTS:
-        p = score(group_features(pages, inside, left, right), GROUP_WEIGHTS)
+        p = score(group_features(pages, inside, left, right, folders), GROUP_WEIGHTS)
         return round(100 * min(p, 0.97))
     within = min((p.score for p in inside), default=1.0)
     edge = 1 - max(left.score if left else 0.0, right.score if right else 0.0)
@@ -163,11 +196,24 @@ def _confidence(
         conf *= (1.0 if has_start else 0.8) * (1.0 if has_end else 0.85)
     if not any(p.clues.kind for p in pages) and not (has_start or has_end):
         conf *= 0.6
+    # Every page of a folder that looks like one document's, and no break inside: on 25 folders
+    # a person sorted, about 19 in 20 such groups are the whole document. Not when a letter's
+    # greeting or signature is inside it, or it holds, say, a letter and a diary: a folder may
+    # hold two (see evidence.pair on why only those).
+    inner_break = (
+        any(p.clues.salutation for p in pages[1:])
+        or any(p.clues.signature for p in pages[:-1])
+        or len({p.clues.kind for p in pages} & STRONG_KINDS) > 1
+    )
+    if within >= CUT_BELOW and not inner_break and whole_folder(pages, folders):
+        conf = max(conf, WHOLE_FOLDER)
     return round(100 * max(0.0, min(conf, 0.97)))
 
 
-def _reasons(pages: list[Page], inside: list[Pair]) -> list[str]:
+def _reasons(pages: list[Page], inside: list[Pair], folders: Folders | None = None) -> list[str]:
     out = []
+    if folder := whole_folder(pages, folders):
+        out.append(f"They're every scan in the folder {PurePath(folder).name}")
     first, last = pages[0].clues, pages[-1].clues
     markers = [p.clues.marker[0] for p in pages if p.clues.marker]
     if len(markers) >= 2 and markers == sorted(markers):
@@ -211,21 +257,25 @@ def missing_pages(pages: list[Page]) -> str | None:
 
 
 def make_group(
-    pages: list[Page], inside: list[Pair], left: Pair | None, right: Pair | None
+    pages: list[Page],
+    inside: list[Pair],
+    left: Pair | None,
+    right: Pair | None,
+    folders: Folders | None = None,
 ) -> Group:
     ordered, settled = order(pages)
     kind, name, guess, date = describe(ordered)
     g = Group(
         ordered,
-        _confidence(ordered, inside, left, right),
-        _reasons(ordered, inside),
+        _confidence(ordered, inside, left, right, folders),
+        _reasons(ordered, inside, folders),
         kind,
         name,
         guess,
         date,
         settled,
     )
-    g.features = group_features(ordered, inside, left, right)
+    g.features = group_features(ordered, inside, left, right, folders)
     if len(pages) == 1 and pages[0].clues.kind in ("blank", "notes"):
         g.set_aside = True
         g.reasons = [
@@ -260,7 +310,7 @@ def segment(pages: list[Page]) -> tuple[list[Group], list[Pair], list[Page]]:
     again = rescans(ordered)
     stream = [p for p in ordered if p.id not in again]
     pairs = pair_scores(stream)
-    groups = linked_groups(stream, pairs)
+    groups = linked_groups(stream, pairs, in_folders(stream))
     for p in ordered:
         if first := again.get(p.id):
             g = make_group([p], [], None, None)
@@ -344,7 +394,9 @@ def link(ordered: list[Page], pairs: list[Pair]) -> tuple[list[list[int]], dict]
     return sorted(chains, key=min), edges
 
 
-def linked_groups(ordered: list[Page], pairs: list[Pair]) -> list[Group]:
+def linked_groups(
+    ordered: list[Page], pairs: list[Pair], folders: Folders | None = None
+) -> list[Group]:
     chains, edges = link(ordered, pairs)
     groups = []
     for chain in chains:
@@ -355,7 +407,7 @@ def linked_groups(ordered: list[Page], pairs: list[Pair]) -> list[Group]:
         first, last = chain[0], chain[-1]
         left = pairs[first - 1] if first > 0 and first - 1 not in members else None
         right = pairs[last] if last < len(pairs) and last + 1 not in members else None
-        g = make_group([ordered[i] for i in chain], inside, left, right)
+        g = make_group([ordered[i] for i in chain], inside, left, right, folders)
         if any(j != i + 1 for i, j in steps):
             g.reasons.append("Parts scanned apart were joined")
         if not g.order_settled and [p.id for p in g.pages] == [ordered[i].id for i in chain]:

@@ -35,6 +35,10 @@ class Page:
     # The folder the scan was found in. File numbers only count within one folder: every
     # folder a scanner writes to may have its own Image (2).
     folder: str = ""
+    # How many pages Lindley holds from that folder, and from every folder. A folder holding a
+    # few pages of many is likely one document's; one holding all of them says nothing.
+    folder_pages: int = 0
+    library_pages: int = 0
     clues: PageClues = field(init=False)
     layout: Layout | None = field(init=False)
     # Rare words, weighed against the other pages being sorted (see weigh_terms)

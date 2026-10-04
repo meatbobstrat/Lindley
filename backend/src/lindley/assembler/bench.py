@@ -472,14 +472,16 @@ def load_real(
     arranged: list[tuple[int, int, int]],
     habit: str = "one_folder",
     seed: int = 0,
+    start: int = 1,
 ) -> dict[int, TruePage]:
     """Copy real pages, with their readings and image checks, into a bench database as scans
-    fed in the arranged order and filed as `habit` says (see folder_plan)."""
+    fed in the arranged order and filed as `habit` says (see folder_plan), numbered from
+    `start`."""
     truth = {}
-    plan = folder_plan([f"doc{doc:03d}" for _, doc, _ in arranged], habit, seed)
+    plan = folder_plan([f"doc{doc:03d}" for _, doc, _ in arranged], habit, seed, start)
     with conn:
         for n, ((pid, doc, index), (folder, name)) in enumerate(
-            zip(arranged, plan, strict=True), 1
+            zip(arranged, plan, strict=True), start
         ):
             p = src.execute(
                 "SELECT p.*, t.text, t.words, t.confidence FROM pages p"

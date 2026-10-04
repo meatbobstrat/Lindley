@@ -51,9 +51,13 @@ FEATURES = (
     "settings_differ",  # scanned at another resolution, or in colour and in grey
     "script_differs",  # one handwritten, the other typed or printed
     "topic_alike",  # about the same things, by a small embedding model (meaning.py)
+    "folder_shared",  # found in the same folder: up to 1 for a folder about one document's
+    # size, less for a bigger one, nothing for a folder everything is scanned into (folder_says)
+    "folder_differs",  # found in different folders
 )
 TOPIC_FROM, TOPIC_SPAN = 0.5, 0.3  # cosine 0.5 counts nothing, 0.8 counts fully
 PAUSE_S = 600  # a pause this long between two scans is a long one
+FOLDER_DOC = 8  # a folder of this many pages or fewer may well hold a single document
 SIZE_IN = 0.5  # sheets differing by more than this, in inches, are different sizes
 _HYPHENATED = re.compile(r"[A-Za-z]{2,}[-=¬]$")  # see clues.HYPHENS
 _HAND, _TYPED = {"handwritten"}, {"printed", "typed"}
@@ -86,6 +90,16 @@ def adjacent(a: Page, b: Page) -> bool:
         and ca.file_prefix == cb.file_prefix
         and cb.file_seq == ca.file_seq + 1
     )
+
+
+def folder_says(p: Page) -> float:
+    """How much it says that pages share p's folder, 0-1. A folder of a few pages, among many
+    folders, is likely one document's; a folder holding most of what Lindley has, however few
+    pages that is so far, is where everything is scanned to."""
+    n, total = p.folder_pages, p.library_pages
+    if not (p.folder and n and total):
+        return 0.0
+    return min(1.0, FOLDER_DOC / n) * (1 - n / total)
 
 
 def _snip(s: str, tail: bool) -> str:
@@ -207,6 +221,13 @@ def pair(a: Page, b: Page, is_adjacent: bool | None = None) -> Pair:
         f["a_ends_mid"] = 1.0
     elif cb.starts_mid:
         f["b_starts_mid"] = 1.0
+    if a.folder and b.folder and a.folder != b.folder:
+        f["folder_differs"] = 1.0
+    elif a.folder and not (cb.salutation or ca.signature):
+        # A folder may hold two letters; a greeting or a signature says where one ends. Other
+        # signs of a first or last page are less sure: on typescripts, a title in capitals
+        # reads as a letterhead, and a letter quoted inside an article has its closing.
+        f["folder_shared"] = min(folder_says(a), folder_says(b))
     if adj and (pause := _pause(a.when, b.when)) is not None and pause > PAUSE_S:
         f["pause_long"] = 1.0
     sa, sb = a.size_in, b.size_in

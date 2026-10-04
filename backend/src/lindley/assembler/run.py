@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePath
@@ -76,7 +77,22 @@ def _copies(conn: sqlite3.Connection) -> dict[int, frozenset[int]]:
     return {k: frozenset(v) for k, v in out.items()}
 
 
-def _page(r: sqlite3.Row, copies: dict[int, frozenset[int]] | None = None) -> Page:
+def folder_sizes(conn: sqlite3.Connection) -> Counter[str]:
+    """How many pages Lindley holds from each folder scans were found in."""
+    out: Counter[str] = Counter()
+    for path, n in conn.execute(
+        "SELECT s.source_path, COUNT(*) FROM pages p JOIN scans s ON s.id = p.scan_id GROUP BY s.id"
+    ):
+        out[str(PurePath(path).parent)] += n
+    return out
+
+
+def _page(
+    r: sqlite3.Row,
+    copies: dict[int, frozenset[int]] | None = None,
+    sizes: Counter[str] | None = None,
+) -> Page:
+    folder = str(PurePath(r["source_path"]).parent)
     return Page(
         r["id"],
         r["scan_id"],
@@ -98,7 +114,9 @@ def _page(r: sqlite3.Row, copies: dict[int, frozenset[int]] | None = None) -> Pa
         r["confidence"],
         r["file_modified_at"],
         r["added_at"],
-        str(PurePath(r["source_path"]).parent),
+        folder,
+        (sizes or {}).get(folder, 0),
+        sizes.total() if sizes else 0,
     )
 
 
@@ -124,13 +142,13 @@ def load_inbox(conn: sqlite3.Connection) -> list[Page]:
     rows = conn.execute(
         _PAGE_SQL + " WHERE p.document_id IS NULL AND p.set_aside_at IS NULL AND s.status = 'read'"
     ).fetchall()
-    copies = _copies(conn)
-    return [_page(r, copies) for r in rows]
+    copies, sizes = _copies(conn), folder_sizes(conn)
+    return [_page(r, copies, sizes) for r in rows]
 
 
 def load_open_documents(conn: sqlite3.Connection) -> list[DocEnds]:
     docs = []
-    copies = _copies(conn)
+    copies, sizes = _copies(conn), folder_sizes(conn)
     for d in conn.execute(
         """SELECT d.id, d.name, (d.origin = 'user' OR d.name_source = 'user' OR EXISTS (
                SELECT 1 FROM history h WHERE h.actor = 'user' AND h.target_type = 'document'
@@ -145,8 +163,8 @@ def load_open_documents(conn: sqlite3.Connection) -> list[DocEnds]:
                 DocEnds(
                     d["id"],
                     d["name"],
-                    _page(rows[0], copies),
-                    _page(rows[-1], copies),
+                    _page(rows[0], copies, sizes),
+                    _page(rows[-1], copies, sizes),
                     bool(d["touched"]),
                     frozenset(r["id"] for r in rows),
                 )

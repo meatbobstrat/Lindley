@@ -390,7 +390,8 @@ def test_a_page_scanned_again_is_set_aside_and_the_pages_around_it_still_join(co
     assert sorted(letter) == [ids[0], ids[1], ids[3], ids[4]]
     aside = open_suggestions(conn, "set_aside")
     assert [s["page_id"] for s in aside] == [ids[2]]
-    assert "scan_0002.jpg scanned again" in aside[0]["reasons"]
+    # Scanners name every scan alike in each folder, so it says which folder
+    assert "It looks like scan_0002.jpg (in Scans) scanned again" in aside[0]["reasons"]
 
 
 def test_a_page_whose_copy_is_already_in_a_document_is_set_aside_not_grouped(conn):

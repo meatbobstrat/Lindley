@@ -296,7 +296,9 @@ def rescans(ordered: list[Page]) -> dict[int, str]:
         if p.filed_copy:
             out[p.id] = p.filed_copy
         elif first := next((kept[i] for i in sorted(p.copies) if i in kept), None):
-            out[p.id] = first.file_name
+            # Scanners name every scan alike (Image.jpg, in each folder): its folder says which
+            folder = PurePath(first.folder).name
+            out[p.id] = f"{first.file_name} (in {folder})" if folder else first.file_name
         else:
             kept[p.id] = p
     return out

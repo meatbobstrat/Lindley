@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 
+from lindley import activity
 from lindley.assembler.run import RunReport, assemble
 from lindley.config import Settings
 from lindley.providers import allowance
@@ -61,7 +62,9 @@ def read_on_its_own(
     left = allowance.automatic_left(conn, settings, name)
     if left == 0 or allowance.failing(conn, name) or not waiting_for_vision(conn):
         return None
-    run = pipeline.read_waiting(conn, automatic=True, limit=left)
+    label = settings.ai.providers[name].label if name in settings.ai.providers else None
+    with activity.doing("read", 0, asked=False, connection=label or name) as step:
+        run = pipeline.read_waiting(conn, automatic=True, limit=left, progress=step)
     if run.stopped:
         log.info("Reading hard pages on its own: %s", run.stopped)
     return run

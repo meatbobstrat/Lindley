@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from lindley import __version__, browse
+from lindley import __version__, activity, browse
 from lindley.api.deps import Conn
 from lindley.api.needs_ai import sort_items
 from lindley.config import Settings
@@ -37,15 +37,23 @@ def change_json(c: Change) -> dict:
 def overview(request: Request, conn: Conn) -> dict:
     """Everything the folder tree and status bar show, in one call."""
     settings: Settings = request.app.state.settings
+    work = request.app.state.ai_work
+    sending = work.pages()  # sent already, on their way to the AI
     sorting = settings.ai.connection_for("assemble") is not None
-    needs_ai = len(vision_queue(conn))
+    needs_ai = sum(r["page_id"] not in sending for r in vision_queue(conn))
     if sorting:  # with no AI to sort with, there's nothing to ask: a person sorts them
-        needs_ai += sum(len(i["pages"]) for i in sort_items(conn))
+        needs_ai += sum(p["id"] not in sending for i in sort_items(conn) for p in i["pages"])
     return {
         "version": __version__,
         "counts": browse.counts(conn, settings.ocr.review_below, needs_ai),
         "documents": browse.documents(conn, settings.ocr.review_below),
         "folders": browse.folders(conn),
+        # What the AI is doing now, what's queued behind it, and what came of what people asked
+        "ai": {
+            "working": activity.current(),
+            "waiting": work.waiting(),
+            "finished": activity.recent(),
+        },
     }
 
 

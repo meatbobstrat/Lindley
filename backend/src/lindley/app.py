@@ -30,6 +30,7 @@ from lindley.api import settings as settings_api
 from lindley.config import Settings, load_settings
 from lindley.db.database import connect, init_db
 from lindley.watcher.watcher import FolderWatcher
+from lindley.worker.ai_work import AiWork
 from lindley.worker.intake import absolute_paths
 from lindley.worker.pipeline import follow_settings, rate_vision_readings, recover_interrupted
 
@@ -65,10 +66,13 @@ def create_app(
         finally:
             if watcher:
                 watcher.stop()
+            app.state.ai_work.stop()
 
     app = FastAPI(title="Lindley", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.settings_path = settings_path
+    # AI work a person asked for, done in the background with the settings in use then
+    app.state.ai_work = AiWork(lambda: app.state.settings)
 
     app.add_middleware(
         CORSMiddleware,

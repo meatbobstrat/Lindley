@@ -18,6 +18,10 @@ export interface Actions {
   newFolder: (parent: number | null, docId?: number) => void
   moveMenu: (ids: number[], anchor: Element, here?: number) => void
   folderMenu: (doc: { id: number; name: string; folder_id: number | null; status: string }, anchor: Element) => void
+  /** Send pages to the vision model, or pages to the sorting AI (one question, or every one
+   * waiting). The work is done in the background; the status bar says when it's done. */
+  readWithAi: (ids?: number[]) => void
+  sortWithAi: (itemId?: number) => void
   pageMenu: (ids: number[], where: 'inbox' | 'aside' | 'document', anchor: Element, opts?: { at?: { x: number; y: number }; docId?: number; order?: number[]; noBasics?: boolean }) => void
 }
 

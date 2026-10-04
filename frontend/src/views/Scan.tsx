@@ -41,7 +41,7 @@ export function ScanView() {
   const group = hints.find((s) => s.kind === 'group_pages')
   const setAside = hints.find((s) => s.kind === 'set_aside')
   const reading = p.state === 'needs_ai' || p.state === 'ai_failed'
-  const check = p.state === 'review' || reading
+  const check = p.state === 'review' || p.state === 'ai_reading' || reading
 
   return (
     <>
@@ -101,7 +101,7 @@ export function ScanView() {
             actions={
               <button
                 className="btn ai"
-                onClick={() => run(api.readWithAi([id]), (r) => (r.read ? 'The AI read the scan. Check its text.' : `The AI didn’t manage: ${r.stopped ?? 'try again later'}.`))}
+                onClick={() => acts.readWithAi([id])}
                 data-tip={`Send it to ${who(ai('vision'))} to read now. Sending is your OK.`}
               >
                 <Mark /> Ask the AI to read it

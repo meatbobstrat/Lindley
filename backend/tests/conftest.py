@@ -38,6 +38,16 @@ def no_embedding_model(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_activity_left():
+    """What the AI was doing is kept for the whole process: each test starts with none."""
+    from lindley import activity
+
+    activity.clear()
+    yield
+    activity.clear()
+
+
+@pytest.fixture(autouse=True)
 def keys():
     """Tests never touch the real credential store."""
     before = keyring.get_keyring()

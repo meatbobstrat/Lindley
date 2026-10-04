@@ -12,7 +12,7 @@ export interface Health {
 }
 
 // What the UI shows beside a page (lindley.browse.state).
-export type PageState = 'reading' | 'failed' | 'checked' | 'needs_ai' | 'ai_failed' | 'review' | 'ok'
+export type PageState = 'reading' | 'failed' | 'checked' | 'ai_reading' | 'needs_ai' | 'ai_failed' | 'review' | 'ok'
 export type Where = 'inbox' | 'document' | 'aside'
 
 export interface Page {
@@ -92,7 +92,18 @@ export interface Counts {
   failed: number
 }
 
-export interface Overview { version: string; counts: Counts; documents: DocSummary[]; folders: Folder[] }
+/** AI work in hand: reading hard pages, or sorting pages; `asked`: a person sent it. */
+export interface AiWorking { kind: 'read' | 'sort'; done: number; of: number; asked: boolean; connection: string | null }
+/** What came of AI work a person asked for; ids grow, so a newer one is higher. */
+export interface AiFinished { id: number; kind: 'read' | 'sort'; message: string; ok: boolean }
+
+export interface Overview {
+  version: string
+  counts: Counts
+  documents: DocSummary[]
+  folders: Folder[]
+  ai: { working: AiWorking[]; waiting: { kind: 'read' | 'sort'; of: number }[]; finished: AiFinished[] }
+}
 
 export interface Candidate {
   document?: number
@@ -136,6 +147,7 @@ export interface ReadItem {
   document_id: number | null
   document_name: string | null
   position: number | null
+  sending: boolean // on its way to the AI, or being read now
 }
 
 export interface Proposal {
@@ -147,7 +159,10 @@ export interface Proposal {
   candidates?: Candidate[]
 }
 
-export interface SortItem { id: number; since: string; pages: { id: number; file: string | null }[]; proposal: Proposal[] }
+export interface SortItem { id: number; since: string; pages: { id: number; file: string | null }[]; proposal: Proposal[]; sending: boolean }
+
+/** AI work queued: it's done in the background, and the overview says when. */
+export interface Sent { queued: number; already: number; connection: string | null }
 
 export interface NeedsAi {
   count: number
@@ -351,13 +366,8 @@ export const api = {
   renameFolder: (id: number, name: string) => send<Change>('PATCH', `/folders/${id}`, { name }),
   acceptSuggestion: (id: number) => send<{ document_id: number | null; pages: number[]; undo: number }>('POST', `/suggestions/${id}/accept`),
   dismissSuggestion: (id: number) => send<{ ok: boolean }>('POST', `/suggestions/${id}/dismiss`),
-  readWithAi: (page_ids?: number[]) =>
-    send<{ read: number; failed: number; waiting: number; stopped: string | null; documents_created: number }>('POST', '/needs-ai/read', { page_ids: page_ids ?? null }),
-  sortWithAi: (itemId?: number) =>
-    send<{ ai_calls: number; documents_created: number; pages_added: number; hints: number }>(
-      'POST',
-      itemId === undefined ? '/needs-ai/sort' : `/needs-ai/${itemId}/sort`,
-    ),
+  readWithAi: (page_ids?: number[]) => send<Sent>('POST', '/needs-ai/read', { page_ids: page_ids ?? null }),
+  sortWithAi: (itemId?: number) => send<Sent>('POST', itemId === undefined ? '/needs-ai/sort' : `/needs-ai/${itemId}/sort`),
   keepCopy: (setId: number, page_id: number) => send<Change & { set_aside: number[] }>('POST', `/duplicates/${setId}/keep`, { page_id }),
   keepDocument: (keep: number, other: number) => send<Change & { set_aside: number[] }>('POST', '/duplicates/keep-document', { keep, other }),
   notDuplicates: (setId: number) => send<Change>('POST', `/duplicates/${setId}/not-duplicates`),

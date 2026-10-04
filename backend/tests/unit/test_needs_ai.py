@@ -1,6 +1,8 @@
 """Needs AI: scans Lindley couldn't read or sort on its own, sent by a person or on its own."""
 
 import json
+import threading
+from unittest.mock import patch
 
 import pytest
 
@@ -63,11 +65,46 @@ def test_hard_pages_are_listed_and_a_person_can_send_them(client, settings, conn
     assert page["confidence"] == 41.0 and not page["failed"] and page["document_id"] is None
     assert "OK" in page["why"]
     assert body["read"]["connection"]["allow"] == "ask"
-    done = client.post("/api/needs-ai/read", json={}).json()
-    assert done["read"] == 1 and done["waiting"] == 0
+    sent = client.post("/api/needs-ai/read", json={}).json()
+    assert sent == {"queued": 1, "already": 0, "connection": "Fake AI for tests"}
+    assert client.app.state.ai_work.wait_idle()
     assert client.get("/api/needs-ai").json()["read"]["pages"] == []
     calls = conn.execute("SELECT purpose, automatic FROM ai_calls").fetchall()
     assert [tuple(c) for c in calls] == [("vision", 0)]  # a person's OK
+    [done] = client.get("/api/overview").json()["ai"]["finished"]
+    assert done["message"].startswith("The AI read 1 page.") and done["ok"]
+    assert client.post("/api/needs-ai/read", json={}).status_code == 404  # nothing waits now
+
+
+def test_pages_on_their_way_to_the_ai_are_marked_and_not_sent_twice(client, settings, conn, scan):
+    queue_hard_pages(conn, settings, scan, n=2)
+    gate, inside = threading.Event(), threading.Event()
+    fake = FakeProvider.transcribe
+
+    def slow(self, image, hints=None):
+        inside.set()
+        assert gate.wait(10)
+        return fake(self, image, hints)
+
+    with patch.object(FakeProvider, "transcribe", slow):
+        first = client.get("/api/needs-ai").json()["read"]["pages"][0]["page_id"]
+        assert client.post("/api/needs-ai/read", json={"page_ids": [first]}).json()["queued"] == 1
+        assert inside.wait(10)
+        again = client.post("/api/needs-ai/read", json={}).json()
+        assert (again["queued"], again["already"]) == (1, 1)  # only the other page is new
+        pages = client.get("/api/needs-ai").json()["read"]["pages"]
+        assert [p["sending"] for p in pages] == [True, True]
+        overview = client.get("/api/overview").json()
+        [working] = overview["ai"]["working"]
+        assert working["kind"] == "read" and working["of"] == 1 and working["asked"]
+        assert overview["ai"]["waiting"] == [{"kind": "read", "of": 1}]
+        assert overview["counts"]["needs_ai"] == 0  # sent: no longer waiting for a person
+        [state] = {p["state"] for p in client.get("/api/inbox").json()["pages"]} - {"needs_ai"}
+        assert state == "ai_reading"
+        gate.set()
+        assert client.app.state.ai_work.wait_idle()
+    overview = client.get("/api/overview").json()
+    assert overview["ai"]["working"] == [] and len(overview["ai"]["finished"]) == 2
 
 
 def test_with_no_ai_to_read_with_sending_says_so(client, settings):
@@ -166,8 +203,12 @@ def test_a_person_can_send_one_question_or_all_of_them(client, settings, conn):
     assemble(conn)
     [item] = client.get("/api/needs-ai").json()["sort"]["items"]
     assert [p["id"] for p in item["pages"]] == [a, b] and item["proposal"][0]["confidence"] == 53
-    done = client.post(f"/api/needs-ai/{item['id']}/sort").json()
-    assert done["ai_calls"] == 1  # the fake AI's reply isn't sorting, so it's rejected
+    assert client.post(f"/api/needs-ai/{item['id']}/sort").json()["queued"] == 2
+    assert client.app.state.ai_work.wait_idle()
+    [done] = client.get("/api/overview").json()["ai"]["finished"]
+    assert done["message"].startswith("The AI sorted the pages: 0 new documents")
+    calls = conn.execute("SELECT purpose, automatic FROM ai_calls").fetchall()
+    assert [tuple(c) for c in calls] == [("assemble", 0)]  # the fake's reply is rejected
     # The AI has looked at them now: they're left to the person, not asked about again
     assert client.get("/api/needs-ai").json()["sort"]["items"] == []
     assert client.post("/api/needs-ai/sort").status_code == 404

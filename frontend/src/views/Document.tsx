@@ -162,7 +162,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
                 <button
                   className="btn ai"
                   data-tip={`Send ${them(toRead.length)} to ${who(ai('vision'))} to read now. Sending is your OK.`}
-                  onClick={() => run(api.readWithAi(toRead), (r) => `The AI read ${plural(r.read, 'page')}${r.failed ? `; ${r.failed} failed` : ''}.`)}
+                  onClick={() => acts.readWithAi(toRead)}
                 >
                   <Mark /> Ask the AI
                 </button>
@@ -446,7 +446,7 @@ function Side({ d, cur, setCur }: { d: DocFull; cur: number; setCur: (i: number)
             pager={<Pager n={d.pages.length} cur={cur} setCur={setCur} />}
             actions={
               <>
-                {full.data.state === 'review' || full.data.state === 'needs_ai' || full.data.state === 'ai_failed' ? (
+                {['review', 'needs_ai', 'ai_failed', 'ai_reading'].includes(full.data.state) ? (
                   <>
                     <button className="btn primary" onClick={() => run(api.checkText(p.id), 'Marked the page as checked.')} data-tip="The text matches the scan: trust it for search and chat">
                       <Icon name="check" /> The text is correct

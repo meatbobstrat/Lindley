@@ -548,7 +548,7 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .status .ic { width: 14px; height: 14px; }
 .status span, .status button { display: inline-flex; align-items: center; gap: 6px; }
 .status button { border: 0; background: none; padding: 0; color: var(--ink); text-decoration: underline; font-size: 12px; }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.dot { display: inline-block; flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
 .dot.busy { background: var(--ai); animation: pulse 1.2s infinite; }
 
 /* ---------- Ask Lindley ---------- */

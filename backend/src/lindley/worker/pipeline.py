@@ -12,6 +12,7 @@ import json
 import logging
 import sqlite3
 import threading
+import time
 import uuid
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -80,6 +81,7 @@ class WaitingRun:
     failed: int = 0
     waiting: int = 0  # pages still waiting afterwards
     stopped: str | None = None  # why it stopped early, if it did
+    error: str | None = None  # why the last call that failed did
 
 
 def waiting_for_vision(conn: sqlite3.Connection) -> int:
@@ -88,10 +90,11 @@ def waiting_for_vision(conn: sqlite3.Connection) -> int:
     return conn.execute(sql).fetchone()[0]
 
 
-def vision_queue(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+def vision_queue(conn: sqlite3.Connection, running: bool = False) -> list[sqlite3.Row]:
     """Pages waiting for the vision model, or whose vision call failed, with why and where:
-    page_id, status ('queued' or 'failed'), error, file_name, confidence (the reading in use),
-    document_id, document_name, position."""
+    page_id, status ('queued' or 'failed'; 'running' too with `running`: being read now),
+    error, file_name, confidence (the reading in use), document_id, document_name, position."""
+    statuses = "('queued', 'failed', 'running')" if running else "('queued', 'failed')"
     return conn.execute(
         "SELECT v.page_id, v.status, v.error, s.original_name AS file_name, t.confidence,"
         " p.document_id, d.name AS document_name, p.position"
@@ -99,7 +102,7 @@ def vision_queue(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         " JOIN scans s ON s.id = p.scan_id"
         " LEFT JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
         " LEFT JOIN documents d ON d.id = p.document_id"
-        f" WHERE v.status IN ('queued', 'failed') AND p.set_aside_at IS NULL AND {_UNCHECKED}"
+        f" WHERE v.status IN {statuses} AND p.set_aside_at IS NULL AND {_UNCHECKED}"
         " ORDER BY p.document_id IS NULL, p.document_id, p.position, s.id, p.page_index"
     ).fetchall()
 
@@ -440,6 +443,7 @@ class Pipeline:
         retry_failed: bool = False,
         automatic: bool = False,
         limit: int | None = None,
+        progress: Callable[[int, int], None] | None = None,
     ) -> WaitingRun:
         """Send the pages waiting for the vision model: a person asked, or, with `automatic`,
         Lindley sends them on its own because the connection may now run on its own (at most
@@ -448,7 +452,7 @@ class Pipeline:
         Pages whose vision call failed are sent again only with retry_failed, which only a
         person asks for. It stops after STOP_AFTER_FAILURES failures in a row, so a broken
         provider isn't called page after page. A vision reading becomes current if it's better,
-        but never replaces a person's text.
+        but never replaces a person's text. `progress(done, of)` is called before each page.
         """
         if self.vision is None:
             raise RuntimeError("No vision model is set up")
@@ -463,10 +467,13 @@ class Pipeline:
         ).fetchall()
         if page_ids is not None:
             rows = [r for r in rows if r["page_id"] in set(page_ids)]
+        of = len(rows) if limit is None else min(len(rows), limit)
         model = getattr(self.vision, "model", None) or "vision"
         run = WaitingRun()
         in_a_row, scans, error = 0, set(), ""
-        for r in rows:
+        for done, r in enumerate(rows):
+            if progress:
+                progress(min(done, of), of)
             if limit is not None and run.read + run.failed >= limit:
                 run.stopped = "Stopped at the limit of calls Lindley may make on its own"
                 break
@@ -475,6 +482,7 @@ class Pipeline:
                 break
             rotation = (r["detected_rotation"] + r["user_rotation"]) % 360
             queued = r["id"] if r["status"] == "queued" else None
+            started = time.monotonic()
             try:
                 with run_step(
                     conn,
@@ -499,8 +507,12 @@ class Pipeline:
             except Exception as e:
                 run.failed += 1
                 in_a_row += 1
-                error = str(e) or type(e).__name__
+                error = run.error = str(e) or type(e).__name__
+                log.warning("Page %d: the vision call failed: %s", r["page_id"], error)
                 continue
+            log.info(
+                "Page %d read by %s in %.0f s", r["page_id"], model, time.monotonic() - started
+            )
             run.read += 1
             in_a_row = 0
             scans.add(r["scan_id"])

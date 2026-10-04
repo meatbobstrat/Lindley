@@ -110,8 +110,8 @@ export function InboxView() {
             read={toRead}
             sortPages={toSort.reduce((k, x) => k + x.pages.length, 0)}
             onAsk={() => {
-              if (toRead.length) run(api.readWithAi(toRead), (r) => `The AI read ${plural(r.read, 'page')}${r.failed ? `; ${r.failed} failed` : ''}. Check its work: those pages may need your review.`)
-              if (toSort.length) run(api.sortWithAi(), (r) => `The AI sorted the pages: ${plural(r.documents_created, 'new document')}, ${plural(r.pages_added, 'page')} added. They’re under In progress.`)
+              if (toRead.length) acts.readWithAi(toRead)
+              if (toSort.length) acts.sortWithAi()
             }}
           />
         )}

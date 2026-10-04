@@ -11,7 +11,8 @@ Two kinds, like the two kinds of Duplicates:
 When a connection may run on its own (`allow` "auto"), Lindley sends these itself as they
 arrive, within its limits, so the list is usually empty. Otherwise they wait here until a
 person sends them: one item, or all of them. Sending is the OK, and each call is recorded as one
-a person asked for.
+a person asked for. Sending queues the work (lindley.worker.ai_work) and answers at once; pages
+on their way to the AI are marked `sending` until it's done.
 """
 
 from __future__ import annotations
@@ -22,12 +23,12 @@ import sqlite3
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from lindley.api.assembler import ask_about
 from lindley.api.deps import Conn
-from lindley.assembler.auto import sort_on_its_own
 from lindley.config import Settings
 from lindley.providers import allowance
-from lindley.providers.registry import connectors
+from lindley.providers.base import ProviderError
+from lindley.providers.registry import connectors, get_provider
+from lindley.worker.ai_work import AiWork, connection_label
 from lindley.worker.pipeline import Pipeline, vision_queue
 
 router = APIRouter(prefix="/needs-ai", tags=["needs-ai"])
@@ -58,6 +59,10 @@ def _in_inbox(conn: sqlite3.Connection, pages: list[int]) -> bool:
     ).fetchone()[0] == len(pages)
 
 
+def _work(request: Request) -> AiWork:
+    return request.app.state.ai_work
+
+
 def sort_items(conn: sqlite3.Connection) -> list[dict]:
     out = []
     for r in conn.execute("SELECT * FROM needs_ai ORDER BY since, id").fetchall():
@@ -86,6 +91,7 @@ def sort_items(conn: sqlite3.Connection) -> list[dict]:
 @router.get("")
 def list_needs_ai(request: Request, conn: Conn) -> dict:
     settings: Settings = request.app.state.settings
+    sending = _work(request).pages()
     read = [
         {
             "page_id": r["page_id"],
@@ -96,10 +102,13 @@ def list_needs_ai(request: Request, conn: Conn) -> dict:
             "document_id": r["document_id"],
             "document_name": r["document_name"],
             "position": r["position"],
+            "sending": r["status"] == "running" or r["page_id"] in sending,
         }
-        for r in vision_queue(conn)
+        for r in vision_queue(conn, running=True)
     ]
     sort = sort_items(conn)
+    for item in sort:
+        item["sending"] = all(p["id"] in sending for p in item["pages"])
     return {
         "count": len(read) + len(sort),
         "read": {"connection": _connection(conn, settings, "vision"), "pages": read},
@@ -111,36 +120,50 @@ class ReadRequest(BaseModel):
     page_ids: list[int] | None = None  # None: every page waiting
 
 
+def _sent(new: list[int], already: list[int], label: str | None) -> dict:
+    return {"queued": len(new), "already": len(already), "connection": label}
+
+
 @router.post("/read")
 def read(body: ReadRequest, request: Request, conn: Conn) -> dict:
-    """Send pages to the vision model now, failed ones included: a person asked."""
+    """Send pages to the vision model, failed ones included: a person asked. The pages are
+    queued and read in the background."""
     settings: Settings = request.app.state.settings
-    pipeline = Pipeline.from_settings(settings)
-    if pipeline.vision is None:
+    if Pipeline.from_settings(settings).vision is None:
         raise HTTPException(400, "No AI is set up to read hard pages. Choose one in Settings.")
-    run = pipeline.read_waiting(conn, body.page_ids, retry_failed=True)
-    report = sort_on_its_own(conn, settings) if run.read else None  # new text: sort again
-    return {
-        "read": run.read,
-        "failed": run.failed,
-        "waiting": run.waiting,
-        "stopped": run.stopped,
-        "documents_created": report.documents_created if report else 0,
-    }
+    waiting = [r["page_id"] for r in vision_queue(conn, running=True)]
+    if body.page_ids is not None:
+        waiting = [p for p in waiting if p in set(body.page_ids)]
+    if not waiting:
+        raise HTTPException(404, "Nothing here is waiting for the AI to read it")
+    new, already = _work(request).read(waiting)
+    return _sent(new, already, connection_label(settings, "vision"))
+
+
+def _sort(request: Request, pages: list[int]) -> dict:
+    settings: Settings = request.app.state.settings
+    if not settings.ai.connection_for("assemble"):
+        raise HTTPException(400, "No AI is set up to sort pages. Choose one in Settings.")
+    try:
+        get_provider(settings.ai, "assemble")  # one that can't be made fails now, not later
+    except ProviderError as e:
+        raise HTTPException(400, str(e)) from e
+    new, already = _work(request).sort(pages)
+    return _sent(new, already, connection_label(settings, "assemble"))
 
 
 @router.post("/sort")
 def sort_all(request: Request, conn: Conn) -> dict:
-    """Send every question waiting for the sorting AI now."""
-    pages = {p["id"] for item in sort_items(conn) for p in item["pages"]}
+    """Send every question waiting for the sorting AI, in the background."""
+    pages = [p["id"] for item in sort_items(conn) for p in item["pages"]]
     if not pages:
         raise HTTPException(404, "Nothing is waiting for the AI to sort")
-    return ask_about(conn, request.app.state.settings, pages)
+    return _sort(request, pages)
 
 
 @router.post("/{item_id}/sort")
 def sort_one(item_id: int, request: Request, conn: Conn) -> dict:
-    """Send one question to the sorting AI now: these pages, which may be one document or more."""
+    """Send one question to the sorting AI: these pages, which may be one document or more."""
     row = conn.execute("SELECT pages FROM needs_ai WHERE id = ?", (item_id,)).fetchone()
     if row is None:
         raise HTTPException(404, "That isn't waiting for the AI any more")
@@ -149,4 +172,4 @@ def sort_one(item_id: int, request: Request, conn: Conn) -> dict:
         raise HTTPException(
             409, "Some of these pages have been placed since, so this is out of date"
         )
-    return ask_about(conn, request.app.state.settings, set(pages))
+    return _sort(request, pages)

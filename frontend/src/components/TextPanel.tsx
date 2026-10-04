@@ -72,6 +72,16 @@ export function TextPanel({
         <div>You checked this page. Your text is used for search and chat.</div>
       </div>
     )
+  else if (page.state === 'ai_reading')
+    state = (
+      <div className="rv-state flag">
+        <Mark />
+        <div>
+          <b>The AI is reading this scan now.</b> This is Tesseract’s rough reading, with {page.confidence}% confidence. The AI’s text will appear here when
+          it’s done, and you can keep working meanwhile.
+        </div>
+      </div>
+    )
   else if (page.state === 'reading')
     state = (
       <div className="rv-state mine">

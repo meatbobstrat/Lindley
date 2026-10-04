@@ -2,7 +2,7 @@
 
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { api, type Folder } from '../api/client'
+import { api, type Folder, type Sent } from '../api/client'
 import { invalidate } from '../api/store'
 import { Modal } from '../ui/feedback'
 import { type MenuItem, useFeedback } from '../ui/feedbackContext'
@@ -36,6 +36,14 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
   const close = useCallback(() => setDialog(null), [])
 
   const removedNote = (removed?: number[]) => (removed?.length ? ' A document left with no pages was removed.' : '')
+
+  /** "Sent 3 pages to Ollama. …" for AI work queued in the background. */
+  const sent = (what: string) => (r: Sent) => {
+    const to = r.connection ? ` to ${r.connection}` : ''
+    const also = r.already ? ` ${plural(r.already, 'page')} ${r.already === 1 ? 'was' : 'were'} on ${r.already === 1 ? 'its' : 'their'} way already.` : ''
+    if (!r.queued) return `${r.already === 1 ? 'That page is' : 'Those pages are'} on ${r.already === 1 ? 'its' : 'their'} way to the AI already.`
+    return `Sent ${plural(r.queued, 'page')}${to} to ${what}.${also} You can keep working: the status bar says when it’s done.`
+  }
 
   const sendFiles = useCallback(
     (files: File[]) => {
@@ -93,6 +101,12 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
           (p) => setDialog({ kind: 'newdoc', ids, name: guessName(p.text), lindley: false }),
           () => setDialog({ kind: 'newdoc', ids, name: '', lindley: false }),
         )
+      },
+      readWithAi: (ids) => {
+        run(api.readWithAi(ids), sent('read'))
+      },
+      sortWithAi: (itemId) => {
+        run(api.sortWithAi(itemId), sent('sort'))
       },
       confirmExport: (doc, toReview) => setDialog({ kind: 'export', doc, toReview }),
       editDetails: (doc) => setDialog({ kind: 'details', doc }),

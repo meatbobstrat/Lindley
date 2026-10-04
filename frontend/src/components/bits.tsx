@@ -124,6 +124,13 @@ export function ConfChip({ p, onReview }: { p: Page; onReview?: () => void }) {
           {pct}
         </span>
       )
+    case 'ai_reading':
+      return (
+        <span className="conf ai" data-tip={`The AI is reading this scan now. ${long} meanwhile.`}>
+          <i className="dot busy" aria-hidden="true" />
+          AI reading…
+        </span>
+      )
     case 'needs_ai':
       return (
         <span

@@ -4,6 +4,7 @@ the review queue and the counts beside each place. Read only; lindley.organise m
 Each page has a `state`, the one thing the UI shows beside it, in this order of precedence:
 - reading: not read yet (failed: its scan couldn't be read)
 - checked: a person checked or corrected its text
+- ai_reading: the vision model is reading it now
 - needs_ai / ai_failed: waiting for the vision model, or its call failed (see Needs AI)
 - review: read with less than ocr.review_below, so a person should check it
 - ok
@@ -41,6 +42,8 @@ def state(r: sqlite3.Row, review_below: float) -> str:
         return "failed" if r["scan_status"] == "failed" else "reading"
     if r["reviewed"]:
         return "checked"
+    if r["vision_status"] == "running" and r["set_aside_at"] is None:
+        return "ai_reading"
     if r["vision_status"] in ("queued", "failed") and r["set_aside_at"] is None:
         return "ai_failed" if r["vision_status"] == "failed" else "needs_ai"
     # As lindley.db.progress counts them: a reading with no confidence (a blank page) isn't one

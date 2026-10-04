@@ -14,7 +14,6 @@ import { type Conn } from '../lib/ai'
 import { docHome, useApp, useLooking } from '../lib/appContext'
 import { needs, plural, quoted, them, when } from '../lib/words'
 import { DBtn, Dock, DockProgress, Sep } from '../ui/Dock'
-import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
 
 function ConnLine({ c, what }: { c: Conn | null; what: string }) {
@@ -59,7 +58,7 @@ const sureOf = (x: SortItem) => {
 export function NeedsAiList() {
   const waiting = useApi('needs-ai', api.needsAi)
   const { ai, docs, folderPath } = useApp()
-  const { run } = useFeedback()
+  const acts = useActions()
   const nav = useNavigate()
   useLooking('Needs AI')
   if (waiting.error && !waiting.data) return <ErrorBox error={waiting.error} />
@@ -71,12 +70,13 @@ export function NeedsAiList() {
   const groups = new Map<number | null, ReadItem[]>()
   read.pages.forEach((r) => groups.set(r.document_id, [...(groups.get(r.document_id) ?? []), r]))
   const n = read.pages.length + items.reduce((k, x) => k + x.pages.length, 0)
+  const toRead = read.pages.filter((r) => !r.sending)
+  const toSort = items.filter((x) => !x.sending)
+  const unsent = toRead.length + toSort.reduce((k, x) => k + x.pages.length, 0)
   const auto = vision?.cfg.allow === 'auto' || sorter?.cfg.allow === 'auto'
 
-  const readThem = (ids: number[]) =>
-    run(api.readWithAi(ids), (r) => `The AI read ${plural(r.read, 'page')}${r.failed ? `; ${r.failed} failed` : ''}${r.stopped ? `. It stopped: ${r.stopped}` : ''}. Check its work: those pages may need your review.`)
-  const sortIt = (id?: number) =>
-    run(api.sortWithAi(id), (r) => `The AI sorted the pages: ${plural(r.documents_created, 'new document')} and ${plural(r.pages_added, 'page')} added to documents. Check its work under In progress.`)
+  const readThem = acts.readWithAi
+  const sortIt = acts.sortWithAi
 
   return (
     <>
@@ -102,7 +102,8 @@ export function NeedsAiList() {
                     const confs = rows.map((r) => r.confidence ?? 0)
                     const lo = Math.round(Math.min(...confs))
                     const hi = Math.round(Math.max(...confs))
-                    const failed = rows.filter((r) => r.failed)
+                    const failed = rows.filter((r) => r.failed && !r.sending)
+                    const sending = rows.filter((r) => r.sending).length
                     return (
                       <div className="na-card" key={docId ?? 'inbox'}>
                         <button className="dcard" onClick={() => nav(docId != null ? `/documents/${docId}` : '/inbox')} data-tip={d ? `Open ${quoted(d.name)}` : 'Open the Inbox'}>
@@ -112,6 +113,11 @@ export function NeedsAiList() {
                             <small>
                               <Icon name="eye" /> {plural(rows.length, 'page')} Tesseract read with {lo === hi ? lo : `${lo}–${hi}`}% confidence
                             </small>
+                            {sending > 0 && (
+                              <small data-tip="Lindley sends them in the background, one at a time. You can keep working meanwhile.">
+                                <i className="dot busy" aria-hidden="true" /> {sending === rows.length ? (sending === 1 ? 'The AI is reading it' : 'The AI is reading them') : `${plural(sending, 'page')} on ${sending === 1 ? 'its' : 'their'} way to the AI`}
+                              </small>
+                            )}
                             {failed.length > 0 && (
                               <small data-tip={failed[0].why ?? ''}>
                                 <Icon name="warn" /> The AI didn’t manage {plural(failed.length, 'page')}. Lindley won’t try again on its own.
@@ -123,11 +129,17 @@ export function NeedsAiList() {
                         <div className="na-acts">
                           <button
                             className="btn ai"
-                            disabled={!vision}
-                            onClick={() => readThem(rows.map((r) => r.page_id))}
-                            data-tip={vision ? `Send ${them(rows.length)} to ${vision.label} to read now. Sending is your OK.` : 'Set up an AI for reading hard pages first'}
+                            disabled={!vision || sending === rows.length}
+                            onClick={() => readThem(rows.filter((r) => !r.sending).map((r) => r.page_id))}
+                            data-tip={
+                              !vision
+                                ? 'Set up an AI for reading hard pages first'
+                                : sending === rows.length
+                                  ? 'Sent already. The status bar says when the AI is done.'
+                                  : `Send ${them(rows.length - sending)} to ${vision.label} to read now. Sending is your OK.`
+                            }
                           >
-                            <Mark /> {failed.length === rows.length ? 'Try again' : `Ask the AI to read ${them(rows.length)}`}
+                            <Mark /> {sending === rows.length ? 'Sent to the AI' : failed.length === rows.length ? 'Try again' : `Ask the AI to read ${them(rows.length - sending)}`}
                           </button>
                         </div>
                       </div>
@@ -163,14 +175,24 @@ export function NeedsAiList() {
                               <Mark /> Lindley is {sure}% sure at best{place ? `, of ${plural(cands.length, 'likely document')}` : ''}
                             </small>
                             <small>In the Inbox since {when(x.since)}</small>
+                            {x.sending && (
+                              <small data-tip="Lindley sends them in the background. You can keep working meanwhile.">
+                                <i className="dot busy" aria-hidden="true" /> The AI is sorting {them(x.pages.length)}
+                              </small>
+                            )}
                           </span>
                         </button>
                         <div className="na-acts">
                           <button className="btn ghost" onClick={() => nav(`/needs-ai/${x.id}`)} data-tip="See the pages and Lindley’s guess">
                             Look at {them(x.pages.length)}
                           </button>
-                          <button className="btn ai" onClick={() => sortIt(x.id)} data-tip={`Send the text of these pages to ${sorter?.label} to sort now. Sending is your OK.`}>
-                            <Mark /> {place ? 'Ask the AI which' : 'Ask the AI to sort them'}
+                          <button
+                            className="btn ai"
+                            disabled={x.sending}
+                            onClick={() => sortIt(x.id)}
+                            data-tip={x.sending ? 'Sent already. The status bar says when the AI is done.' : `Send the text of these pages to ${sorter?.label} to sort now. Sending is your OK.`}
+                          >
+                            <Mark /> {x.sending ? 'Sent to the AI' : place ? 'Ask the AI which' : 'Ask the AI to sort them'}
                           </button>
                         </div>
                       </div>
@@ -210,12 +232,13 @@ export function NeedsAiList() {
         {n > 0 && (
           <DBtn
             icon="lindley"
-            label={`Ask the AI about all ${n}`}
+            label={unsent ? `Ask the AI about all ${unsent}` : 'All sent to the AI'}
             kind="ai"
-            tip="Send everything waiting to the AI now: hard pages to read, and pages to sort. Sending is your OK."
+            disabled={!unsent}
+            tip={unsent ? 'Send everything waiting to the AI now: hard pages to read, and pages to sort. Sending is your OK.' : 'Everything here is on its way to the AI. The status bar says when it’s done.'}
             onClick={() => {
-              if (read.pages.length && vision) readThem(read.pages.map((r) => r.page_id))
-              if (items.length) sortIt()
+              if (toRead.length && vision) readThem(toRead.map((r) => r.page_id))
+              if (toSort.length) sortIt()
             }}
           />
         )}
@@ -231,7 +254,6 @@ export function NeedsAiItem() {
   const inbox = useApi('inbox', api.inbox)
   const { ai, docs } = useApp()
   const acts = useActions()
-  const { run } = useFeedback()
   const nav = useNavigate()
   const [sel, setSel] = useSelection()
   const [thumb] = useThumb()
@@ -344,7 +366,7 @@ export function NeedsAiItem() {
           kind="ai"
           disabled={!sorter}
           tip={sorter ? `Send the text of these pages to ${sorter.label} now. Sending is your OK.` : 'Set up an AI for sorting pages first'}
-          onClick={() => run(api.sortWithAi(x.id), (r) => `The AI sorted the pages: ${plural(r.documents_created, 'new document')}, ${plural(r.pages_added, 'page')} added.`)}
+          onClick={() => acts.sortWithAi(x.id)}
         />
         <DBtn icon="newdoc" label={place ? 'Start a new document…' : 'Group them myself…'} tip="Make a document of these pages yourself" onClick={() => acts.newDocument(ids)} />
         <Sep />

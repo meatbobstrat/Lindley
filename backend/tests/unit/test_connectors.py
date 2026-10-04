@@ -148,13 +148,18 @@ def test_an_answer_cut_off_is_a_failed_call_and_an_empty_one_is_not():
         list(make(local, Server(cut)).chat_stream(TALK))
 
 
-def test_a_local_ai_reads_a_page_without_thinking():
+def test_a_local_ai_reads_a_page_and_sorts_without_thinking():
     server = Server(completion("Dear Sister,"))
     make(local, server).transcribe(PNG)
     assert server.body["reasoning_effort"] == "none"
     server = Server(completion("Will."))
     make(local, server).chat(TALK)
-    assert "reasoning_effort" not in server.body  # only for reading pages
+    assert server.body["reasoning_effort"] == "none"
+    chunk = {"id": "c", "object": "chat.completion.chunk", "created": 0, "model": "m"}
+    done = {**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+    server = Server(sse(done, "[DONE]", key="object"))
+    list(make(local, server).chat_stream(TALK))
+    assert "reasoning_effort" not in server.body  # Ask Lindley may think
     server = Server(completion("Dear Sister,"))
     make(openai_compat, server, base_url="https://ai.example.com/v1").transcribe(PNG)
     assert "reasoning_effort" not in server.body
@@ -170,7 +175,9 @@ def test_a_server_that_doesnt_take_the_option_is_asked_without_it_once():
     assert [("reasoning_effort" in b) for b in sent] == [True, False, False]
     other = httpx2.Response(400, json={"error": {"message": "bad image"}})
     with pytest.raises(ProviderError, match="answered 400: bad image"):
-        make(local, Server(other)).chat(TALK)  # nothing to leave out: not sent again
+        server = Server(other)
+        make(openai_compat, server, base_url="https://ai.example.com/v1").chat(TALK)
+    assert len(server.requests) == 1  # nothing to leave out: not sent again
 
 
 def test_how_long_each_ai_is_waited_for():

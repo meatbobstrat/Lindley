@@ -22,9 +22,11 @@ class OpenAIChat:
     """Implements ChatProvider, VisionProvider and EmbeddingProvider over the OpenAI API."""
 
     info: ConnectorInfo
-    # Sent with each page to read, e.g. to turn a local model's thinking off. A server that
-    # doesn't take them is asked again without them, once, and isn't sent them again.
-    transcribe_options: dict = {}
+    # Sent with each page to read and each question asked in one piece (chat: the assembler's
+    # sorting questions), which want a short answer, e.g. to turn a local model's thinking off.
+    # A server that doesn't take them is asked again without them, once, and isn't sent them
+    # again. A streamed answer (Ask Lindley) is sent without them.
+    quick_options: dict = {}
 
     def __init__(
         self,
@@ -72,7 +74,7 @@ class OpenAIChat:
                 if not options:
                     raise
                 # Refused before the AI did any work, so this isn't repeating a failed call
-                self.transcribe_options = {}
+                self.quick_options = {}
                 r = self.client.chat.completions.create(model=self.model, messages=messages)
         if not r.choices:
             raise ProviderError(f"{self.who} sent back an answer with no text")
@@ -88,7 +90,9 @@ class OpenAIChat:
             raise ProviderError(f"{self.who} declined to answer this")
 
     def chat(self, messages: list[ChatMessage]) -> str:
-        return self._complete([{"role": m.role, "content": m.content} for m in messages])
+        return self._complete(
+            [{"role": m.role, "content": m.content} for m in messages], **self.quick_options
+        )
 
     def chat_stream(self, messages: list[ChatMessage]) -> Iterator[str]:
         with self._errors():
@@ -110,7 +114,7 @@ class OpenAIChat:
             {"type": "text", "text": transcribe_prompt(hints)},
             {"type": "image_url", "image_url": {"url": url}},
         ]
-        text = self._complete([{"role": "user", "content": content}], **self.transcribe_options)
+        text = self._complete([{"role": "user", "content": content}], **self.quick_options)
         return Transcription(text=text.strip(), metadata={"model": self.model})
 
     def embed(self, texts: list[str]) -> list[list[float]]:

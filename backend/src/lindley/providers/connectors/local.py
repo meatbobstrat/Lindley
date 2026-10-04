@@ -26,6 +26,8 @@ INFO = ConnectorInfo(
 
 class Provider(OpenAIChat):
     info = INFO
-    # Reading a page needs no thinking, and a thinking model can use up a local AI's small
-    # context thinking and send back nothing. "none" turns it off on Ollama (and LM Studio).
-    transcribe_options = {"reasoning_effort": "none"}
+    # Reading a page, or answering a sorting question in JSON, needs no thinking, and a thinking
+    # model can use up a local AI's small context thinking and send back nothing (Qwen3.5 4B
+    # did, on every sorting question, in Ollama's 4096 tokens). "none" turns it off on Ollama
+    # (and LM Studio).
+    quick_options = {"reasoning_effort": "none"}

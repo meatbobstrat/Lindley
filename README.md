@@ -387,10 +387,11 @@ and you can ask it about them. All of it from a one-click install.
 - [x] Settings in the app, built from the mockup
 - [x] When each AI may be used: ask first or automatic, with a daily and a monthly limit; every call recorded
 - [x] Throttling each AI: calls a minute and at once
+- [x] The app tried end to end on real scans, and what broke fixed (AI work in the background, no
+  hidden retries, cut-off answers and doubtful AI readings caught)
 
 ### For the MVP
 
-- [ ] The app tried end to end on real scans, and what breaks fixed
 - [ ] Ask Lindley (chat with your documents)
 - [ ] One-click installer (Windows/Mac), with Tesseract included
 

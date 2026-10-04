@@ -603,7 +603,7 @@ class Pipeline:
         orientation check is asked for a guess, which the reading then decides (_try_turning).
         When the check says the page is upright, the guess is upside down: on typed pages lying
         upside down on the scanner, the check has said "upright" even when it was sure (on 344
-        real scans, 5 typed pages read at 19-27 as they were and 56-79 turned). A turn a person
+        real scans, 4 typed pages read at 19-27 as they were and 56-79 turned). A turn a person
         set is trusted, and the page read that way.
         """
         rotation = (page["detected_rotation"] + page["user_rotation"]) % 360

@@ -527,6 +527,45 @@ def test_folders_a_person_sorted_are_an_answer_key(conn):
     assert real_answers(conn) == [[a[1], a[0]], [b1, b2]]
 
 
+def test_a_pdf_made_from_scans_gives_their_order(conn):
+    from lindley.assembler.bench import real_answers
+
+    def page(folder, name, text, mime="image/jpeg", scan=None, index=0):
+        if scan is None:
+            scan = conn.execute(
+                "INSERT INTO scans (sha256, original_name, source_path, origin, import_mode,"
+                " status, mime_type) VALUES (?, ?, ?, 'watched', 'copy', 'read', ?)",
+                (f"{folder}/{name}", name, f"D:/Scans/{folder}/{name}", mime),
+            ).lastrowid
+        pid = conn.execute(
+            "INSERT INTO pages (scan_id, page_index, blank_score) VALUES (?, ?, 0.1)",
+            (scan, index),
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO transcriptions (page_id, source, text, is_current)"
+            " VALUES (?, 'tesseract', ?, 1)",
+            (pid, text),
+        )
+        return scan, pid
+
+    texts = [
+        f"{w} " * 3 + "the wagons came over the summit road toward the mining camp at noon"
+        for w in ("Monday morning early", "Tuesday after supper", "Wednesday in the rain")
+    ]
+    with conn:
+        # The scans were named out of order; the PDF has the pages as they're read
+        _, third = page("Mill", "Image.jpg", texts[2])
+        _, first = page("Mill", "Image (2).jpg", texts[0])
+        page("Mill", "Image (3).jpg", texts[0] + " again")  # scanned again: not in the PDF
+        _, second = page("Mill", "Image (4).jpg", texts[1])
+        pdf, _ = page("Mill", "Mill.pdf", texts[0], "application/pdf")
+        for i, text in enumerate(texts[1:], 1):
+            page("Mill", "Mill.pdf", text, scan=pdf, index=i)
+        b1, b2 = (page("Notes", f"Image{n}.jpg", texts[0])[1] for n in ("", " (2)"))
+        page("", "loose.jpg", texts[1]), page("", "loose (2).jpg", texts[2])  # not sorted yet
+    assert real_answers(conn) == [[first, second, third], [b1, b2]]
+
+
 def test_the_bench_files_scans_by_each_habit():
     from lindley.assembler.bench import folder_plan
 

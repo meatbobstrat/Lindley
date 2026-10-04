@@ -12,11 +12,12 @@ import random
 import sqlite3
 from dataclasses import dataclass, field
 from itertools import combinations
-from pathlib import PurePath
+from pathlib import Path, PurePath
 
 from lindley.assembler.clues import file_series
+from lindley.duplicates.detect import likeness
 from lindley.providers.base import ChatMessage
-from lindley.worker.image import BLANK_AT
+from lindley.worker.image import BLANK_AT, image_signature, signature_likeness
 
 PLACES = ["Xenia, O.", "Bellbrook, O.", "Dayton, O.", "Spring Valley, O.", "Cedarville, O."]
 FIRSTS = ["John", "Will", "Clara", "Mary", "Samuel", "Ellen", "George", "Hattie"]
@@ -438,28 +439,118 @@ def pdf_answers(conn: sqlite3.Connection) -> list[list[int]]:
     return docs
 
 
+def _file_order(pages: list[sqlite3.Row]) -> list[int]:
+    """Page ids in file name order (Image, Image (2), Image (3)...), then page order."""
+
+    def key(r: sqlite3.Row) -> tuple[str, int, int]:
+        prefix, seq = file_series(r["original_name"])
+        return prefix, seq or 0, r["page_index"]
+
+    return [r["id"] for r in sorted(pages, key=key)]
+
+
+def _by_folder(rows) -> dict[str, list[sqlite3.Row]]:
+    """Pages by the folder their scan was found in, leaving out a folder that holds others:
+    that's where loose scans wait to be sorted, not a document."""
+    found: dict[str, list[sqlite3.Row]] = {}
+    for r in rows:
+        found.setdefault(str(PurePath(r["source_path"]).parent), []).append(r)
+    parents = {str(f) for name in found for f in PurePath(name).parents}
+    return {name: ps for name, ps in sorted(found.items()) if name not in parents}
+
+
 def folder_answers(conn: sqlite3.Connection) -> list[list[int]]:
     """An answer key from scans a person sorted into folders: each folder of two or more read
     pages is one document, its pages in file name order (Image, Image (2), Image (3)...). Blank
-    pages are left out, since Lindley sets them aside."""
-    by_folder: dict[str, list[tuple[tuple, int]]] = {}
-    for r in conn.execute(
+    pages are left out, since Lindley sets them aside, and so is a folder holding others."""
+    rows = conn.execute(
         "SELECT p.id, p.page_index, s.original_name, s.source_path FROM pages p"
         " JOIN scans s ON s.id = p.scan_id"
         " JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
         " WHERE s.status = 'read' AND coalesce(p.blank_score, 0) < ?",
         (BLANK_AT,),
-    ):
-        prefix, seq = file_series(r["original_name"])
-        key = (prefix, seq or 0, r["page_index"])
-        by_folder.setdefault(str(PurePath(r["source_path"]).parent), []).append((key, r["id"]))
-    return [[pid for _, pid in sorted(ps)] for _, ps in sorted(by_folder.items()) if len(ps) >= 2]
+    )
+    return [_file_order(ps) for ps in _by_folder(rows).values() if len(ps) >= 2]
+
+
+MATCH_AT = 0.3  # a PDF page and a scan this alike (duplicates.detect.likeness) are one page
+MATCH_LETTERS = 80  # ...if both have this many letters; otherwise their pictures are compared
+PICTURE_AT = 0.9  # pictures this alike (worker.image.signature_likeness) are one page
+
+
+def _match(pdf: list[sqlite3.Row], scans: list[sqlite3.Row]) -> list[int]:
+    """The scan each PDF page was made from, in the PDF's order: by their text, the most alike
+    first, one each; then the pages left, by their pictures. A PDF page with no scan like it,
+    and a scan like no PDF page (scanned again, or left out of it), are left out."""
+    made: dict[int, int] = {}
+
+    def pair(scores: list[tuple[float, int, int]], at: float) -> None:
+        for score, i, sid in sorted(scores, reverse=True):
+            if score >= at and i not in made and sid not in made.values():
+                made[i] = sid
+
+    pair(
+        [
+            (score, i, s["id"])
+            for i, p in enumerate(pdf)
+            for s in scans
+            if (score := likeness(p["text"], s["text"], MATCH_LETTERS)) is not None
+        ],
+        MATCH_AT,
+    )
+    left = [s for s in scans if s["id"] not in made.values()]
+    if len(made) < len(pdf) and left:
+        sig = {
+            r["id"]: image_signature(Path(r["image_path"]), r["rotation"])
+            for r in [p for i, p in enumerate(pdf) if i not in made] + left
+        }
+        pair(
+            [
+                (signature_likeness(sig[p["id"]], sig[s["id"]]), i, s["id"])
+                for i, p in enumerate(pdf)
+                if i not in made
+                for s in left
+            ],
+            PICTURE_AT,
+        )
+    return [made[i] for i in sorted(made)]
+
+
+def scan_answers(conn: sqlite3.Connection) -> list[list[int]]:
+    """An answer key from assembled PDFs and the scans they were made from. In a folder
+    holding a read PDF, its document is the folder's scans each PDF page was made from, in the
+    PDF's order (_match); scans that aren't in the PDF (scanned again, or left out) aren't in
+    it. Other folders are as folder_answers has them. Empty when no PDF matches any scans, as
+    when the PDFs were read in without the scans."""
+    rows = conn.execute(
+        "SELECT p.id, p.page_index, p.image_path, (p.detected_rotation + p.user_rotation) % 360"
+        " AS rotation, s.id AS scan, s.mime_type, s.original_name, s.source_path, t.text"
+        " FROM pages p JOIN scans s ON s.id = p.scan_id"
+        " JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
+        " WHERE s.status = 'read' AND coalesce(p.blank_score, 0) < ?"
+        " ORDER BY s.id, p.page_index",
+        (BLANK_AT,),
+    ).fetchall()
+    docs: list[list[int]] = []
+    matched = False
+    for found in _by_folder(rows).values():
+        pdfs = [r for r in found if r["mime_type"] == "application/pdf"]
+        scans = [r for r in found if r["mime_type"] != "application/pdf"]
+        made = [
+            _match([r for r in pdfs if r["scan"] == pdf], scans)
+            for pdf in dict.fromkeys(r["scan"] for r in pdfs)
+        ]
+        made = [d for d in made if len(d) >= 2]
+        matched |= bool(made)
+        docs += made or [_file_order(scans)]
+    return [d for d in docs if len(d) >= 2] if matched else []
 
 
 def real_answers(conn: sqlite3.Connection) -> list[list[int]]:
-    """The answer key a database of real scans holds: its assembled PDFs if it has any, else
-    the folders its scans were sorted into."""
-    return pdf_answers(conn) or folder_answers(conn)
+    """The answer key a database of real scans holds: its assembled PDFs matched to the scans
+    they were made from (with the other folders as sorted), else the PDFs' own pages, else the
+    folders its scans were sorted into."""
+    return scan_answers(conn) or pdf_answers(conn) or folder_answers(conn)
 
 
 def arrange(docs: list[list[int]], order: str, seed: int) -> list[tuple[int, int, int]]:

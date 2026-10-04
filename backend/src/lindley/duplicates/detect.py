@@ -88,6 +88,17 @@ def sketch(text: str) -> list[int]:
     return heapq.nsmallest(SKETCH, {_hash(g) for g in _grams(text)})
 
 
+def likeness(a: str, b: str, least: int = MIN_LETTERS) -> float | None:
+    """How alike two texts are, 0-1: the share of letter grams they have in common, or of
+    words that match in order, whichever is more. None when either has fewer than `least`
+    letters."""
+    if min(len(letters(a)), len(letters(b))) < least:
+        return None
+    ga, gb = _grams(a), _grams(b)
+    j = len(ga & gb) / len(ga | gb)
+    return max(j, SequenceMatcher(None, _words(a), _words(b), autojunk=False).ratio())
+
+
 def compare_text(a: str, b: str) -> Match | None:
     if min(len(letters(a)), len(letters(b))) < MIN_LETTERS:
         return None

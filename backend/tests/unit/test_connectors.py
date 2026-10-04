@@ -67,7 +67,7 @@ def down(request):
 # Local and other OpenAI-compatible services: Chat Completions, through OpenAI's library
 
 
-def completion(text: str):
+def completion(text: str, finish="stop"):
     return httpx2.Response(
         200,
         json={
@@ -78,7 +78,7 @@ def completion(text: str):
             "choices": [
                 {
                     "index": 0,
-                    "finish_reason": "stop",
+                    "finish_reason": finish,
                     "message": {"role": "assistant", "content": text},
                 }
             ],
@@ -128,6 +128,24 @@ def test_local_reads_a_page():
     text, image = server.body["messages"][0]["content"]
     assert text["text"].startswith(TRANSCRIBE) and "A letter, 1892" in text["text"]
     assert image["image_url"]["url"] == "data:image/png;base64," + base64.b64encode(PNG).decode()
+
+
+def test_an_answer_cut_off_is_a_failed_call_and_an_empty_one_is_not():
+    # A thinking model that used its whole context sent back nothing, cut off
+    with pytest.raises(ProviderError, match="stopped part way through its answer"):
+        make(local, Server(completion("", finish="length"))).transcribe(PNG)
+    with pytest.raises(ProviderError, match="declined"):
+        make(local, Server(completion("", finish="content_filter"))).chat(TALK)
+    assert make(local, Server(completion(""))).transcribe(PNG).text == ""  # a blank page
+    chunk = {"id": "c", "object": "chat.completion.chunk", "created": 0, "model": "m"}
+    cut = sse(
+        {**chunk, "choices": [{"index": 0, "delta": {"content": "Dear"}}]},
+        {**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": "length"}]},
+        "[DONE]",
+        key="object",
+    )
+    with pytest.raises(ProviderError, match="ran out of room"):
+        list(make(local, Server(cut)).chat_stream(TALK))
 
 
 def test_local_streams():
@@ -306,6 +324,21 @@ def test_openai_streams():
         list(make(openai, Server(failed)).chat_stream(TALK))
 
 
+def test_openai_incomplete_is_a_failed_call():
+    def incomplete(reason):
+        r = response(said("Dear Si"))
+        body = json.loads(r.content) | {
+            "status": "incomplete",
+            "incomplete_details": {"reason": reason},
+        }
+        return httpx2.Response(200, json=body)
+
+    with pytest.raises(ProviderError, match="OpenAI stopped part way"):
+        make(openai, Server(incomplete("max_output_tokens"))).transcribe(JPEG)
+    with pytest.raises(ProviderError, match="OpenAI declined"):
+        make(openai, Server(incomplete("content_filter"))).chat(TALK)
+
+
 def test_openai_check():
     model = {"id": "gpt-6.1-sol", "object": "model", "created": 0, "owned_by": "openai"}
     server = Server(httpx2.Response(200, json=model))
@@ -457,6 +490,13 @@ def test_anthropic_busy_in_a_stream_and_after_trying_again():
     assert len(server.requests) == 1 and e.value.busy and e.value.retry_after == 0.001
 
 
+def test_anthropic_out_of_room_is_a_failed_call():
+    with pytest.raises(ProviderError, match="Anthropic stopped part way"):
+        claude(Server(message(text("Dear Si"), stop="max_tokens"))).transcribe(JPEG)
+    with pytest.raises(ProviderError, match="ran out of room"):
+        list(claude(Server(anthropic_stream("Dear", stop="max_tokens"))).chat_stream(TALK))
+
+
 def test_anthropic_check():
     model = {
         "id": "claude-opus-5",
@@ -540,6 +580,20 @@ def test_google_streams():
     failed = sse({"event_type": "error", "error": {"message": "boom"}}, lib=httpx, key="event_type")
     with pytest.raises(ProviderError, match="Google: boom"):
         list(gemini(Server(failed, lib=httpx)).chat_stream(TALK))
+
+
+def test_google_incomplete_is_a_failed_call():
+    r = interaction("Dear Si")
+    body = json.loads(r.content) | {"status": "incomplete"}
+    with pytest.raises(ProviderError, match="Google stopped part way"):
+        gemini(Server(httpx.Response(200, json=body), lib=httpx)).transcribe(PNG)
+    events = [
+        {"event_type": "step.delta", "index": 0, "delta": {"type": "text", "text": "Wi"}},
+        {"event_type": "interaction.completed", "interaction": {"id": "", "status": "incomplete"}},
+    ]
+    server = Server(sse(*events, lib=httpx, key="event_type"), lib=httpx)
+    with pytest.raises(ProviderError, match="ran out of room"):
+        list(gemini(server).chat_stream(TALK))
 
 
 def test_google_embeds():

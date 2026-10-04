@@ -13,7 +13,14 @@ from google.genai import types
 from google.genai._gaos.utils.retries import BackoffStrategy, RetryConfig
 
 from lindley.providers.base import JOBS, ChatMessage, ConnectorInfo, ProviderError, Transcription
-from lindley.providers.connectors._common import b64, detail, failure, image_type, retry_after
+from lindley.providers.connectors._common import (
+    b64,
+    cut_off,
+    detail,
+    failure,
+    image_type,
+    retry_after,
+)
 from lindley.providers.prompts import transcribe_prompt
 
 INFO = ConnectorInfo(
@@ -61,6 +68,19 @@ def _errors() -> Iterator[None]:
         headers = getattr(e, "headers", None) or getattr(response, "headers", None)
         why = detail(body, getattr(e, "message", None) or e)
         raise failure("Google", status, why, retry_after(headers)) from e
+
+
+def _finished(status: str | None) -> None:
+    """An interaction that stopped before its end, or failed, is a failed call."""
+    if status in ("incomplete", "budget_exceeded"):
+        raise cut_off("Google")
+    if status in ("failed", "cancelled"):
+        raise ProviderError(f"Google couldn't finish the answer ({status})")
+
+
+def _text(interaction) -> str:
+    _finished(getattr(interaction, "status", None))
+    return interaction.output_text or ""
 
 
 def _content(text: str) -> list[dict]:
@@ -129,13 +149,15 @@ class Provider:
 
     def chat(self, messages: list[ChatMessage]) -> str:
         with _errors():
-            return self._interact(*_steps(messages)).output_text or ""
+            return _text(self._interact(*_steps(messages)))
 
     def chat_stream(self, messages: list[ChatMessage]) -> Iterator[str]:
         with _errors():
             for event in self._interact(*_steps(messages), stream=True):
                 if event.event_type == "step.delta" and event.delta.type == "text":
                     yield event.delta.text
+                elif event.event_type == "interaction.completed":
+                    _finished(getattr(event.interaction, "status", None))
                 elif event.event_type == "error":
                     why = event.error.message if event.error else "the answer failed"
                     raise ProviderError(f"Google: {why}")
@@ -146,8 +168,8 @@ class Provider:
             {"type": "image", "mime_type": image_type(image), "data": b64(image)},
         ]
         with _errors():
-            text = self._interact(None, [{"type": "user_input", "content": content}]).output_text
-        return Transcription(text=(text or "").strip(), metadata={"model": self.model})
+            text = _text(self._interact(None, [{"type": "user_input", "content": content}]))
+        return Transcription(text=text.strip(), metadata={"model": self.model})
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         with _errors():

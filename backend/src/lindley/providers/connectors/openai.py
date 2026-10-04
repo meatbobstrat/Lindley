@@ -8,7 +8,7 @@ from collections.abc import Iterator
 import openai
 
 from lindley.providers.base import JOBS, ChatMessage, ConnectorInfo, ProviderError, Transcription
-from lindley.providers.connectors._common import b64, image_type
+from lindley.providers.connectors._common import b64, cut_off, image_type
 from lindley.providers.connectors._openai_chat import OpenAIChat
 from lindley.providers.prompts import transcribe_prompt
 
@@ -39,6 +39,12 @@ def _split(messages: list[ChatMessage]) -> tuple[str | openai.Omit, list[dict]]:
     return system, rest
 
 
+def _incomplete(r) -> None:
+    """A response that stopped before its end: held back, or out of room."""
+    why = r.incomplete_details.reason if r.incomplete_details else None
+    raise ProviderError(DECLINED) if why == "content_filter" else cut_off("OpenAI")
+
+
 class Provider(OpenAIChat):
     """Chat and reading pages through Responses; embeddings and the model list as for any
     OpenAI-compatible service."""
@@ -54,6 +60,8 @@ class Provider(OpenAIChat):
         for item in r.output:
             if item.type == "message" and any(c.type == "refusal" for c in item.content):
                 raise ProviderError(DECLINED)
+        if r.status == "incomplete":
+            _incomplete(r)
         return r.output_text
 
     def chat(self, messages: list[ChatMessage]) -> str:
@@ -75,6 +83,8 @@ class Provider(OpenAIChat):
                     raise ProviderError(
                         f"OpenAI: {error.message if error else 'the answer failed'}"
                     )
+                elif event.type == "response.incomplete":
+                    _incomplete(event.response)
                 elif event.type == "error":
                     raise ProviderError(f"OpenAI: {event.message}")
 

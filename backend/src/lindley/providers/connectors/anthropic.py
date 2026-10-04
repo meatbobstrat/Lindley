@@ -8,7 +8,7 @@ from collections.abc import Iterator
 import anthropic
 
 from lindley.providers.base import ChatMessage, ConnectorInfo, ProviderError, Transcription
-from lindley.providers.connectors._common import b64, image_type, sdk_errors
+from lindley.providers.connectors._common import b64, cut_off, image_type, sdk_errors
 from lindley.providers.prompts import transcribe_prompt
 
 INFO = ConnectorInfo(
@@ -36,6 +36,13 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 FALLBACK_MODELS = frozenset(
     {"claude-opus-5", "claude-opus-5-5", "claude-fable-5", "claude-fable-5-1"}
 )
+
+
+def _finished(stop_reason: str | None) -> None:
+    if stop_reason == "refusal":
+        raise ProviderError(DECLINED)
+    if stop_reason == "max_tokens":
+        raise cut_off("Anthropic")
 
 
 def _split(messages: list[ChatMessage]) -> tuple[str | None, list[dict]]:
@@ -86,8 +93,7 @@ class Provider:
         api, extra = self._messages()
         with sdk_errors(anthropic, "Anthropic"):
             r = api.create(**self._params(system, messages), **extra)
-        if r.stop_reason == "refusal":
-            raise ProviderError(DECLINED)
+        _finished(r.stop_reason)
         return "".join(b.text for b in r.content if b.type == "text")
 
     def chat(self, messages: list[ChatMessage]) -> str:
@@ -100,8 +106,7 @@ class Provider:
             api.stream(**self._params(*_split(messages)), **extra) as stream,
         ):
             yield from stream.text_stream
-            if stream.get_final_message().stop_reason == "refusal":
-                raise ProviderError(DECLINED)
+            _finished(stream.get_final_message().stop_reason)
 
     def transcribe(self, image: bytes, hints: str | None = None) -> Transcription:
         content = [

@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import openai
 
 from lindley.providers.base import ChatMessage, ConnectorInfo, ProviderError, Transcription
-from lindley.providers.connectors._common import b64, image_type, sdk_errors
+from lindley.providers.connectors._common import b64, cut_off, image_type, sdk_errors
 from lindley.providers.prompts import transcribe_prompt
 
 
@@ -64,7 +64,16 @@ class OpenAIChat:
             r = self.client.chat.completions.create(model=self.model, messages=messages)
         if not r.choices:
             raise ProviderError(f"{self.who} sent back an answer with no text")
+        self._finished(r.choices[0].finish_reason)
         return r.choices[0].message.content or ""
+
+    def _finished(self, reason: str | None) -> None:
+        """An answer cut off, or held back, is a failed call. An empty one that finished is an
+        answer: a page with nothing written on it is read as nothing."""
+        if reason == "length":
+            raise cut_off(self.who)
+        if reason == "content_filter":
+            raise ProviderError(f"{self.who} declined to answer this")
 
     def chat(self, messages: list[ChatMessage]) -> str:
         return self._complete([{"role": m.role, "content": m.content} for m in messages])
@@ -77,8 +86,11 @@ class OpenAIChat:
                 stream=True,
             )
             for chunk in stream:
-                if chunk.choices and (piece := chunk.choices[0].delta.content):
+                if not chunk.choices:
+                    continue
+                if piece := chunk.choices[0].delta.content:
                     yield piece
+                self._finished(chunk.choices[0].finish_reason)
 
     def transcribe(self, image: bytes, hints: str | None = None) -> Transcription:
         url = f"data:{image_type(image)};base64,{b64(image)}"

@@ -71,6 +71,12 @@ def sdk_errors(sdk, who: str, where: str | None = None) -> Iterator[None]:
         raise failure(who, status, detail(e.body, e.message), wait) from e
 
 
+def cut_off(who: str) -> ProviderError:
+    """An answer that stopped before its end: too long for what the AI may give, or for its
+    context (a local AI's is often small). Part of an answer is no answer, so the call failed."""
+    return ProviderError(f"{who} stopped part way through its answer: it ran out of room")
+
+
 def image_type(data: bytes) -> str:
     if data[:3] == b"\xff\xd8\xff":
         return "image/jpeg"

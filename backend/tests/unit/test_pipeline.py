@@ -466,6 +466,20 @@ def test_a_sure_turn_tesseract_did_not_make_while_reading_is_only_a_guess(conn, 
     assert ocr.checked == 1 and page_row(conn, sid)["detected_rotation"] == 0
 
 
+def test_a_page_the_check_calls_upright_is_tried_upside_down_when_it_reads_poorly(
+    conn, settings, scan
+):
+    # Typed pages lying upside down: the check said 0 degrees, even when sure
+    sid = scan()
+    ocr = StubOcr(("Suyuig yodouoy", 27.0), ("Tonopah Mining Company", 79.0), osd=(0, 4.3))
+    Pipeline(settings, ocr).process_scan(conn, sid)
+    assert page_row(conn, sid)["detected_rotation"] == 180
+    assert current_text(conn, sid) == "Tonopah Mining Company"
+    upright = StubOcr(("He had been a mule driver", 61.0), ("fiostoa0 Sf", 26.0), osd=(0, 4.3))
+    Pipeline(settings, upright).process_scan(conn, sid := scan("b.png"))
+    assert len(upright.seen) == 2 and page_row(conn, sid)["detected_rotation"] == 0
+
+
 def test_a_page_another_thread_is_reading_isnt_sent_twice(conn, settings, scan):
     a, b = scan("a.png"), scan("b.png")
     for sid in (a, b):

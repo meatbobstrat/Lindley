@@ -601,7 +601,10 @@ class Pipeline:
         run; a page on its side is read again, turned upright. It only turns a page when it's
         sure, so a page it didn't turn that reads poorly may still be the wrong way up: its
         orientation check is asked for a guess, which the reading then decides (_try_turning).
-        A turn a person set is trusted, and the page read that way.
+        When the check says the page is upright, the guess is upside down: on typed pages lying
+        upside down on the scanner, the check has said "upright" even when it was sure (on 344
+        real scans, 5 typed pages read at 19-27 as they were and 56-79 turned). A turn a person
+        set is trusted, and the page read that way.
         """
         rotation = (page["detected_rotation"] + page["user_rotation"]) % 360
         dpi = page["dpi"]
@@ -626,9 +629,9 @@ class Pipeline:
         ):
             return rotation, reading
         found = self._orientation(page_id, image, rotation, dpi)
-        if not (found and found[0]):
+        if not found:  # it can't tell: too little text
             return rotation, reading
-        return self._try_turning(conn, scan_id, page_id, image, page, reading, found[0])
+        return self._try_turning(conn, scan_id, page_id, image, page, reading, found[0] or 180)
 
     def _try_turning(
         self,

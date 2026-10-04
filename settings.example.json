@@ -32,7 +32,7 @@
         "type": "local",
         "label": "Ollama on this computer",
         "base_url": "http://localhost:11434/v1",
-        "model": "llama3.2-vision",
+        "model": "gemma4:e4b",
         "allow": "ask",
         "daily_limit": null,
         "monthly_limit": null,

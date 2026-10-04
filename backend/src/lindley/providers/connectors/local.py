@@ -13,9 +13,9 @@ INFO = ConnectorInfo(
     where="local",
     jobs=frozenset(JOBS),
     default_models={
-        "vision": "llama3.2-vision",
-        "assemble": "llama3.2-vision",
-        "chat": "llama3.2-vision",
+        "vision": "gemma4:e4b",
+        "assemble": "gemma4:e4b",
+        "chat": "gemma4:e4b",
         "embed": "nomic-embed-text",
     },
     default_base_url="http://localhost:11434/v1",

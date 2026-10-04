@@ -224,7 +224,7 @@ def test_local_check_finds_the_model():
                 "object": "list",
                 "data": [
                     {
-                        "id": "llama3.2-vision:latest",
+                        "id": "gemma4:e4b",
                         "object": "model",
                         "created": 0,
                         "owned_by": "o",
@@ -239,8 +239,8 @@ def test_local_check_finds_the_model():
             },
         )
 
-    assert "has llama3.2-vision" in make(local, Server(models())).check()
-    with pytest.raises(ProviderError, match="no model qwen2.5vl. It has: llama3.2-vision"):
+    assert "has gemma4:e4b" in make(local, Server(models())).check()
+    with pytest.raises(ProviderError, match="no model qwen2.5vl. It has: gemma4:e4b"):
         make(local, Server(models()), model="qwen2.5vl").check()
 
 

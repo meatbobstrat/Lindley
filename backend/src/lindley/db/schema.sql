@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS transcriptions (
     id            INTEGER PRIMARY KEY,
     page_id       INTEGER NOT NULL REFERENCES pages(id),
     source        TEXT NOT NULL CHECK (source IN ('tesseract', 'vision', 'user')),
-    engine_model  TEXT,                             -- e.g. tesseract 5.4 eng, llama3.2-vision
+    engine_model  TEXT,                             -- e.g. tesseract 5.4 eng, gemma4:e4b
     text          TEXT NOT NULL,
     confidence    REAL,                             -- 0-100; NULL for a person's own text
     unsure_spans  TEXT,                             -- JSON [[start, end], ...] of doubtful words

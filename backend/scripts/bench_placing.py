@@ -3,6 +3,7 @@
 python scripts/bench_placing.py                    # 30 made-up batches
 python scripts/bench_placing.py --real lindley.db  # real scans (PDFs or sorted folders)
 python scripts/bench_placing.py --habits per_document --seeds 5
+python scripts/bench_placing.py --ai oracle        # with a stand-in AI that is always right
 
 Each batch's documents are made first, as if already in the library, all but a page here and
 there: about half of those of two or more pages hold back their first or last page. Those
@@ -10,22 +11,35 @@ pages are then scanned in as a later batch, filed the same way (see HABITS in
 lindley.assembler.bench), and the rules sort them. For each group of them, the report says
 whether the document it truly belongs to is Lindley's first candidate, or among the first few
 (lindley.assembler.place), against how many documents a person or the AI would otherwise have
-to look through.
+to look through. Then Lindley sorts them, as the watcher would, and the report says how many
+pages it added to a document, how many wrongly, and with --ai, how many questions the AI was
+asked and how many documents each showed it.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import random
 import tempfile
 from collections import Counter
 from pathlib import Path
 
-from lindley.assembler.bench import HABITS, TruePage, load, load_real, make_batch, real_answers
+from lindley.assembler import assemble
+from lindley.assembler.bench import (
+    HABITS,
+    OracleChat,
+    TruePage,
+    load,
+    load_real,
+    make_batch,
+    real_answers,
+)
 from lindley.assembler.model import weigh_terms
 from lindley.assembler.place import TOP, candidates
 from lindley.assembler.run import library_terms, load_inbox, load_open_documents
 from lindley.assembler.segment import segment
+from lindley.config import AssemblerSettings
 from lindley.db.database import connect, init_db
 
 
@@ -65,7 +79,19 @@ def make_documents(conn, truth: dict[int, TruePage]) -> dict[int, str]:
     return out
 
 
-def run(seed: int, habit: str, real=None) -> Counter:
+class CountingOracle(OracleChat):
+    """The stand-in AI, counting the documents each "which of these?" question shows it."""
+
+    shown = 0
+
+    def chat(self, messages):
+        req = json.loads(messages[-1].content)
+        if "documents" in req and "pages" in req:
+            self.shown += len(req["documents"])
+        return super().chat(messages)
+
+
+def run(seed: int, habit: str, real=None, ai: str = "none") -> Counter:
     with tempfile.TemporaryDirectory() as tmp:
         db = Path(tmp) / "bench.db"
         init_db(db)
@@ -116,6 +142,21 @@ def run(seed: int, habit: str, real=None) -> Counter:
             out["listed"] += len(ranked)
             out["first_sure"] += bool(ranked) and ranked[0].score >= 75
             out["first_sure_right"] += bool(ranked) and ranked[0].score >= 75 and right(ranked[0])
+        truth = truth | late
+        chat = CountingOracle(truth) if ai == "oracle" else None
+        r = assemble(conn, AssemblerSettings(ask_ai_after_days=0), chat)
+        for pid, doc in conn.execute(
+            "SELECT id, document_id FROM pages WHERE document_id IS NOT NULL"
+        ):
+            if pid in late and doc in names:
+                out["added"] += 1
+                out["added_wrong"] += names[doc] != late[pid].doc
+            elif pid in late:
+                out["new_doc"] += 1
+        out["late_pages"] += sum(1 for tp in late.values() if tp.kind not in ("blank", "notes"))
+        out["ai_calls"] += r.ai_calls
+        out["ai_placed"] += r.ai_placed
+        out["shown"] += chat.shown if chat else 0
         conn.close()
         return out
 
@@ -133,6 +174,13 @@ def report(label: str, c: Counter) -> None:
         f" {c['documents'] / max(1, c['runs']):.0f} documents;"
         f" first at 75 or more {c['first_sure']}, of them right {c['first_sure_right']}"
     )
+    calls = max(1, c["ai_calls"])
+    print(
+        f"  sorted: {c['added']} of {c['late_pages']} pages added to a document,"
+        f" {c['added_wrong']} wrongly, {c['new_doc']} made a document of their own;"
+        f" AI calls {c['ai_calls']}, pages it placed"
+        f" {c['ai_placed']}, documents shown per call {c['shown'] / calls:.1f}"
+    )
 
 
 def main() -> None:
@@ -140,6 +188,7 @@ def main() -> None:
     ap.add_argument("--real", type=Path)
     ap.add_argument("--seeds", type=int, default=None, help="default 30, or 10 with --real")
     ap.add_argument("--habits", default=",".join(HABITS))
+    ap.add_argument("--ai", choices=["none", "oracle"], default="none")
     a = ap.parse_args()
     real = None
     if a.real:
@@ -149,7 +198,7 @@ def main() -> None:
     for habit in a.habits.split(","):
         total = Counter()
         for seed in range(a.seeds or (10 if real else 30)):
-            total += run(seed, habit, real) + Counter(runs=1)
+            total += run(seed, habit, real, a.ai) + Counter(runs=1)
         report(habit, total)
     if real:
         real[0].close()

@@ -172,6 +172,8 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    - on its own, when its connection's `allow` is `auto` and its limits aren't used up (`auto.py`), as the pages arrive, or once they've waited `ask_ai_after_days` for a person to answer first (default 0). Pages whose "Do these go together?" a person dismissed aren't sent on their own. Naming new documents follows the same rule.
    - when a person sends them from **Needs AI** (below), or asks about some pages (`POST /api/assembler/ask`): asking is the OK, and those pages are sent at once.
 
+   It's also asked **which of a few documents** some pages belong to (`ai.place`), when the best open document for them scores 35–75: only the likeliest, at most 3 (`place.candidates`), each with its name and the text where the pages would join it, not every document. It may answer with one of them or none. A choice at 75 or more adds the pages to a Lindley document no one has touched (`history`: `add_pages`, `checked_by_ai`), or is suggested for a person's; a choice below that is a hint. Pages the rules would make a document of their own are asked about first, so a page that belongs to a document already made isn't made one by itself. A question the AI may not be asked now waits in Needs AI, marked `"question": "place"` with its documents.
+
    It gets page text and clues, never images.
    - Its reply must use every page given exactly once, and no others. Anything else is rejected and the rules' answer stands.
    - It also suggests names where the rules could only guess.
@@ -183,7 +185,8 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    | The group clearly continues an open document that Lindley made and no one has touched | Adds the pages to it (`history`: `add_pages`) |
    | The same, but a person has named, changed or worked on the document | Suggests it (`add_to_document`); the page stays in the Inbox |
    | The group is confident (at or above `group_at`, default 75) | Creates a Lindley document with an italic name, its type, date, confidence and `reasons` (`history`: `group_pages`) |
-   | A likely match (at or above `hint_at`, default 45) | Suggests it (`add_to_document`); the page stays in the Inbox |
+   | A likely match (35–75) and the AI may be asked | Asks it which of the likeliest documents, if any (above) |
+   | A likely match (at or above `hint_at`, default 45) | Suggests it (`add_to_document`), with the likeliest places (`candidates`); the page stays in the Inbox |
    | Pages that may be one document (two or more, at or above `hint_at`) | Asks "Do these go together?" (`group_pages`, with the pages in order, a name, type and date) |
    | A blank page or stray note | Suggests Set aside; never moves it |
    | A completed document | Never touches it |
@@ -282,6 +285,16 @@ The folder weights were fitted too (`fit_assembler.py --only folder_shared,folde
 | Mixed | 30% → 73% | 86% | 1.7 |
 
 Everything listed first at 75 or more was right (105 with a folder per document, 57 mixed). In one folder the list is weak: pages are compared only with a document's first and last page, which in a typescript tell little about a page from the middle of another.
+
+With the stand-in AI that is always right (`bench_placing.py --ai oracle`), asked about only those few documents, the pages scanned later that end up in their document:
+
+| Filed | Rules alone | With the AI | Added wrongly |
+|---|---|---|---|
+| All in one folder | 2 of 127 | 65 | 2 (the rules' own, as without it) |
+| A folder per document | 105 | 119 | 0 |
+| Mixed | 57 | 105 | 0 |
+
+Each question shows it at most 3 documents of the 25. The stand-in shows what the step can add, not what a real model will do; `--ai settings` on `bench_assembler.py` measures a real one.
 
 ## Duplicates
 

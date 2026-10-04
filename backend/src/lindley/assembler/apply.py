@@ -7,6 +7,7 @@ import sqlite3
 
 from lindley.assembler.evidence import SOURCE, Link
 from lindley.assembler.model import Group, Page
+from lindley.assembler.place import Candidate
 
 HINT_KINDS = ("add_to_document", "set_aside", "group_pages")
 
@@ -86,9 +87,16 @@ def create_document(conn: sqlite3.Connection, g: Group) -> int:
 
 
 def attach(
-    conn: sqlite3.Connection, doc_id: int, g: Group, at_end: bool, score: int, reasons: list[str]
+    conn: sqlite3.Connection,
+    doc_id: int,
+    g: Group,
+    at_end: bool,
+    score: int,
+    reasons: list[str],
+    by_ai: bool = False,
 ) -> None:
-    """Add a group's pages to the start or end of an untouched Lindley document."""
+    """Add a group's pages to the start or end of an untouched Lindley document. `by_ai`: the
+    AI chose the document."""
     n = len(g.pages)
     if at_end:
         top = conn.execute(
@@ -118,6 +126,7 @@ def attach(
             "at": "end" if at_end else "start",
             "confidence": score,
             "reasons": reasons,
+            "checked_by_ai": by_ai,
         },
     )
 
@@ -171,15 +180,36 @@ def suggest_group(conn: sqlite3.Connection, g: Group, extra: dict | None = None)
     return suggest(conn, "group_pages", g.pages[0].id, None, g.confidence, g.reasons, payload)
 
 
-def save_needs_ai(conn: sqlite3.Connection, windows: list[list[Group]]) -> None:
-    """What's waiting for the sorting AI now. A question still waiting keeps the time it
-    started waiting; one no longer waiting (sorted, answered, or its pages gone) is dropped."""
+def save_needs_ai(
+    conn: sqlite3.Connection,
+    windows: list[list[Group]],
+    placing: list[tuple[Group, list[Candidate]]] = (),
+) -> None:
+    """What's waiting for the sorting AI now: pages to sort into documents (`windows`), and
+    pages to place in one of a few likely documents (`placing`, marked "question": "place",
+    with the documents). A question still waiting keeps the time it started waiting; one no
+    longer waiting (sorted, answered, or its pages gone) is dropped."""
     now = {
         json.dumps(sorted(p.id for g in w for p in g.pages)): json.dumps(
             [{"pages": g.ids, "name": g.name, "confidence": g.confidence} for g in w]
         )
         for w in windows
     }
+    for g, ranked in placing:
+        now.setdefault(
+            json.dumps(sorted(g.ids)),
+            json.dumps(
+                [
+                    {
+                        "pages": g.ids,
+                        "name": g.name,
+                        "confidence": g.confidence,
+                        "question": "place",
+                        "candidates": [c.payload() for c in ranked],
+                    }
+                ]
+            ),
+        )
     gone = [(k,) for (k,) in conn.execute("SELECT pages FROM needs_ai") if k not in now]
     conn.executemany("DELETE FROM needs_ai WHERE pages = ?", gone)
     conn.executemany(

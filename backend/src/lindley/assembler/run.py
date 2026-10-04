@@ -41,6 +41,7 @@ class RunReport:
     ai_windows: int = 0
     ai_pages: int = 0
     ai_waiting: int = 0  # questions left waiting for the AI (needs_ai)
+    ai_placed: int = 0  # pages added to a document the AI chose from a few likely ones
     ai_rejected: list[str] = field(default_factory=list)
     inbox_left: int = 0
 
@@ -329,24 +330,29 @@ def _assemble(
                     conn, "add_to_document", p.id, d.id, score, why, where
                 )
 
-        def place(g: Group, allow_new: bool) -> bool:
-            """Add a group to an open document, or hint at one. False: still unplaced."""
+        def attach(
+            d: DocEnds, at_end: bool, score: int, why: list[str], g: Group, by_ai=False
+        ) -> None:
+            if d.touched:  # a person's document: suggest, never change it
+                hint(d, at_end, score, why, g)
+                return
+            apply.attach(conn, d.id, g, at_end, score, why, by_ai)
+            a, b = (d.last, g.pages[0]) if at_end else (g.pages[-1], d.first)
+            links.extend((a.id, b.id, k) for k in pair(a, b).links)
+            if at_end:
+                d.last = g.pages[-1]
+            else:
+                d.first = g.pages[0]
+            report.pages_added += len(g.pages)
+
+        def place(g: Group, first: bool) -> bool:
+            """Add a group to an open document, or hint at one. False: still unplaced. `first`:
+            only add it; whatever else goes waits for the AI's say and new documents."""
             m = _best_match(g, docs)
             if m and m[2] >= cfg.group_at:
-                d, at_end, score, why = m
-                if d.touched:  # a person's document: suggest, never change it
-                    hint(d, at_end, score, why, g)
-                    return True
-                apply.attach(conn, d.id, g, at_end, score, why)
-                a, b = (d.last, g.pages[0]) if at_end else (g.pages[-1], d.first)
-                links.extend((a.id, b.id, k) for k in pair(a, b).links)
-                if at_end:
-                    d.last = g.pages[-1]
-                else:
-                    d.first = g.pages[0]
-                report.pages_added += len(g.pages)
+                attach(*m, g)
                 return True
-            if allow_new and g.confidence >= cfg.group_at:
+            if first:
                 return False
             if m and m[2] >= cfg.hint_at:
                 hint(*m, g)
@@ -361,10 +367,45 @@ def _assemble(
                     report.set_aside_hints += apply.suggest(
                         conn, "set_aside", p.id, None, 70, g.reasons
                     )
-            elif not place(g, allow_new=True):
+            elif not place(g, first=True):
                 waiting.append(g)
-        new = [g for g in waiting if g.confidence >= cfg.group_at]
-        made = {id(g) for g in new}
+        placing: list[tuple[Group, list[Candidate]]] = []  # questions waiting for the AI
+
+        def check(g: Group, confident: bool = False) -> str | None:
+            """When the rules aren't sure which open document g belongs to, ask the AI about the
+            few likeliest, not every one. Returns "added" or "hinted" from its answer, "none" if
+            it said none of them, or None when there's no answer and the rules decide. A
+            question the AI may not be asked now waits for it in Needs AI.
+
+            `confident`: the rules would make g a document of its own. Then only an answer that
+            adds it to a document counts, and nothing waits: the pages leave the Inbox."""
+            ranked = [c for c in candidates(g, docs) if c.document]
+            if not ranked or not cfg.ai_band[0] <= ranked[0].score < cfg.group_at:
+                return None
+            q = ai.place(may_ask(g.pages), g, ranked, answers)
+            if q.problem:
+                report.ai_rejected.append(q.problem)
+            elif not q.answered and not confident:
+                placing.append((g, ranked))
+            if q.choice is None:
+                return "none" if q.answered and not q.problem else None
+            c, why = q.choice, q.reasons or q.choice.reasons
+            if q.confidence >= cfg.group_at and not c.document.touched:
+                attach(c.document, c.at_end, q.confidence, why, g, by_ai=True)
+                report.ai_placed += len(g.pages)
+                return "added"
+            if confident:
+                return None
+            if q.confidence >= cfg.hint_at:
+                hint(c.document, c.at_end, q.confidence, why, g)
+                return "hinted"
+            return "none"
+
+        # Confident on their own, but they may be part of a document already made: if the AI
+        # may be asked, it's asked first, about the few likeliest.
+        confident = [g for g in waiting if g.confidence >= cfg.group_at]
+        made = {id(g) for g in confident}  # made a document, or added to one by the AI
+        new = [g for g in confident if check(g, confident=True) != "added"]
         if guess := [g for g in new if g.name_is_guess]:
             asking = may_ask([p for g in guess for p in g.pages])
             for i, name in ai.suggest_names(asking, guess, answers).items():
@@ -374,17 +415,23 @@ def _assemble(
             docs.append(DocEnds(doc_id, g.name, g.pages[0], g.pages[-1], False))
             report.documents_created += 1
             report.pages_grouped += len(g.pages)
+
         # What's left goes to a person first: "Do these go together?"
         for g in waiting:
-            if id(g) in made or place(g, allow_new=False):
+            if id(g) in made:
+                continue
+            said = check(g)
+            if said == "hinted" or said == "added":
+                continue
+            if said is None and place(g, first=False):
                 continue
             if len(g.pages) > 1 and g.confidence >= cfg.hint_at:
                 report.hints += apply.suggest_group(conn, g, _listed(candidates(g, docs, others)))
 
         apply.save_links(conn, [p.id for p in pages], links)
         apply.mark_matched(conn, {p.scan_id for p in pages})
-        apply.save_needs_ai(conn, unasked)
-        report.ai_waiting = len(unasked)
+        apply.save_needs_ai(conn, unasked, placing)
+        report.ai_waiting = len(unasked) + len(placing)
     report.inbox_left = report.considered - report.pages_grouped - report.pages_added
     report.ai_calls, report.ai_reused = answers.calls, answers.reused
     return report

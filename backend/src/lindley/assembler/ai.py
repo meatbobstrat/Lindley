@@ -1,4 +1,5 @@
-"""Ask the chat AI about the hard parts: uncertain breaks, page order and names.
+"""Ask the chat AI about the hard parts: uncertain breaks, page order, names, and which of a few
+likely documents some pages belong to.
 
 The AI only ever sees page text and the rules' clues, never images, and only for pages the
 rules couldn't settle. Its reply is checked strictly; anything off and the rules' answer stands.
@@ -10,10 +11,11 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from lindley.assembler.answers import Answers
 from lindley.assembler.model import Group, Page
+from lindley.assembler.place import Candidate
 from lindley.providers.base import ChatMessage, ChatProvider
 
 SYSTEM = """You sort scanned pages from a family or local-history archive into documents.
@@ -166,6 +168,77 @@ def refine(
     for i in unplaced:
         groups.append(Group([by_id[i]], 0, ["The AI couldn't place this page"], by_ai=True))
     return AiResult(groups)
+
+
+PLACE_SYSTEM = """You sort scanned pages from a family or local-history archive into documents.
+You get some pages that go together, and the few documents already made that simple rules think
+they most likely belong to (the rules may be wrong). For each document you get its id, its name,
+and the text where the pages would join it: the end of its last page if they'd go after it, or
+the start of its first page if they'd go before it.
+
+Decide which of these documents the pages belong to, if any.
+Reply with JSON only, no other text, in exactly this shape:
+{"document": id or null, "confidence": 0-100, "reasons": ["short plain sentence", ...]}
+
+Rules: use only an id given, or null if the pages belong to none of them, or don't all belong in
+one document; reasons are read by the archive's owner, so be concrete ("The letter's last page
+breaks off mid-sentence and this page finishes it") and never invent facts that aren't in the
+text."""
+
+
+@dataclass
+class Placed:
+    """The AI's answer to where some pages belong."""
+
+    choice: Candidate | None  # None: none of the documents, or no usable answer
+    confidence: int = 0
+    reasons: list[str] = field(default_factory=list)
+    answered: bool = False  # False: not asked, and no earlier answer
+    problem: str = ""  # why the reply was rejected
+
+
+def place(
+    chat: ChatProvider | None,
+    group: Group,
+    candidates: list[Candidate],
+    answers: Answers | None = None,
+) -> Placed:
+    """Ask the AI which of a few likely documents these pages belong to: only those, not every
+    document. Checks the reply before trusting it. Without `chat`, only an earlier reply in
+    `answers` is used."""
+    by_id = {c.document.id: c for c in candidates if c.document}
+    question = {
+        "pages": [_page_json(p) for p in group.pages],
+        "documents": [
+            {
+                "id": d,
+                "name": c.name,
+                "pages_go": "after it" if c.at_end else "before it",
+                "joins_page": c.joins.id,
+                "joining_text": c.joins.text.strip()[-400:]
+                if c.at_end
+                else c.joins.text.strip()[:400],
+            }
+            for d, c in by_id.items()
+        ],
+    }
+    scores = {"rules_confidence": {str(d): c.score for d, c in by_id.items()}}
+    try:
+        reply = _ask(chat, answers, "assemble", PLACE_SYSTEM, question, scores, group.ids)
+    except Exception as e:  # noqa: BLE001 - any provider failure means "use the rules"
+        return Placed(None, answered=True, problem=f"the AI call failed: {e}")
+    if reply is None:
+        return Placed(None)
+    data = _parse(reply)
+    if not data or "document" not in data:
+        return Placed(None, answered=True, problem="the reply wasn't the JSON asked for")
+    choice = data["document"]
+    if choice is not None and (not isinstance(choice, int) or choice not in by_id):
+        return Placed(None, answered=True, problem="the reply chose a document it wasn't given")
+    conf = data.get("confidence")
+    conf = int(conf) if isinstance(conf, int | float) and 0 <= conf <= 100 else 50
+    reasons = _clean_reasons(data.get("reasons"))
+    return Placed(by_id.get(choice), min(conf, 95), reasons, answered=True)
 
 
 def suggest_names(

@@ -4,7 +4,9 @@ Two kinds, like the two kinds of Duplicates:
 - read: pages Tesseract read with less than ocr.confidence_threshold, waiting for the vision
   model (or whose vision call failed);
 - sort: pages the rules couldn't sort into documents, one item per question the sorting AI
-  would be asked, with the rules' own guess at the documents in it.
+  would be asked, with the rules' own guess at the documents in it. A proposal marked
+  "question": "place" asks which of a few likely documents (its "candidates") the pages
+  belong to, rather than how to sort them.
 
 When a connection may run on its own (`allow` "auto"), Lindley sends these itself as they
 arrive, within its limits, so the list is usually empty. Otherwise they wait here until a

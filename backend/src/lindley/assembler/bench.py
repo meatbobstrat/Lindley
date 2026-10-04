@@ -364,6 +364,20 @@ class OracleChat:
     def chat(self, messages: list[ChatMessage]) -> str:
         self.calls += 1
         req = json.loads(messages[-1].content)
+        if "documents" in req and "pages" in req:  # which of these documents the pages go in
+            docs = {self.truth[p["id"]].doc for p in req["pages"]}
+            right = [
+                d["id"]
+                for d in req["documents"]
+                if len(docs) == 1 and self.truth[d["joins_page"]].doc in docs
+            ]
+            return json.dumps(
+                {
+                    "document": right[0] if right else None,
+                    "confidence": 90,
+                    "reasons": ["The text reads on from the document's page"],
+                }
+            )
         if "documents" in req:
             return json.dumps(
                 {"names": {str(d["id"]): "Named by the AI" for d in req["documents"]}}

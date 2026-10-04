@@ -623,3 +623,75 @@ def test_other_pages_in_the_inbox_can_be_candidates_but_never_a_documents_copy()
     assert {(x.document or x.group) is not None for x in ranked} == {True}
     assert any(x.group is rest for x in ranked) and any(x.document is doc for x in ranked)
     assert all(x.document is not doc for x in candidates(Group([copy], 40), [doc], [rest]))
+
+
+# Weighed so a page scanned later may well continue the letter, but not surely: the AI's band
+UNSURE = {"bias": 0.0}
+
+
+def _letter_and_a_later_page(conn):
+    load(conn, pages(LETTER))
+    assemble(conn)
+    (late,) = load(conn, pages([QUIET[0]], "later"), start_seq=90)
+    return conn.execute("SELECT id FROM documents").fetchone()[0], late
+
+
+def test_the_ai_is_shown_only_the_likeliest_documents_and_its_choice_is_added(conn):
+    doc, late = _letter_and_a_later_page(conn)
+    asked = []
+
+    def reply(req):
+        asked.append(req)
+        return json.dumps({"document": doc, "confidence": 90, "reasons": ["It reads on"]})
+
+    report = assemble(conn, AI_ON, chat=Scripted(reply), weights=UNSURE)
+    ((req,),) = [asked]
+    assert [d["id"] for d in req["documents"]] == [doc] and req["pages"][0]["id"] == late
+    assert report.ai_placed == 1 and report.pages_added == 1
+    assert conn.execute("SELECT document_id FROM pages WHERE id = ?", (late,)).fetchone()[0] == doc
+    action, after = conn.execute("SELECT action, after FROM history ORDER BY id DESC").fetchone()
+    assert action == "add_pages" and json.loads(after)["checked_by_ai"] is True
+    assert json.loads(after)["reasons"] == ["It reads on"]
+
+
+def test_a_document_the_ai_wasnt_shown_is_turned_down(conn):
+    _, late = _letter_and_a_later_page(conn)
+    reply = json.dumps({"document": 999, "confidence": 90, "reasons": []})
+    report = assemble(conn, AI_ON, chat=Scripted(reply), weights=UNSURE)
+    assert report.ai_rejected == ["the reply chose a document it wasn't given"]
+    assert conn.execute("SELECT document_id FROM pages WHERE id = ?", (late,)).fetchone()[0] is None
+
+
+def test_the_ais_choice_of_a_persons_document_is_only_suggested(conn):
+    doc, late = _letter_and_a_later_page(conn)
+    conn.execute("UPDATE documents SET name_source = 'user'")
+    reply = json.dumps({"document": doc, "confidence": 90, "reasons": ["It reads on"]})
+    report = assemble(conn, AI_ON, chat=Scripted(reply), weights=UNSURE)
+    assert report.ai_placed == 0 and report.pages_added == 0
+    (s,) = open_suggestions(conn, "add_to_document")
+    assert (s["page_id"], s["document_id"], s["confidence"]) == (late, doc, 90)
+    assert json.loads(s["reasons"]) == ["It reads on"]
+
+
+def test_when_the_ai_may_not_be_asked_the_question_waits_with_its_documents(conn):
+    doc, late = _letter_and_a_later_page(conn)
+    report = assemble(conn, weights=UNSURE)
+    assert report.ai_waiting == 1
+    ((pages_, proposal),) = conn.execute("SELECT pages, proposal FROM needs_ai").fetchall()
+    (q,) = json.loads(proposal)
+    assert json.loads(pages_) == [late] and q["question"] == "place"
+    assert [c["document"] for c in q["candidates"]] == [doc]
+    # Meanwhile a person is asked, as before
+    (s,) = open_suggestions(conn, "add_to_document")
+    assert s["page_id"] == late
+
+
+def test_an_answer_of_none_of_these_is_kept_and_not_paid_for_again(conn):
+    _, late = _letter_and_a_later_page(conn)
+    ai = Scripted(json.dumps({"document": None, "confidence": 80, "reasons": []}))
+    first = assemble(conn, AI_ON, chat=ai, weights=UNSURE)
+    again = assemble(conn, AI_ON, chat=ai, weights=UNSURE)
+    assert ai.calls == 1 and first.ai_calls == 1 and again.ai_reused == 1
+    # It said none of them, so it isn't suggested for the letter either
+    assert not open_suggestions(conn, "add_to_document")
+    assert conn.execute("SELECT document_id FROM pages WHERE id = ?", (late,)).fetchone()[0] is None

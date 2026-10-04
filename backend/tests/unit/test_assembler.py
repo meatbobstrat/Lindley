@@ -107,6 +107,10 @@ def test_a_late_page_is_only_suggested_for_a_document_a_person_named(conn):
     assert conn.execute("SELECT document_id FROM pages WHERE id = ?", (late,)).fetchone()[0] is None
     (s,) = open_suggestions(conn, "add_to_document")
     assert s["page_id"] == late and s["confidence"] >= 75 and json.loads(s["reasons"])
+    # The hint lists where the page most likely belongs, best first, for a person to choose
+    (first, *_) = json.loads(s["payload"])["candidates"]
+    assert first["document"] == s["document_id"] and first["name"] == "Letters from Will"
+    assert first["confidence"] == s["confidence"] and first["at"] == "end"
 
 
 def test_completed_documents_are_never_changed(conn):
@@ -590,3 +594,32 @@ def test_a_shared_folder_doesnt_carry_pages_over_a_letters_greeting():
     assert pair(a, b, False).features["folder_shared"] == 0.0
     a, b = _filed("D:/Scans/Letters", 3, texts=[QUIET[0], QUIET[1]])
     assert pair(a, b, False).features["folder_shared"] > 0.5
+
+
+def test_a_page_scanned_later_lists_its_folders_document_first():
+    from lindley.assembler.place import DocEnds, candidates
+
+    def doc(id, folder, texts):
+        ps = _filed(folder, len(texts) + 1, texts=texts, first=10 * id)
+        return DocEnds(id, folder, ps[0], ps[-1], False, frozenset(p.id for p in ps))
+
+    will = doc(1, "D:/Scans/Will", [LETTER[0], QUIET[0]])
+    mill = doc(2, "D:/Scans/Mill", [LETTER[0], QUIET[1]])
+    (late,) = _filed("D:/Scans/Mill", 3, texts=[QUIET[0]], first=99)
+    ranked = candidates(Group([late], 40), [will, mill])
+    assert ranked[0].document.id == 2  # the other folder's document scores lower, if at all
+    assert "Both are in the folder Mill" in ranked[0].reasons
+    assert ranked[0].payload()["document"] == 2
+
+
+def test_other_pages_in_the_inbox_can_be_candidates_but_never_a_documents_copy():
+    from lindley.assembler.place import DocEnds, candidates
+
+    a, b, c = _filed("D:/Scans/Will", 3, texts=[LETTER[0], LETTER[1], LETTER[2]])
+    doc = DocEnds(9, "Letter", a, a, False, frozenset({a.id}))
+    rest = Group([c], 40)
+    copy = Page(5, 5, "Image (5).jpg", LETTER[1], copies=frozenset({a.id}))
+    ranked = candidates(Group([b], 40), [doc], [rest])
+    assert {(x.document or x.group) is not None for x in ranked} == {True}
+    assert any(x.group is rest for x in ranked) and any(x.document is doc for x in ranked)
+    assert all(x.document is not doc for x in candidates(Group([copy], 40), [doc], [rest]))

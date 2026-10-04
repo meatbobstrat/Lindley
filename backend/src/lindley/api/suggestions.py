@@ -3,6 +3,11 @@
 A person is asked before any AI: "Do these go together?" (group_pages), "Add to …?"
 (add_to_document), "Set aside?" (set_aside). Accepting makes the change and returns `undo`, the
 batch to send to POST /api/undo/{batch} to take it back. Dismissing means it's never asked again.
+
+A hint's payload may hold `candidates`: where its pages most likely belong, best first (at most
+three; lindley.assembler.place). Each is an open document (`document`, its id) or other pages
+in the Inbox (`pages`), with its name, whether the pages go at its start or end, a confidence
+0-100 and the reasons, so a person can choose without looking through every document.
 """
 
 from __future__ import annotations

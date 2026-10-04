@@ -273,6 +273,16 @@ The made-up bench is unchanged in one folder and gains a little in the others (r
 
 The folder weights were fitted too (`fit_assembler.py --only folder_shared,folder_differs`): +4.8 and −6.7, near decisive. But every sorted folder so far is one document, so the fit can't know a folder may hold two; they're set by hand at +2 and −3, and the fitted ones made wrong documents where some documents had folders and some didn't. The group confidence was fitted again with the folder features (`fit_confidence.py`, which now also reports calibration: how sure it said it was against how often it was right). It made far more documents from folders, but with one folder it made 28 documents, 18 of them not exactly one, against 6 and 6 for the hand-made rule, and it said 98–99% where it was right 91–95% of the time. So the hand-made rule stays, with the whole-folder rule above, and `GROUP_WEIGHTS` stays empty.
 
+**Where pages most likely belong** (`place.py`). Pages left in the Inbox may continue an open document, start one, or go with other pages still in the Inbox. Rather than set them against every document, `place.candidates` lists the few they most likely belong to, best first: at most 3, each scoring at least 10, with where the pages would go (start or end), a confidence and the reasons ("Both are in the folder Mill", a sentence running on). The best open document is what Lindley adds the pages to, or hints at, as before. Every "Add to …?" and "Do these go together?" keeps the list in its payload (`candidates`), so a person can choose at a glance. `scripts/bench_placing.py` makes each batch's documents first, as if already in the library, holds back the first or last page of about half of them, then scans those in later and checks the list for them. On the 25 sorted folders, 10 runs:
+
+| Filed | Right document first, before → now | Among the first 3 | Candidates shown, against 25 documents |
+|---|---|---|---|
+| All in one folder | 22% → 22% | 55% | 2.9 |
+| A folder per document | 28% → 98% | 98% | 1.0 |
+| Mixed | 30% → 73% | 86% | 1.7 |
+
+Everything listed first at 75 or more was right (105 with a folder per document, 57 mixed). In one folder the list is weak: pages are compared only with a document's first and last page, which in a typescript tell little about a page from the middle of another.
+
 ## Duplicates
 
 The same page is often scanned more than once, sometimes with different settings: another dpi, colour or grey, a different exposure, more or less margin. That changes every pixel and the file's hash, but not the words. So duplicates are found by their text (`lindley.duplicates.detect`), checked before the assembler runs:

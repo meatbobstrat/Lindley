@@ -17,6 +17,7 @@ from lindley.assembler import ai, apply, evidence, relearn
 from lindley.assembler.answers import Answers
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page, weigh_terms
+from lindley.assembler.place import Candidate, DocEnds, candidates
 from lindley.assembler.segment import segment
 from lindley.assembler.terms import Library
 from lindley.config import AssemblerSettings
@@ -42,16 +43,6 @@ class RunReport:
     ai_waiting: int = 0  # questions left waiting for the AI (needs_ai)
     ai_rejected: list[str] = field(default_factory=list)
     inbox_left: int = 0
-
-
-@dataclass
-class DocEnds:
-    id: int
-    name: str
-    first: Page
-    last: Page
-    touched: bool  # a person has named, changed or reviewed it: Lindley only suggests
-    page_ids: frozenset[int] = frozenset()
 
 
 _PAGE_SQL = """
@@ -204,26 +195,13 @@ def _best_match(g: Group, docs: list[DocEnds]) -> tuple[DocEnds, bool, int, list
     """The open document this group most likely continues or starts.
 
     Returns (document, whether the group goes at its end, score 0-100, reasons)."""
-    best = None
-    for d in docs:
-        if any(p.copies & d.page_ids for p in g.pages):
-            continue  # the document already holds a copy of one of these pages
-        tries = []
-        if not g.pages[0].clues.starts_doc and not d.last.clues.ends_doc:
-            tries.append((True, pair(d.last, g.pages[0])))
-        if not g.pages[-1].clues.ends_doc and not d.first.clues.starts_doc:
-            tries.append((False, pair(g.pages[-1], d.first)))
-        for at_end, p in tries:
-            score = round(100 * p.score)
-            if not best or score > best[2]:
-                best = (
-                    d,
-                    at_end,
-                    score,
-                    [k.note for k in p.links if k.relation != "adjacent_file"]
-                    or [k.note for k in p.links],
-                )
-    return best
+    best = candidates(g, docs, top=1, floor=0)
+    return (best[0].document, best[0].at_end, best[0].score, best[0].reasons) if best else None
+
+
+def _listed(ranked: list[Candidate]) -> dict:
+    """Where else the pages may belong, best first, kept with a hint for a person."""
+    return {"candidates": [c.payload() for c in ranked]} if ranked else {}
 
 
 def _declined(conn: sqlite3.Connection) -> set[int]:
@@ -340,8 +318,12 @@ def _assemble(
         apply.save_clues(conn, pages)
         apply.clear_hints(conn, [p.id for p in pages])
 
+        # Groups that stay in the Inbox: where else a group's pages may belong
+        others = [g for g in groups if not g.set_aside and g.confidence < cfg.group_at]
+
         def hint(d: DocEnds, at_end: bool, score: int, why: list[str], g: Group) -> None:
             where = {"pages": g.ids, "at": "end" if at_end else "start"}
+            where |= _listed(candidates(g, docs, others))
             for p in g.pages:
                 report.hints += apply.suggest(
                     conn, "add_to_document", p.id, d.id, score, why, where
@@ -397,7 +379,7 @@ def _assemble(
             if id(g) in made or place(g, allow_new=False):
                 continue
             if len(g.pages) > 1 and g.confidence >= cfg.hint_at:
-                report.hints += apply.suggest_group(conn, g)
+                report.hints += apply.suggest_group(conn, g, _listed(candidates(g, docs, others)))
 
         apply.save_links(conn, [p.id for p in pages], links)
         apply.mark_matched(conn, {p.scan_id for p in pages})

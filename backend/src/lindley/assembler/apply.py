@@ -164,9 +164,10 @@ def suggest(
     return True
 
 
-def suggest_group(conn: sqlite3.Connection, g: Group) -> bool:
-    """Ask a person whether these pages go together, as one document in this order."""
-    payload = {"pages": g.ids, "name": g.name, "type": g.kind, "date": g.date}
+def suggest_group(conn: sqlite3.Connection, g: Group, extra: dict | None = None) -> bool:
+    """Ask a person whether these pages go together, as one document in this order. `extra`:
+    more to keep with it, such as where else they may belong."""
+    payload = {"pages": g.ids, "name": g.name, "type": g.kind, "date": g.date} | (extra or {})
     return suggest(conn, "group_pages", g.pages[0].id, None, g.confidence, g.reasons, payload)
 
 

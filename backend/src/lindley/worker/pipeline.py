@@ -66,6 +66,10 @@ _LAST_VISION = (
     "SELECT s.* FROM intake_steps s WHERE s.step = 'vision' AND s.id ="
     " (SELECT max(id) FROM intake_steps WHERE page_id = s.page_id AND step = 'vision')"
 )
+# The page `p` is in a document a person completed
+_COMPLETED = (
+    "coalesce((SELECT d.status = 'complete' FROM documents d WHERE d.id = p.document_id), 0)"
+)
 # A person checked or corrected the page's text (v is a _LAST_VISION row): the vision model has
 # nothing to add, so the page no longer waits for it.
 _UNCHECKED = (
@@ -123,9 +127,10 @@ def follow_settings(conn: sqlite3.Connection, settings: Settings) -> tuple[int, 
     ocr.confidence_threshold, waits for the vision model; one read better, or checked by a
     person, doesn't. So a new threshold, or a vision model set up for the first time, counts for
     pages read before. With no vision model nothing waits: hard pages wait for a person's
-    review instead. Pages being read, and those whose call failed while there's a model to try
-    again with, are left as they are. An AI that may run on its own takes what's queued here
-    the next time the watcher asks (lindley.assembler.auto).
+    review instead. Pages in a completed document don't wait either: completing it was a
+    person's word that its text is done. Pages being read, and those whose call failed while
+    there's a model to try again with, are left as they are. An AI that may run on its own
+    takes what's queued here the next time the watcher asks (lindley.assembler.auto).
 
     Returns (pages queued, pages that no longer wait).
     """
@@ -137,13 +142,15 @@ def follow_settings(conn: sqlite3.Connection, settings: Settings) -> tuple[int, 
     hard = (
         "c.source = 'tesseract' AND NOT c.reviewed AND coalesce(c.confidence, 0) < ?"
         " AND p.set_aside_at IS NULL AND coalesce(p.blank_score, 0) < ?"
+        f" AND NOT {_COMPLETED}"
     )
     limits = (ocr.confidence_threshold, pageimage.BLANK_AT)
     with conn:
         waiting = conn.execute(
             "SELECT v.scan_id, v.page_id, v.status, coalesce(c.reviewed, 0) AS checked,"
-            " coalesce(c.confidence, 0) >= ? AS read_well"
+            f" coalesce(c.confidence, 0) >= ? AS read_well, {_COMPLETED} AS completed"
             f" FROM ({_LAST_VISION}) v LEFT JOIN v_current_text c ON c.page_id = v.page_id"
+            " JOIN pages p ON p.id = v.page_id"
             " WHERE v.status IN ('queued', 'failed')",
             (ocr.confidence_threshold,),
         ).fetchall()
@@ -153,6 +160,8 @@ def follow_settings(conn: sqlite3.Connection, settings: Settings) -> tuple[int, 
                 why = "No vision model is set up"
             elif r["checked"]:
                 why = "A person checked the text"
+            elif r["status"] == "queued" and r["completed"]:
+                why = "Its document is completed"
             elif r["status"] == "queued" and r["read_well"]:
                 why = "Read well enough"
             else:

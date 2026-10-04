@@ -171,6 +171,23 @@ def test_a_threshold_saved_in_settings_takes_effect_at_once(client, conn, settin
     assert page["confidence"] == 80.0 and "OK" in page["why"]
 
 
+def test_pages_in_a_completed_document_dont_wait_for_the_ai(conn, settings, scan):
+    sid = scan("s.png")
+    Pipeline(settings, StubOcr(("Dear Sister", 80.0)), FakeProvider()).process_scan(conn, sid)
+    doc = conn.execute("INSERT INTO documents (name, status) VALUES ('Letter', 'complete')")
+    conn.execute("UPDATE pages SET document_id = ?, position = 0", (doc.lastrowid,))
+    conn.commit()
+    settings.ocr.confidence_threshold = 85
+    assert follow_settings(conn, settings) == (0, 0)  # done: not sent again
+    conn.execute("UPDATE documents SET status = 'progress'")
+    conn.commit()
+    assert follow_settings(conn, settings) == (1, 0)  # reopened, it waits like any other
+    conn.execute("UPDATE documents SET status = 'complete'")
+    conn.commit()
+    assert follow_settings(conn, settings) == (0, 1)
+    assert waiting_for_vision(conn) == 0
+
+
 def test_a_page_a_person_checked_no_longer_waits(client, conn, settings, scan):
     queue_hard_pages(conn, settings, scan)
     conn.execute("UPDATE transcriptions SET confirmed_at = datetime('now') WHERE is_current = 1")

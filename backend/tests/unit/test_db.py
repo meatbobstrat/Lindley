@@ -304,7 +304,47 @@ def test_v8_database_gains_seen_files_and_the_page_step_index(tmp_path):
     c = connect(db)
     names = {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
     assert {"seen_files", "idx_intake_steps_page"} <= names
-    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 9
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    c.close()
+
+
+def test_v9_database_queues_pages_read_before_upside_down_was_tried(tmp_path):
+    db = tmp_path / "v9.db"
+    init_db(db)
+    c = sqlite3.connect(db)
+    c.execute("PRAGMA user_version = 9")
+
+    def page(conf, rotated=0, turned=0, checked=None, source="tesseract"):
+        sid = c.execute(
+            "INSERT INTO scans (sha256, original_name, source_path, origin, import_mode, status)"
+            " VALUES (?, 'a.jpg', 'D:/a.jpg', 'watched', 'copy', 'read')",
+            (f"h{c.execute('SELECT count(*) FROM scans').fetchone()[0]}",),
+        ).lastrowid
+        pid = c.execute(
+            "INSERT INTO pages (scan_id, detected_rotation, user_rotation) VALUES (?, ?, ?)",
+            (sid, rotated, turned),
+        ).lastrowid
+        c.execute(
+            "INSERT INTO transcriptions (page_id, source, text, confidence, confirmed_at,"
+            " is_current) VALUES (?, ?, 'Suyuig', ?, ?, 1)",
+            (pid, source, conf, checked),
+        )
+        return pid
+
+    poor = page(27.0)
+    page(40.0, rotated=180), page(40.0, turned=90), page(40.0, checked="2026-10-01")
+    page(40.0, source="vision")
+    c.commit()
+    c.close()
+    init_db(db)
+    c = connect(db)
+    queued = c.execute(
+        "SELECT page_id, step, status FROM intake_steps WHERE status = 'queued'"
+    ).fetchall()
+    assert [tuple(r) for r in queued] == [(poor, "ocr", "queued")]
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 10
+    init_db(db)  # an upgraded database isn't queued again
+    assert c.execute("SELECT count(*) FROM intake_steps").fetchone()[0] == 1
     c.close()
 
 

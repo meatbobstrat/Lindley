@@ -93,7 +93,10 @@ on real scans.
   check says the page is upright, the guess is upside down: on typed pages lying upside down
   on the scanner it said "0 degrees", once at confidence 4.3. Of 344 real scans, 4 such pages
   read at 19–27 as they were (taken for handwriting, and left waiting for the vision model) and
-  at 56–79 turned, while pages that were upright fell to 25–35. A turn a
+  at 56–79 turned, while pages that were upright fell to 25–35. Pages read before this was
+  tried are queued once by the upgrade to schema 10 and checked the same way when the watcher
+  starts (`Pipeline.check_upside_down`); a page a person checked, turned or completed is left
+  alone. On that library it checked 44 pages in 157 seconds and turned those 4. A turn a
   person set (`user_rotation`) is trusted and not looked for again. A page only the vision
   model reads gets the orientation check alone, and is turned when Tesseract is sure (2 or
   more). Pages with

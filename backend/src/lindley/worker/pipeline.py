@@ -445,6 +445,98 @@ class Pipeline:
             conn.execute("UPDATE scans SET status = ? WHERE id = ?", (status, scan_id))
         return status
 
+    def check_upside_down(
+        self, conn: sqlite3.Connection, stop: threading.Event | None = None
+    ) -> tuple[int, int]:
+        """Pages read before Lindley tried a poorly read page upside down (_read_any_way_up),
+        queued once by the database upgrade to schema 10: each still read poorly by Tesseract,
+        the way it was scanned, is tried turned over when the orientation check calls it
+        upright, and the turn kept if it reads clearly better. A page a person checked, turned
+        or completed, or that reads well now, is left alone. Each queued page is checked once;
+        one cut off when Lindley closed isn't checked again.
+
+        Returns (pages checked, pages turned).
+        """
+        rows = conn.execute(
+            "SELECT s.id AS step, s.scan_id, p.id AS page_id, p.image_path, p.dpi,"
+            " p.blank_score, p.detected_rotation, p.user_rotation, c.source, c.confidence,"
+            f" coalesce(c.reviewed, 0) AS checked, {_COMPLETED} AS completed"
+            " FROM intake_steps s JOIN pages p ON p.id = s.page_id"
+            " LEFT JOIN v_current_text c ON c.page_id = p.id"
+            " WHERE s.step = 'ocr' AND s.status = 'queued' ORDER BY s.id"
+        ).fetchall()
+        ocr = self.settings.ocr
+        checked = turned = 0
+        for r in rows:
+            if stop and stop.is_set():
+                break
+            why = _leave_the_way_up(r, ocr)
+            if why:
+                with conn:
+                    conn.execute(
+                        "UPDATE intake_steps SET status = 'skipped', error = ?,"
+                        " finished_at = datetime('now') WHERE id = ? AND status = 'queued'",
+                        (why, r["step"]),
+                    )
+                continue
+            version = getattr(self.tesseract, "version", self.tesseract.name)
+            try:
+                with run_step(
+                    conn,
+                    r["scan_id"],
+                    Step.OCR,
+                    page_id=r["page_id"],
+                    engine_version=version,
+                    queued=r["step"],
+                ):
+                    turned += self._turn_if_upside_down(conn, r)
+            except StepTaken:
+                continue
+            except Exception:
+                log.exception("Page %d: checking whether it's upside down failed", r["page_id"])
+                continue
+            checked += 1
+        if turned:
+            log.info("Turned %d page(s) read upside down before", turned)
+            follow_settings(conn, self.settings)  # some may read well enough now
+        return checked, turned
+
+    def _turn_if_upside_down(self, conn: sqlite3.Connection, r: sqlite3.Row) -> bool:
+        """check_upside_down for one page: True if it was turned over."""
+        image = Path(r["image_path"])
+        found = self._orientation(r["page_id"], image, 0, r["dpi"])
+        if not found or found[0]:  # can't tell, or a turn tried when the page was first read
+            return False
+        with self._upright(r["page_id"], image, 180, r["dpi"]) as upright:
+            reading = self.tesseract.recognize(upright)[0]
+        if (reading.confidence or 0) < (r["confidence"] or 0) + TURN_MARGIN:
+            return False
+        version = getattr(self.tesseract, "version", self.tesseract.name)
+        script = pageimage.classify_script(reading.words, r["blank_score"])
+        with conn:
+            conn.execute(
+                "UPDATE transcriptions SET is_current = 0 WHERE page_id = ? AND is_current = 1",
+                (r["page_id"],),
+            )
+            conn.execute(
+                "INSERT INTO transcriptions (page_id, source, engine_model, text, confidence,"
+                " unsure_spans, words, is_current) VALUES (?, 'tesseract', ?, ?, ?, ?, ?, 1)",
+                (
+                    r["page_id"],
+                    version,
+                    reading.text,
+                    reading.confidence,
+                    json.dumps(reading.unsure_spans()),
+                    json.dumps(reading.words) if reading.words else None,
+                ),
+            )
+            conn.execute(
+                "UPDATE pages SET detected_rotation = 180, script = ?,"
+                " updated_at = datetime('now') WHERE id = ?",
+                (script, r["page_id"]),
+            )
+        return True
+
     def read_waiting(
         self,
         conn: sqlite3.Connection,
@@ -826,6 +918,23 @@ class Pipeline:
                 " updated_at = datetime('now') WHERE id = ?",
                 (script, language, page_id),
             )
+
+
+def _leave_the_way_up(r: sqlite3.Row, ocr) -> str | None:
+    """Why check_upside_down leaves a page as it is, or None to check it."""
+    if ocr.engine == "vision":
+        return "Reading is set to the vision model"
+    if r["checked"] or r["source"] != "tesseract":
+        return "A person checked the text, or it isn't Tesseract's"
+    if r["completed"]:
+        return "Its document is completed"
+    if r["detected_rotation"] or r["user_rotation"]:
+        return "It has been turned"
+    if (r["confidence"] or 0) >= ocr.confidence_threshold:
+        return "It reads well enough"
+    if (r["blank_score"] or 0) >= pageimage.BLANK_AT:
+        return "The page looks blank"
+    return None
 
 
 def _last_vision_status(conn: sqlite3.Connection, page_id: int) -> str | None:

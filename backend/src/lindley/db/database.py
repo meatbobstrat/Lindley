@@ -6,7 +6,7 @@ import sqlite3
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 # Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}.
 # schema.sql always describes the latest version, for new databases.
@@ -19,6 +19,15 @@ MIGRATIONS: dict[int, str] = {
     7: "",  # new table only (learned_weights)
     8: "",  # new table only (needs_ai)
     9: "",  # new table only (seen_files), and an index
+    # Pages read before a poorly read page was tried upside down: each queued once, for the
+    # watcher to check (Pipeline.check_upside_down). Pages read since were tried as they were read.
+    10: """
+        INSERT INTO intake_steps (scan_id, page_id, step, status, error)
+        SELECT p.scan_id, p.id, 'ocr', 'queued', 'To be read turned over, in case it''s upside down'
+        FROM pages p JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1
+        WHERE t.source = 'tesseract' AND t.confirmed_at IS NULL AND coalesce(t.confidence, 0) < 100
+          AND p.detected_rotation = 0 AND p.user_rotation = 0;
+    """,
 }
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.

@@ -480,6 +480,63 @@ def test_a_page_the_check_calls_upright_is_tried_upside_down_when_it_reads_poorl
     assert len(upright.seen) == 2 and page_row(conn, sid)["detected_rotation"] == 0
 
 
+def read_before_upside_down_was_tried(conn, settings, scan, reading):
+    """A page read the way it was scanned, then queued by the upgrade to schema 10."""
+    from lindley.db.database import MIGRATIONS
+
+    sid = scan()
+    Pipeline(settings, StubOcr(reading)).process_scan(conn, sid)  # the check couldn't tell
+    conn.executescript(MIGRATIONS[10])
+    return sid
+
+
+def test_a_page_read_upside_down_before_is_turned_over(conn, settings, scan):
+    sid = read_before_upside_down_was_tried(conn, settings, scan, ("Suyuig yodouoy", 27.0))
+    pipe = Pipeline(settings, StubOcr(("Tonopah Mining Company", 79.0), osd=(0, 4.3)))
+    assert pipe.check_upside_down(conn) == (1, 1)
+    page = page_row(conn, sid)
+    assert page["detected_rotation"] == 180 and page["script"] == "printed"
+    assert current_text(conn, sid) == "Tonopah Mining Company"
+    assert [(r["source"], r["is_current"]) for r in readings(conn, sid)] == [
+        ("tesseract", 0),
+        ("tesseract", 1),
+    ]
+    assert json.loads(readings(conn, sid)[1]["words"])  # boxes, for the searchable PDF
+    assert steps(conn, sid, "ocr")[-1] == ("done", None)
+    assert pipe.check_upside_down(conn) == (0, 0)  # checked once
+
+
+def test_a_page_read_poorly_the_right_way_up_stays_as_it_was(conn, settings, scan):
+    sid = read_before_upside_down_was_tried(conn, settings, scan, ("He had been a mule", 61.0))
+    pipe = Pipeline(settings, StubOcr(("fiostoa0 Sf", 26.0), osd=(0, 4.3)))
+    assert pipe.check_upside_down(conn) == (1, 0)
+    assert page_row(conn, sid)["detected_rotation"] == 0
+    assert current_text(conn, sid) == "He had been a mule"
+
+
+def test_a_page_that_reads_well_or_was_checked_isnt_read_again(conn, settings, scan):
+    well = read_before_upside_down_was_tried(conn, settings, scan, ("Dear Sister", 88.0))
+    sid = scan("b.png")
+    Pipeline(settings, StubOcr(("Suyuig", 27.0))).process_scan(conn, sid)
+    conn.execute(  # a person checked it after the upgrade queued it
+        "UPDATE transcriptions SET confirmed_at = datetime('now') WHERE page_id = ?",
+        (page_row(conn, sid)["id"],),
+    )
+    conn.execute(
+        "INSERT INTO intake_steps (scan_id, page_id, step, status) VALUES (?, ?, 'ocr', 'queued')",
+        (sid, page_row(conn, sid)["id"]),
+    )
+    conn.commit()
+    ocr = StubOcr()  # nothing to read: it mustn't be asked
+    assert Pipeline(settings, ocr).check_upside_down(conn) == (0, 0)
+    assert ocr.checked == 0
+    assert steps(conn, well, "ocr")[-1] == ("skipped", "It reads well enough")
+    assert steps(conn, sid, "ocr")[-1] == (
+        "skipped",
+        "A person checked the text, or it isn't Tesseract's",
+    )
+
+
 def test_a_page_another_thread_is_reading_isnt_sent_twice(conn, settings, scan):
     a, b = scan("a.png"), scan("b.png")
     for sid in (a, b):

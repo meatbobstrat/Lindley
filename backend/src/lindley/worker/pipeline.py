@@ -65,6 +65,11 @@ _LAST_VISION = (
     "SELECT s.* FROM intake_steps s WHERE s.step = 'vision' AND s.id ="
     " (SELECT max(id) FROM intake_steps WHERE page_id = s.page_id AND step = 'vision')"
 )
+# A person checked or corrected the page's text (v is a _LAST_VISION row): the vision model has
+# nothing to add, so the page no longer waits for it.
+_UNCHECKED = (
+    "NOT EXISTS (SELECT 1 FROM v_current_text c WHERE c.page_id = v.page_id AND c.reviewed)"
+)
 
 
 @dataclass
@@ -79,7 +84,7 @@ class WaitingRun:
 
 def waiting_for_vision(conn: sqlite3.Connection) -> int:
     """Pages waiting for a person to OK sending them to the vision model."""
-    sql = f"SELECT COUNT(*) FROM ({_LAST_VISION}) WHERE status = 'queued'"
+    sql = f"SELECT COUNT(*) FROM ({_LAST_VISION}) v WHERE v.status = 'queued' AND {_UNCHECKED}"
     return conn.execute(sql).fetchone()[0]
 
 
@@ -94,16 +99,81 @@ def vision_queue(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         " JOIN scans s ON s.id = p.scan_id"
         " LEFT JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
         " LEFT JOIN documents d ON d.id = p.document_id"
-        " WHERE v.status IN ('queued', 'failed') AND p.set_aside_at IS NULL"
+        f" WHERE v.status IN ('queued', 'failed') AND p.set_aside_at IS NULL AND {_UNCHECKED}"
         " ORDER BY p.document_id IS NULL, p.document_id, p.position, s.id, p.page_index"
     ).fetchall()
 
 
 def vision_failures(conn: sqlite3.Connection) -> tuple[int, str | None]:
     """Pages whose last vision call failed (they wait for a person to retry), and an error."""
-    sql = f"SELECT COUNT(*), MAX(error) FROM ({_LAST_VISION}) WHERE status = 'failed'"
+    sql = (
+        f"SELECT COUNT(*), MAX(v.error) FROM ({_LAST_VISION}) v"
+        f" WHERE v.status = 'failed' AND {_UNCHECKED}"
+    )
     n, error = conn.execute(sql).fetchone()
     return n, error
+
+
+def follow_settings(conn: sqlite3.Connection, settings: Settings) -> tuple[int, int]:
+    """Bring the pages waiting for the vision model in line with the settings as they are now,
+    as Settings shows them: a page whose reading in use is Tesseract's, below
+    ocr.confidence_threshold, waits for the vision model; one read better, or checked by a
+    person, doesn't. So a new threshold, or a vision model set up for the first time, counts for
+    pages read before. With no vision model nothing waits: hard pages wait for a person's
+    review instead. Pages being read, and those whose call failed while there's a model to try
+    again with, are left as they are. An AI that may run on its own takes what's queued here
+    the next time the watcher asks (lindley.assembler.auto).
+
+    Returns (pages queued, pages that no longer wait).
+    """
+    ocr = settings.ocr
+    if ocr.engine == "vision":
+        return 0, 0  # every page goes to the vision model: the threshold doesn't come into it
+    name = settings.ai.connection_for("vision")
+    has_model = ocr.engine != "tesseract" and name is not None
+    hard = (
+        "c.source = 'tesseract' AND NOT c.reviewed AND coalesce(c.confidence, 0) < ?"
+        " AND p.set_aside_at IS NULL AND coalesce(p.blank_score, 0) < ?"
+    )
+    limits = (ocr.confidence_threshold, pageimage.BLANK_AT)
+    with conn:
+        waiting = conn.execute(
+            "SELECT v.scan_id, v.page_id, v.status, coalesce(c.reviewed, 0) AS checked,"
+            " coalesce(c.confidence, 0) >= ? AS read_well"
+            f" FROM ({_LAST_VISION}) v LEFT JOIN v_current_text c ON c.page_id = v.page_id"
+            " WHERE v.status IN ('queued', 'failed')",
+            (ocr.confidence_threshold,),
+        ).fetchall()
+        dropped = []
+        for r in waiting:
+            if not has_model:
+                why = "No vision model is set up"
+            elif r["checked"]:
+                why = "A person checked the text"
+            elif r["status"] == "queued" and r["read_well"]:
+                why = "Read well enough"
+            else:
+                continue
+            record_step(
+                conn, r["scan_id"], Step.VISION, StepStatus.SKIPPED, page_id=r["page_id"], error=why
+            )
+            dropped.append(r["page_id"])
+        if not has_model:
+            return 0, len(dropped)
+        wanted = conn.execute(
+            "SELECT p.id, p.scan_id FROM pages p JOIN v_current_text c ON c.page_id = p.id"
+            f" LEFT JOIN ({_LAST_VISION}) v ON v.page_id = p.id"
+            f" WHERE {hard} AND (v.id IS NULL OR v.status = 'skipped')"
+            " ORDER BY p.scan_id, p.page_index",
+            limits,
+        ).fetchall()
+        why = allowance.why_waiting(conn, settings, name)
+        conn.executemany(
+            "INSERT INTO intake_steps (scan_id, page_id, step, status, error)"
+            " VALUES (?, ?, 'vision', 'queued', ?)",
+            [(r["scan_id"], r["id"], why) for r in wanted],
+        )
+    return len(wanted), len(dropped)
 
 
 def recover_interrupted(conn: sqlite3.Connection) -> tuple[int, int]:
@@ -387,7 +457,7 @@ class Pipeline:
             "SELECT v.id, v.status, v.scan_id, v.page_id, p.image_path, p.dpi,"
             f" p.detected_rotation, p.user_rotation FROM ({_LAST_VISION}) v"
             " JOIN pages p ON p.id = v.page_id"
-            f" WHERE v.status IN ({', '.join('?' * len(statuses))})"
+            f" WHERE v.status IN ({', '.join('?' * len(statuses))}) AND {_UNCHECKED}"
             " ORDER BY v.scan_id, p.page_index",
             statuses,
         ).fetchall()

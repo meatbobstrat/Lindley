@@ -10,7 +10,7 @@ from lindley.assembler.bench import TruePage, load
 from lindley.db.database import connect, init_db
 from lindley.providers.connectors.fake import FakeProvider
 from lindley.worker.intake import import_file
-from lindley.worker.pipeline import Pipeline, waiting_for_vision
+from lindley.worker.pipeline import Pipeline, follow_settings, waiting_for_vision
 
 from .test_decide import STORY, Answers
 from .test_pipeline import StubOcr, written_page
@@ -89,6 +89,49 @@ def test_once_the_vision_model_may_run_on_its_own_waiting_pages_go_by_themselves
     assert waiting_for_vision(conn) == 1
     assert [r[0] for r in conn.execute("SELECT automatic FROM ai_calls")] == [1]
     assert read_on_its_own(conn, settings, pipe) is None  # the limit is used up
+
+
+def test_a_new_threshold_counts_for_pages_read_before(conn, settings, scan):
+    sid = scan("s.png")
+    Pipeline(settings, StubOcr(("Dear Sister", 80.0)), FakeProvider()).process_scan(conn, sid)
+    assert waiting_for_vision(conn) == 0  # read well enough at 70
+    settings.ocr.confidence_threshold = 85
+    assert follow_settings(conn, settings) == (1, 0)
+    assert waiting_for_vision(conn) == 1
+    settings.ocr.confidence_threshold = 75
+    assert follow_settings(conn, settings) == (0, 1)
+    assert waiting_for_vision(conn) == 0
+    assert follow_settings(conn, settings) == (0, 0)
+
+
+def test_a_threshold_saved_in_settings_takes_effect_at_once(client, conn, settings, scan):
+    sid = scan("s.png")
+    Pipeline(settings, StubOcr(("Dear Sister", 80.0)), FakeProvider()).process_scan(conn, sid)
+    current = client.get("/api/settings").json()
+    current["ocr"]["confidence_threshold"] = 85
+    assert client.put("/api/settings", json=current).status_code == 200
+    [page] = client.get("/api/needs-ai").json()["read"]["pages"]
+    assert page["confidence"] == 80.0 and "OK" in page["why"]
+
+
+def test_a_page_a_person_checked_no_longer_waits(client, conn, settings, scan):
+    queue_hard_pages(conn, settings, scan)
+    conn.execute("UPDATE transcriptions SET confirmed_at = datetime('now') WHERE is_current = 1")
+    conn.commit()
+    assert waiting_for_vision(conn) == 0
+    assert client.get("/api/needs-ai").json()["count"] == 0
+    assert follow_settings(conn, settings) == (0, 1)
+    assert follow_settings(conn, settings) == (0, 0)  # and isn't queued again
+
+
+def test_with_no_vision_model_hard_pages_wait_for_a_person_instead(conn, settings, scan):
+    queue_hard_pages(conn, settings, scan)
+    settings.ai.jobs["vision"].connection = None
+    assert follow_settings(conn, settings) == (0, 1)
+    assert waiting_for_vision(conn) == 0
+    settings.ai.jobs["vision"].connection = "local"  # set up again: they wait for it again
+    assert follow_settings(conn, settings) == (1, 0)
+    assert waiting_for_vision(conn) == 1
 
 
 def test_pages_the_rules_cant_sort_wait_for_the_ai(conn):

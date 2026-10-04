@@ -5,6 +5,7 @@ from lindley.config import Settings, save_settings
 from lindley.providers import allowance, keys
 from lindley.providers.registry import connectors
 from lindley.watcher.watcher import FolderWatcher
+from lindley.worker.pipeline import follow_settings
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -32,12 +33,14 @@ def _problems(new: Settings) -> list[str]:
 
 
 @router.put("")
-def put_settings(new: Settings, request: Request) -> Settings:
+def put_settings(new: Settings, request: Request, conn: Conn) -> Settings:
     if problems := _problems(new):
         raise HTTPException(422, problems)
     old: Settings = request.app.state.settings
     save_settings(new, request.app.state.settings_path)
     request.app.state.settings = new
+    # A new threshold, or a vision model set up or taken away, counts for pages read before.
+    follow_settings(conn, new)
     if (watcher := getattr(request.app.state, "watcher", None)) is not None:
         # The watcher works from the settings it started with: start it again with these, so
         # new folders are watched, and an AI that may now run on its own gets what's waiting.

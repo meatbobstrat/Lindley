@@ -391,16 +391,14 @@ def test_read_waiting_stops_when_the_provider_keeps_failing(conn, settings, scan
     assert run.stopped and "vision model not running" in run.stopped
 
 
-def test_a_vision_reading_never_replaces_a_persons_text(conn, settings, scan):
+def test_a_page_a_person_checked_isnt_sent_to_the_vision_model(conn, settings, scan):
     sid = scan()
     Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), MustNotCall()).process_scan(conn, sid)
     conn.execute("UPDATE transcriptions SET confirmed_at = datetime('now')")
     conn.commit()
-    Pipeline(settings, StubOcr(), FakeProvider()).read_waiting(conn)
-    assert [(r["source"], r["is_current"]) for r in readings(conn, sid)] == [
-        ("tesseract", 1),
-        ("vision", 0),
-    ]
+    run = Pipeline(settings, StubOcr(), MustNotCall()).read_waiting(conn, retry_failed=True)
+    assert run.read == run.failed == run.waiting == 0
+    assert [(r["source"], r["is_current"]) for r in readings(conn, sid)] == [("tesseract", 1)]
 
 
 def test_a_blank_page_never_waits_for_vision(conn, settings, scan):

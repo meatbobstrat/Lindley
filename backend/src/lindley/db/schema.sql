@@ -367,6 +367,6 @@ CREATE TABLE IF NOT EXISTS learned_weights (
 CREATE TABLE IF NOT EXISTS needs_ai (
     id         INTEGER PRIMARY KEY,
     pages      TEXT NOT NULL UNIQUE,                -- JSON list of page ids, sorted
-    proposal   TEXT NOT NULL,                       -- JSON [{pages, name, confidence}]: the rules'
+    proposal   TEXT NOT NULL,                       -- JSON [{pages, name, confidence, reasons}]: the rules'
     since      TEXT NOT NULL DEFAULT (datetime('now'))
 );

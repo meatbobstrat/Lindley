@@ -142,6 +142,7 @@ def test_pages_the_rules_cant_sort_wait_for_the_ai(conn):
     assert json.loads(row["pages"]) == [a, b]
     [guess] = json.loads(row["proposal"])
     assert guess["pages"] == [a, b] and guess["confidence"] == 53
+    assert guess["reasons"] and all(isinstance(r, str) for r in guess["reasons"])
     conn.execute("UPDATE needs_ai SET since = '2026-01-01 00:00:00'")
     conn.commit()
     assemble(conn)

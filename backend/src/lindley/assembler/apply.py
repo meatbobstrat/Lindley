@@ -187,11 +187,20 @@ def save_needs_ai(
 ) -> None:
     """What's waiting for the sorting AI now: pages to sort into documents (`windows`), and
     pages to place in one of a few likely documents (`placing`, marked "question": "place",
-    with the documents). A question still waiting keeps the time it started waiting; one no
-    longer waiting (sorted, answered, or its pages gone) is dropped."""
+    with the documents). Each guess carries the rules' reasons, for a person to read. A
+    question still waiting keeps the time it started waiting; one no longer waiting (sorted,
+    answered, or its pages gone) is dropped."""
     now = {
         json.dumps(sorted(p.id for g in w for p in g.pages)): json.dumps(
-            [{"pages": g.ids, "name": g.name, "confidence": g.confidence} for g in w]
+            [
+                {
+                    "pages": g.ids,
+                    "name": g.name,
+                    "confidence": g.confidence,
+                    "reasons": g.reasons,
+                }
+                for g in w
+            ]
         )
         for w in windows
     }
@@ -204,6 +213,7 @@ def save_needs_ai(
                         "pages": g.ids,
                         "name": g.name,
                         "confidence": g.confidence,
+                        "reasons": g.reasons,
                         "question": "place",
                         "candidates": [c.payload() for c in ranked],
                     }

@@ -96,6 +96,15 @@ def test_a_similar_pair_never_joins_a_set_of_copies(conn):
     assert [s.kind for s in open_sets(conn)] == ["similar"]
 
 
+def test_a_set_whose_other_copies_were_set_aside_is_decided_until_one_comes_back(conn):
+    a, b, c = page(conn), page(conn, aside=True), page(conn, aside=True)
+    dup(conn, a, b)
+    dup(conn, b, c)
+    assert open_sets(conn) == []
+    conn.execute("UPDATE pages SET set_aside_at = NULL WHERE id = ?", (c,))
+    assert [sorted(x.page_id for x in s.copies) for s in open_sets(conn)] == [[a, b, c]]
+
+
 def test_lindley_suggests_the_better_copy_and_says_why(conn):
     d = doc(conn)
     in_doc = page(conn, d, 0, conf=78)

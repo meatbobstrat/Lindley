@@ -120,6 +120,9 @@ def open_sets(conn: sqlite3.Connection) -> list[DuplicateSet]:
     Copies of one page chain together (three scans of a page are one set). A "similar" pair
     never does: a sheet and a piece of it aren't copies of each other's copies, so each similar
     pair is a decision of its own. A page can be in both kinds of set.
+
+    A set whose copies are all set aside but one is decided already: a person set the others
+    aside (in the Inbox, say, at Lindley's suggestion). It comes back if one is put back.
     """
     pairs = conn.execute(
         "SELECT id, page_a, page_b, kind, score, evidence FROM duplicates WHERE status = 'open'"
@@ -142,6 +145,7 @@ def open_sets(conn: sqlite3.Connection) -> list[DuplicateSet]:
     for p in same:
         groups.setdefault(find(p["page_a"]), []).append(p)
     sets += [_make_set(conn, ps) for ps in groups.values()]
+    sets = [s for s in sets if sum(c.where != "aside" for c in s.copies) > 1]
     return sorted(sets, key=lambda s: (KIND_ORDER[s.kind], -s.score, s.id))
 
 

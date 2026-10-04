@@ -8,7 +8,7 @@ import { api, type DupCopy, type DupDocPair, type Duplicates, type DupSet, image
 import { useApi } from '../api/store'
 import { Banner, Crumb, Done, ErrorBox, Head, Loading } from '../components/bits'
 import { docHome, useApp, useLooking } from '../lib/appContext'
-import { plural, when } from '../lib/words'
+import { plural, quoted, when } from '../lib/words'
 import { DBtn, Dock, DockProgress, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -29,7 +29,7 @@ function entries(d: Duplicates): Entry[] {
   ]
 }
 
-const copyWhere = (c: DupCopy) => (c.where === 'document' ? `In “${c.document_name}”` : c.where === 'aside' ? 'In Set aside' : 'In the Inbox')
+const copyWhere = (c: DupCopy) => (c.where === 'document' ? `In ${quoted(c.document_name ?? '')}` : c.where === 'aside' ? 'In Set aside' : 'In the Inbox')
 
 export function DupList() {
   const dups = useApi('duplicates', api.duplicates)
@@ -48,13 +48,13 @@ export function DupList() {
     if (e.pair) {
       const sets = e.pair.sets.map(setOf).filter(Boolean) as DupSet[]
       const extra = Object.values(e.pair.extra).reduce((n, x) => n + x.length, 0)
-      title = `“${e.pair.names[0]}” was scanned twice`
+      title = `${quoted(e.pair.names[0])} was scanned twice`
       what = (
         <>
           <Icon name="dup" /> The same {plural(sets.length, 'page')} in two documents{extra ? `, and ${plural(extra, 'page')} only one has` : ''}
         </>
       )
-      where = e.pair.names.map((n) => `“${n}”`).join(' · ')
+      where = e.pair.names.map(quoted).join(' · ')
       thumbs = sets.slice(0, 1).flatMap((s) => s.copies.map((c) => c.image))
     } else {
       const s = e.set!
@@ -224,9 +224,9 @@ export function DupView() {
   let sub: string
   if (e.pair) {
     const extra = Object.entries(e.pair.extra).filter(([, v]) => v.length)
-    title = `“${e.pair.names[0]}” was scanned twice`
+    title = `${quoted(e.pair.names[0])} was scanned twice`
     sub = `Both documents have the same ${plural(e.pair.sets.length, 'page')}. Compare them page by page, then keep one document, or the better scan of each page.${
-      extra.length ? ` ${extra.map(([d, v]) => `“${docs.get(Number(d))?.name}” also has ${plural(v.length, 'page')} the other doesn’t; ${v.length === 1 ? 'it stays' : 'they stay'} where ${v.length === 1 ? 'it is' : 'they are'}, whichever you keep.`).join(' ')}` : ''
+      extra.length ? ` ${extra.map(([d, v]) => `${quoted(docs.get(Number(d))?.name ?? '')} also has ${plural(v.length, 'page')} the other doesn’t; ${v.length === 1 ? 'it stays' : 'they stay'} where ${v.length === 1 ? 'it is' : 'they are'}, whichever you keep.`).join(' ')}` : ''
     }`
   } else if (!similar) {
     title = 'The same page, scanned twice'
@@ -239,7 +239,7 @@ export function DupView() {
   const keepCopy = (c: DupCopy) => run(api.keepCopy(s!.id, c.page_id).then(decided([s!.id])), (r) => `Kept ${c.file_name}. Set aside ${plural(r.set_aside.length, 'copy', 'copies')}. Nothing was deleted.`).then((r) => r && setIds.length <= 1 && after())
   const keepDoc = (keep: number) => {
     const other = e.pair!.documents.find((d) => d !== keep)!
-    run(api.keepDocument(keep, other).then(decided(e.pair!.sets)), (r) => `Kept “${docs.get(keep)?.name}”. Set aside the other document’s ${plural(r.set_aside.length, 'page')}. Nothing was deleted.`).then((r) => r && after())
+    run(api.keepDocument(keep, other).then(decided(e.pair!.sets)), (r) => `Kept ${quoted(docs.get(keep)?.name ?? '')}. Set aside the other document’s ${plural(r.set_aside.length, 'page')}. Nothing was deleted.`).then((r) => r && after())
   }
   const notDup = async () => {
     const ids = e.pair ? e.pair.sets : [e.set!.id]
@@ -318,7 +318,7 @@ export function DupView() {
             const note = e.pair
               ? 'Keeping this document sets the other one’s matching pages aside; its pages with no copy stay where they are.'
               : home
-                ? `Keeping this one puts it in its place in “${home.document_name}”, and sets the other copy aside.`
+                ? `Keeping this one puts it in its place in ${quoted(home.document_name ?? '')}, and sets the other copy aside.`
                 : `Keeping this one sets the other ${others.length === 1 ? 'copy' : 'copies'} aside.`
             return (
               <section className="dup-col" key={c.page_id} aria-labelledby={`dc${n}`}>

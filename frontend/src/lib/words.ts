@@ -6,6 +6,14 @@ export const plural = (n: number, w: string, ws = `${w}s`) => `${n.toLocaleStrin
 
 export const shortName = (n: string, max = 26) => (n.length > max ? `${n.slice(0, max - 1)}…` : n)
 
+/** A name in quotes, unless it has its own: Lindley's (Pages starting “…”) do, as
+ * lindley.duplicates.resolve.quoted says. One shortened past its closing quote gets it back. */
+export function quoted(n: string): string {
+  const opens = n.split('“').length - 1
+  if (!opens) return `“${n}”`
+  return opens > n.split('”').length - 1 ? `${n}”` : n
+}
+
 /** "it"/"them" and friends, by count. */
 export const them = (n: number) => (n === 1 ? 'it' : 'them')
 export const needs = (n: number) => (n === 1 ? 'needs' : 'need')

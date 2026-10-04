@@ -335,6 +335,7 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .tx {
   font-family: var(--serif); font-size: 16.5px; line-height: 1.6; white-space: pre-wrap; max-width: 62ch;
   padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--raise); min-height: 200px;
+  flex-shrink: 0; /* a long page grows the column, which scrolls, rather than spilling out */
 }
 .tx:focus { outline: none; border-color: var(--accent); }
 .tx mark { background: var(--ai-soft); color: inherit; border-bottom: 2px dotted var(--ai); padding: 0 1px; }

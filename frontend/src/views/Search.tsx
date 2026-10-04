@@ -22,7 +22,7 @@ export function SearchView() {
     <>
       <Head
         crumbs="Search"
-        title={`${plural(r.length, 'page')}${r.length === 50 ? ' or more' : ''} mention “${q}”`}
+        title={`${plural(r.length, 'page')}${r.length === 50 ? ' or more' : ''} ${r.length === 1 ? 'mentions' : 'mention'} “${q}”`}
         sub="Searches the text of every page as it reads now: your corrections, handwriting read by the AI vision model, and pages still in the Inbox or set aside. Best matches first."
       />
       <div className="scroll">

@@ -10,7 +10,7 @@ import { TextPanel } from '../components/TextPanel'
 import { useActions } from '../lib/actionsContext'
 import { useApp, useLooking } from '../lib/appContext'
 import { who } from '../lib/ai'
-import { plural, shortName } from '../lib/words'
+import { plural, quoted, shortName } from '../lib/words'
 import { DBtn, Dock, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -58,12 +58,12 @@ export function ScanView() {
           <Banner
             kind="ai"
             actions={
-              <button className="btn" onClick={() => run(api.acceptSuggestion(add.id), `Added to “${shortName(add.document_name ?? '')}”.`)} data-tip="Add it to the end of that document">
+              <button className="btn" onClick={() => run(api.acceptSuggestion(add.id), `Added to ${quoted(shortName(add.document_name ?? ''))}.`)} data-tip="Add it to the end of that document">
                 Add it there
               </button>
             }
           >
-            Lindley thinks this belongs in “{add.document_name}”, {add.confidence}% sure. {add.reasons.join('. ')}.
+            Lindley thinks this belongs in {quoted(add.document_name ?? '')}, {add.confidence}% sure. {add.reasons.join('. ')}.
           </Banner>
         )}
         {!aside && !add && group && (

@@ -9,7 +9,7 @@ import { textOf, typing } from '../lib/view'
 import { Crumb, Done, ErrorBox, Head, Loading } from '../components/bits'
 import { TextPanel } from '../components/TextPanel'
 import { docHome, useApp, useLooking } from '../lib/appContext'
-import { needs, plural, shortName } from '../lib/words'
+import { needs, plural, quoted, shortName } from '../lib/words'
 import { DBtn, Dock, DockProgress, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon } from '../ui/icons'
@@ -41,7 +41,7 @@ export function ReviewList() {
                   key={g.document?.id ?? 'inbox'}
                   className="dcard"
                   onClick={() => nav(`/review/${g.document?.id ?? 'inbox'}`)}
-                  data-tip={`Review the ${plural(g.pages.length, 'page')} ${g.document ? `in “${g.document.name}”` : 'in the Inbox'}, one by one`}
+                  data-tip={`Review the ${plural(g.pages.length, 'page')} ${g.document ? `in ${quoted(g.document.name)}` : 'in the Inbox'}, one by one`}
                 >
                   <span className="pg-img">
                     <img src={imageAt(g.pages[0].image, 200)} alt="" loading="lazy" />
@@ -151,7 +151,7 @@ export function ReviewView() {
                 </button>
                 {docs.get(Number(scope)) && (
                   <button className="btn" onClick={() => nav(`/documents/${scope}`)} data-tip="Open the document">
-                    Open “{shortName(scopeName)}”
+                    Open {quoted(shortName(scopeName))}
                   </button>
                 )}
               </div>

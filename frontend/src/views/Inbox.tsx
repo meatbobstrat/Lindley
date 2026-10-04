@@ -13,7 +13,7 @@ import { useActions } from '../lib/actionsContext'
 import { useApp, useLooking } from '../lib/appContext'
 import { who } from '../lib/ai'
 import { useSelection, useThumb } from '../lib/view'
-import { plural, shortName, them } from '../lib/words'
+import { plural, quoted, shortName, them } from '../lib/words'
 import { DBtn, Dock, DockText, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -137,7 +137,7 @@ export function InboxView() {
                 <button
                   className="btn"
                   data-tip="Make these scans one document, under Lindley’s name for it. You can rename it after."
-                  onClick={() => run(api.acceptSuggestion(g.id), `Grouped ${plural(g.payload.pages?.length ?? 0, 'scan')} into “${shortName(g.payload.name ?? 'a document')}”.`)}
+                  onClick={() => run(api.acceptSuggestion(g.id), `Grouped ${plural(g.payload.pages?.length ?? 0, 'scan')} into ${quoted(shortName(g.payload.name ?? 'a document'))}.`)}
                 >
                   Group them
                 </button>
@@ -320,19 +320,19 @@ function Hint({
     main = (
       <button
         className="pg-hint"
-        onClick={() => run(api.acceptSuggestion(s.id), `Added ${plural(n, 'page')} to “${shortName(name)}”.`)}
-        data-tip={`Lindley thinks this belongs in “${name}”, ${sure}. Click to add it${n > 1 ? `, with the ${n - 1} scans that go with it` : ''}.`}
+        onClick={() => run(api.acceptSuggestion(s.id), `Added ${plural(n, 'page')} to ${quoted(shortName(name))}.`)}
+        data-tip={`Lindley thinks this belongs in ${quoted(name)}, ${sure}. Click to add it${n > 1 ? `, with the ${n - 1} scans that go with it` : ''}.`}
       >
         <Mark />
-        <span>Add to “{shortName(name)}”</span>
+        <span>Add to {quoted(shortName(name))}</span>
       </button>
     )
     const cands = (s.payload.candidates ?? []).filter((c) => c.document != null && c.document !== s.document_id && docs.get(c.document!)?.status === 'progress')
     items = [
       { head: 'Where Lindley thinks it goes' },
-      { label: `Add to “${shortName(name)}”, ${s.confidence}% sure`, icon: 'doc', tip: s.reasons.join('. '), onSelect: () => run(api.acceptSuggestion(s.id), `Added to “${shortName(name)}”.`) },
+      { label: `Add to ${quoted(shortName(name))}, ${s.confidence}% sure`, icon: 'doc', tip: s.reasons.join('. '), onSelect: () => run(api.acceptSuggestion(s.id), `Added to ${quoted(shortName(name))}.`) },
       ...cands.map((c) => ({
-        label: `Add to “${shortName(c.name)}”, ${c.confidence}% sure`,
+        label: `Add to ${quoted(shortName(c.name))}, ${c.confidence}% sure`,
         icon: 'doc' as const,
         tip: c.reasons.join('. '),
         onSelect: () => acts.moveTo([p.id], { id: c.document!, name: c.name }),
@@ -344,7 +344,7 @@ function Hint({
     const ids = s.payload.pages ?? [s.page_id]
     items = [
       { head: `Lindley thinks these ${ids.length} scans go together` },
-      { label: 'Group them', icon: 'newdoc', tip: 'Make them one document under Lindley’s name for it', onSelect: () => run(api.acceptSuggestion(s.id), `Grouped ${plural(ids.length, 'scan')} into “${shortName(s.payload.name ?? 'a document')}”.`) },
+      { label: 'Group them', icon: 'newdoc', tip: 'Make them one document under Lindley’s name for it', onSelect: () => run(api.acceptSuggestion(s.id), `Grouped ${plural(ids.length, 'scan')} into ${quoted(shortName(s.payload.name ?? 'a document'))}.`) },
       { label: 'Group them, with another name…', icon: 'pen', onSelect: () => acts.newDocument(ids, s.payload.name ?? '', true) },
       '-',
       { label: 'They don’t go together', icon: 'close', tip: 'Lindley won’t suggest it again', onSelect: dismiss },
@@ -354,7 +354,7 @@ function Hint({
       <button
         className="pg-hint"
         onClick={(e) => openMenu(menu, e.currentTarget)}
-        data-tip={`Lindley thinks these ${ids.length} scans are one document, “${s.payload.name}”, ${sure}. Click for choices.`}
+        data-tip={`Lindley thinks these ${ids.length} scans are one document, ${quoted(s.payload.name ?? '')}, ${sure}. Click for choices.`}
       >
         <Mark />
         <span>Goes with {plural(ids.length - 1, 'other scan')}</span>

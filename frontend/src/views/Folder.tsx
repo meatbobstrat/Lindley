@@ -8,7 +8,7 @@ import { Head, NameInput } from '../components/bits'
 import { useActions } from '../lib/actionsContext'
 import { useApp, useLooking } from '../lib/appContext'
 import { drag } from '../lib/drag'
-import { docDate, plural } from '../lib/words'
+import { docDate, plural, quoted } from '../lib/words'
 import { DBtn, Dock } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon } from '../ui/icons'
@@ -91,7 +91,7 @@ export function FolderView() {
                 e.dataTransfer.setData('text/plain', d.name)
               }}
               onDragEnd={() => (drag.doc = null)}
-              data-tip={`Open “${d.name}”. Drag it onto another folder to move it.`}
+              data-tip={`Open ${quoted(d.name)}. Drag it onto another folder to move it.`}
             >
               <span className="pg-img">{d.first_page != null && <img src={imageAt(`/api/pages/${d.first_page}/image`, 200)} alt="" loading="lazy" />}</span>
               <span>

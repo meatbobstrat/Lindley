@@ -9,7 +9,7 @@ import { type MenuItem, useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
 import { type Actions, ActionsCtx } from './actionsContext'
 import { useApp } from './appContext'
-import { plural, shortName } from './words'
+import { plural, quoted, shortName } from './words'
 
 type Dialog =
   | { kind: 'newdoc'; ids: number[]; name: string; lindley: boolean }
@@ -69,7 +69,7 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
         if (ids.length) run(api.movePages(ids, 'aside'), (r) => `Set aside ${plural(ids.length, 'scan')}. Nothing was deleted.${removedNote(r.removed)}`)
       },
       moveTo: (ids, doc) => {
-        if (ids.length) run(api.movePages(ids, 'document', doc.id), (r) => `Moved ${plural(ids.length, 'page')} to “${shortName(doc.name)}”.${removedNote(r.removed)}`)
+        if (ids.length) run(api.movePages(ids, 'document', doc.id), (r) => `Moved ${plural(ids.length, 'page')} to ${quoted(shortName(doc.name))}.${removedNote(r.removed)}`)
       },
       shift: (docId, order, ids, dir) => {
         const arr = [...order]
@@ -108,8 +108,8 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
         run(
           api.updateDocument(doc.id, { folder_id: folderId }),
           to
-            ? `Moved “${shortName(doc.name)}” to ${to}.`
-            : `Took “${shortName(doc.name)}” out of ${from}. It’s back under ${doc.status === 'complete' ? 'Completed' : 'In progress'}.`,
+            ? `Moved ${quoted(shortName(doc.name))} to ${to}.`
+            : `Took ${quoted(shortName(doc.name))} out of ${from}. It’s back under ${doc.status === 'complete' ? 'Completed' : 'In progress'}.`,
         )
       },
       newFolder: async (parent, docId) => {
@@ -135,7 +135,7 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
             return {
               label: d.name + (f ? ` (in ${f.name})` : ''),
               icon: 'doc' as const,
-              tip: `Add ${plural(ids.length, 'page')} to the end of “${d.name}”`,
+              tip: `Add ${plural(ids.length, 'page')} to the end of ${quoted(d.name)}`,
               onSelect: () => a.moveTo(ids, d),
             }
           }),
@@ -197,7 +197,7 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
           items.push('-')
         }
         const open = [...docs.values()].filter((d) => d.status === 'progress' && d.id !== opts.docId)
-        open.forEach((d) => items.push({ label: d.name, icon: 'doc', tip: `Add to the end of “${d.name}”`, onSelect: () => a.moveTo(ids, d) }))
+        open.forEach((d) => items.push({ label: d.name, icon: 'doc', tip: `Add to the end of ${quoted(d.name)}`, onSelect: () => a.moveTo(ids, d) }))
         items.push({ label: 'New document…', icon: 'newdoc', tip: 'Start a new document with these pages', onSelect: () => a.newDocument(ids) }, '-')
         if (where !== 'inbox')
           items.push({ label: 'Return to Inbox', icon: 'inbox', tip: 'Take the pages out, for Lindley to sort again', onSelect: () => a.toInbox(ids) })
@@ -252,7 +252,7 @@ function NewDocDialog({ d, close }: { d: Extract<Dialog, { kind: 'newdoc' }>; cl
     close()
     const r = await run(
       api.newDocument(d.ids, name, folder ? Number(folder) : null, d.lindley && name === d.name),
-      (x) => `Started “${shortName(name || 'Untitled document')}” with ${plural(d.ids.length, 'page')}.${x.removed?.length ? ' A document left with no pages was removed.' : ''}`,
+      (x) => `Started ${quoted(shortName(name || 'Untitled document'))} with ${plural(d.ids.length, 'page')}.${x.removed?.length ? ' A document left with no pages was removed.' : ''}`,
     )
     if (r?.document_id) nav(`/documents/${r.document_id}`)
   }
@@ -317,11 +317,11 @@ function ExportDialog({ d, close }: { d: Extract<Dialog, { kind: 'export' }>; cl
         r.to_review.length ? `${plural(r.to_review.length, 'page')} still waiting for review ${r.to_review.length === 1 ? 'has' : 'have'} Lindley’s best reading.` : '',
         r.unplaced.length ? `${plural(r.unplaced.length, 'page')} read only by the AI ${r.unplaced.length === 1 ? 'is' : 'are'} searchable, but the text isn’t laid over the writing.` : '',
       ]
-      return `Exported “${shortName(d.doc.name)}” as ${r.file_name}. ${folder ? `It stays in ${folder.name}, marked Completed.` : 'It moved to Completed.'} ${notes.join(' ')}`
+      return `Exported ${quoted(shortName(d.doc.name))} as ${r.file_name}. ${folder ? `It stays in ${folder.name}, marked Completed.` : 'It moved to Completed.'} ${notes.join(' ')}`
     })
   }
   return (
-    <Modal title={`Export “${d.doc.name}”?`} onClose={close}>
+    <Modal title={`Export ${quoted(d.doc.name)}?`} onClose={close}>
       <p>
         Lindley will combine the {plural(d.doc.pages, 'page')} in their current order into one searchable PDF, with everything it read from the scans saved inside it.{' '}
         {folder ? `The document stays in ${folder.name} and is marked Completed.` : 'The document moves to Completed.'}
@@ -376,7 +376,7 @@ function DetailsDialog({ d, close }: { d: Extract<Dialog, { kind: 'details' }>; 
   }
   return (
     <Modal title="Type and date" onClose={close}>
-      <p>What kind of document “{d.doc.name}” is, and when it was written. Lindley only suggests changes to what you give here.</p>
+      <p>What kind of document {quoted(d.doc.name)} is, and when it was written. Lindley only suggests changes to what you give here.</p>
       <label className="fld" htmlFor="dt-type">
         Type
       </label>

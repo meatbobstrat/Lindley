@@ -9,7 +9,7 @@ import { api } from '../api/client'
 import { useLocal } from '../api/store'
 import { cloudInUse, anyAi } from '../lib/ai'
 import { useApp } from '../lib/appContext'
-import { plural } from '../lib/words'
+import { plural, quoted, shortName } from '../lib/words'
 import { Icon, Mark } from '../ui/icons'
 
 type Mode = 'dock' | 'float' | 'collapsed'
@@ -72,7 +72,7 @@ export function AskPane({ open, close }: { open: boolean; close: () => void }) {
           list: top.map((x) => (x.document_name ? `${x.document_name}, page ${x.page_number}` : `${x.where === 'aside' ? 'Set aside' : 'Inbox'}: ${x.file}`)),
           acts: [
             ...top.slice(0, 3).map((x) => ({
-              label: `Open ${x.document_name ? `“${x.document_name.slice(0, 22)}${x.document_name.length > 22 ? '…' : ''}”` : x.file}`,
+              label: `Open ${x.document_name ? quoted(shortName(x.document_name, 23)) : x.file}`,
               tip: 'Open this page beside its text',
               go: () => nav(x.document_id ? `/documents/${x.document_id}?view=side&page=${(x.page_number ?? 1) - 1}` : `/scans/${x.page_id}`),
             })),

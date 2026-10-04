@@ -12,7 +12,7 @@ import { useActions } from '../lib/actionsContext'
 import { useSelection, useThumb } from '../lib/view'
 import { type Conn } from '../lib/ai'
 import { docHome, useApp, useLooking } from '../lib/appContext'
-import { needs, plural, them, when } from '../lib/words'
+import { needs, plural, quoted, them, when } from '../lib/words'
 import { DBtn, Dock, DockProgress, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -105,7 +105,7 @@ export function NeedsAiList() {
                     const failed = rows.filter((r) => r.failed)
                     return (
                       <div className="na-card" key={docId ?? 'inbox'}>
-                        <button className="dcard" onClick={() => nav(docId != null ? `/documents/${docId}` : '/inbox')} data-tip={d ? `Open “${d.name}”` : 'Open the Inbox'}>
+                        <button className="dcard" onClick={() => nav(docId != null ? `/documents/${docId}` : '/inbox')} data-tip={d ? `Open ${quoted(d.name)}` : 'Open the Inbox'}>
                           <Thumbs ids={rows.map((r) => r.page_id)} />
                           <span>
                             <b style={d?.suggested ? { fontStyle: 'italic' } : undefined}>{rows[0].document_name ?? 'Inbox'}</b>
@@ -297,7 +297,7 @@ export function NeedsAiItem() {
                       <small>{c.reasons.join('. ')}</small>
                     </span>
                     {c.document != null && docs.get(c.document)?.status === 'progress' && (
-                      <button className="btn" onClick={() => acts.moveTo(ids, { id: c.document!, name: c.name })} data-tip={`Add ${them(ids.length)} to the end of “${c.name}”`}>
+                      <button className="btn" onClick={() => acts.moveTo(ids, { id: c.document!, name: c.name })} data-tip={`Add ${them(ids.length)} to the end of ${quoted(c.name)}`}>
                         Add {them(ids.length)} here
                       </button>
                     )}

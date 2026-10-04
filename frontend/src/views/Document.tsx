@@ -14,7 +14,7 @@ import { useActions } from '../lib/actionsContext'
 import { useSelection, useThumb } from '../lib/view'
 import { useApp, useLooking } from '../lib/appContext'
 import { who } from '../lib/ai'
-import { docDate, needs, plural, them, when } from '../lib/words'
+import { docDate, needs, plural, quoted, them, when } from '../lib/words'
 import { DBtn, Dock, DockText, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -294,7 +294,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
             icon="back"
             label="Reopen for changes"
             tip="Make the document editable again. The exported PDF is kept until you export again."
-            onClick={() => run(api.reopen(d.id), `Reopened “${d.name}”. The exported PDF is kept until you export again.`)}
+            onClick={() => run(api.reopen(d.id), `Reopened ${quoted(d.name)}. The exported PDF is kept until you export again.`)}
           />
         ) : (
           <>

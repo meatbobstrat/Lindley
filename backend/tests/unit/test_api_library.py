@@ -72,6 +72,14 @@ def test_inbox_pages_say_how_well_they_were_read(client, settings, tmp_path):
     assert review["count"] == 1 and review["groups"][0]["document"] is None
 
 
+def test_a_reading_with_no_confidence_isnt_waiting_for_review(client, settings, tmp_path):
+    conn = db(client, settings)
+    blank = add_page(conn, tmp_path, "", conf=None)
+    [p] = client.get("/api/inbox").json()["pages"]
+    assert p["id"] == blank and p["state"] == "ok"
+    assert client.get("/api/review").json()["count"] == 0
+
+
 def test_a_page_in_full(client, settings, tmp_path):
     conn = db(client, settings)
     d = document(conn)

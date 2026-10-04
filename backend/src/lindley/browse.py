@@ -43,7 +43,8 @@ def state(r: sqlite3.Row, review_below: float) -> str:
         return "checked"
     if r["vision_status"] in ("queued", "failed") and r["set_aside_at"] is None:
         return "ai_failed" if r["vision_status"] == "failed" else "needs_ai"
-    if (r["confidence"] or 0) < review_below:
+    # As lindley.db.progress counts them: a reading with no confidence (a blank page) isn't one
+    if r["confidence"] is not None and r["confidence"] < review_below:
         return "review"
     return "ok"
 

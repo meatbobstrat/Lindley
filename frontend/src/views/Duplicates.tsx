@@ -212,8 +212,18 @@ export function DupView() {
       </>
     )
 
-  const next = es[k + 1]?.key ?? es[k - 1]?.key
-  const after = () => nav(next ? `/duplicates/${next}` : '/duplicates', { replace: true })
+  // On to the next one, as the list is now: a decision can settle others too (copies it set
+  // aside), so the list from before may offer one that's decided already.
+  const after = () => {
+    api.duplicates().then(
+      (now) => {
+        const left = entries(now)
+        const to = left[Math.min(k, left.length - 1)]
+        nav(to ? `/duplicates/${to.key}` : '/duplicates', { replace: true })
+      },
+      () => nav('/duplicates', { replace: true }),
+    )
+  }
   const s = full.data
   // In a document pair, each column is one document.
   const copies = s ? (e.pair ? e.pair.documents.map((d) => s.copies.find((c) => c.document_id === d)).filter(Boolean) as DupCopy[] : s.copies) : []

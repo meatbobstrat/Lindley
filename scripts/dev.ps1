@@ -12,8 +12,7 @@ if (-not (Test-Path (Join-Path $root 'frontend\node_modules'))) {
 }
 
 $backend = Start-Process -FilePath $python -PassThru -NoNewWindow -WorkingDirectory $root `
-    -ArgumentList '-m', 'uvicorn', 'lindley.app:create_app', '--factory', '--reload', `
-    '--reload-dir', 'backend/src', '--host', '127.0.0.1', '--port', '8765'
+    -ArgumentList '-m', 'lindley', '--reload'
 
 try {
     Push-Location (Join-Path $root 'frontend')

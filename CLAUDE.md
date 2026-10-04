@@ -15,7 +15,9 @@
     in words, images) are shared helpers.
     `keys.py`: API keys in the system credential store (keyring)
   - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
-    `pipeline.py` (step records, Tesseract/vision reading), `ocr/` engines
+    `pipeline.py` (step records, Tesseract/vision reading), `ocr/` engines, `ai_work.py` (AI
+    work a person asked for, done in the background, one job at a time). `activity.py`: what
+    the AI is doing now, and what came of it, for the status bar (in the overview)
   - `watcher/`: watchdog folder watcher, started by the app lifespan (`create_app(watch=False)` in tests)
   - `assembler/`: Inbox pages → documents. `clues.py` (rules per page), `evidence.py` (features
     for a page pair, scored with `weights.py`), `layout.py`, `terms.py`, `segment.py`, `learn.py`
@@ -42,7 +44,7 @@
 - `scripts/dev.ps1`: runs both dev servers
 
 ## Commands
-- Backend: `cd backend; .venv\Scripts\Activate.ps1; pytest; ruff check .; python -m lindley`
+- Backend: `cd backend; .venv\Scripts\Activate.ps1; pytest; ruff check .; python -m lindley [--reload]`
 - Frontend: `cd frontend; npm run dev | npm run lint | npm run build`
 
 ## Conventions

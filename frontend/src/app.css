@@ -1,0 +1,50 @@
+/* What the real app adds to the mockup's styles: tooltips, native dialogs, loading and errors. */
+
+/* ---------- Tooltips (ui/Tooltip.tsx) ----------
+   Shown on hover and on keyboard focus, kept open while the pointer is over them, closed with
+   Escape, and never on a timer (WCAG 2.2, 1.4.13 Content on Hover or Focus). */
+.tip {
+  position: fixed; z-index: 90; max-width: min(320px, calc(100vw - 16px));
+  padding: 6px 10px; border-radius: 6px;
+  background: var(--ink); color: var(--surface);
+  font: 12.5px/1.4 var(--sans); box-shadow: var(--shadow);
+  pointer-events: auto; white-space: pre-line; text-wrap: pretty;
+}
+.tip[hidden] { display: none; }
+
+/* ---------- Dialogs (ui/Modal.tsx): native <dialog>, so focus stays inside and Escape closes */
+dialog.modal {
+  position: fixed; inset: 0; margin: auto; transform: none;
+  height: fit-content; max-height: calc(100vh - 32px); overflow: auto;
+  border: 0; color: var(--ink);
+}
+dialog.modal::backdrop { background: rgba(10, 15, 12, .35); }
+dialog.setup-dlg {
+  position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none;
+  margin: 0; border: 0; color: var(--ink);
+}
+dialog.setup-dlg::backdrop { background: var(--bg); }
+dialog.setup-dlg .setup-card { margin: 0 auto; }
+
+/* ---------- The app frame in React ---------- */
+.main { outline: none; }
+.top .brand { color: var(--ink); text-decoration: none; }
+.loading.small { height: auto; padding: 48px 20px; font-size: 16px; }
+.err { display: flex; align-items: flex-start; gap: 10px; margin: 20px; padding: 12px 14px; border: 2px solid var(--warn); border-radius: 8px; background: var(--warn-soft); max-width: 70ch; }
+.err .ic { color: var(--warn); margin-top: 1px; }
+.offline { color: var(--warn); font-weight: 600; }
+.pg-img img.blank { opacity: .6; }
+.pg-img .noimg { color: var(--muted); font-size: 12px; padding: 8px; text-align: center; }
+a.btn { color: inherit; text-decoration: none; }
+.chip-btn { cursor: pointer; font: inherit; color: inherit; }
+.chip-btn:hover { border-color: var(--accent); }
+.checks { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: 13px; }
+.checks li { display: flex; gap: 6px; align-items: flex-start; }
+.checks .ic { width: 15px; height: 15px; margin-top: 2px; }
+.checks .done .ic { color: var(--ok); }
+.checks .todo .ic { color: var(--warn); }
+.res-where { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* The Inbox's suggestions scroll with its pages, so many of them never squeeze the grid */
+.inbox-banners { display: grid; gap: 8px; padding: 14px 20px 0; }
+.inbox-banners:empty { display: none; }

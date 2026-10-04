@@ -19,7 +19,9 @@ anything it isn't sure of, and never changes or deletes your original scans.
 
 ## Status
 
-Lindley is in early development and isn't usable end to end yet.
+Lindley is in early development. The app now works end to end, from scans dropped in a folder
+to searchable PDFs, but it has only been tried on a handful of made-up scans, and asking
+questions about your documents isn't built yet.
 
 | Part | State |
 | --- | --- |
@@ -32,10 +34,11 @@ Lindley is in early development and isn't usable end to end yet.
 | Vision model reading (handwriting) | Built into intake, through any AI connection that can read pages |
 | Folder watcher | Built; runs with the backend |
 | Image checks (blank pages, rotation, handwriting or print) | Built, and tried on a first sample of real typewritten scans |
-| Duplicates (pages and documents scanned more than once) | Detection, decisions and API built; designed in the mockup |
+| Duplicates (pages and documents scanned more than once) | Detection, decisions, API and the app's screen built |
 | Searchable PDF export | Built: one PDF per document, from Lindley's own readings, with people's corrections; try it with `scripts/export.py` |
-| Search, AI chat | Not started |
-| Real UI (React) | Scaffold only; to be built from the mockup |
+| Search | Built: every page's text as it reads now, with the words found marked |
+| Ask Lindley (AI chat) | Not started. The pane is in the app; until then it finds words and what's waiting for review, without an AI |
+| Real UI (React) | Built from the mockup: every view, on the real API, with a tooltip for every control |
 
 ## How it works
 
@@ -134,7 +137,12 @@ watched folders ─► watcher ─► intake ───────────�
 
 ## UI design
 
-The design is a single-file clickable mockup: [design/mockup/index.html](design/mockup/index.html).
+The app in `frontend/` is built from the mockup, with the same look and wording. Every
+change you make there can be undone (Undo in the message that confirms it, or Ctrl+Z), and every
+button, icon and status has a tooltip, shown on hover and on keyboard focus and closed with
+Escape. The fonts are bundled, so the app never asks another site for anything.
+
+The design itself is a single-file clickable mockup: [design/mockup/index.html](design/mockup/index.html).
 Open it in a browser; it uses sample data and saves nothing. It covers:
 - first-run setup and Settings,
 - the Inbox and adding scans,
@@ -157,7 +165,7 @@ Open it in a browser; it uses sample data and saves nothing. It covers:
 | `backend/src/lindley/duplicates/` | Duplicate detection (by text) and a person's decisions |
 | `backend/src/lindley/export/` | Searchable PDFs: word positions for each reading, the PDF, and exporting a document |
 | `backend/src/lindley/search/` | Stub for the next phase |
-| `frontend/` | React, TypeScript and Vite |
+| `frontend/` | The app: React, TypeScript and Vite (`views/` per screen, `components/`, `ui/` for tooltips, toolbar, menus and dialogs) |
 | `design/` | UI mockup and database design |
 | `scripts/dev.ps1` | Runs both dev servers |
 
@@ -257,8 +265,8 @@ python scripts\export.py --all --settings D:\scratch\settings.json      # every 
 ```
 
 Each PDF holds the document's pages in order, named after the document, and exporting marks
-the document Completed. Exporting it again replaces the PDF. The app will do the same through
-`POST /api/documents/<id>/export`.
+the document Completed. Exporting it again replaces the PDF. In the app, it's Export PDF in a
+document's toolbar (`POST /api/documents/<id>/export`).
 - **What's in it.** Each page is its scan, turned upright, at its size on paper (from the
   scan's dpi). What Lindley read from it is invisible text over the writing: a person's
   correction if there is one, else the vision model's reading or Tesseract's.
@@ -295,8 +303,8 @@ file in these places, in order:
 | `ai.jobs` | Which connection does each job: `vision` (reading hard pages), `assemble` (sorting pages into documents), `chat` (Ask Lindley) and `embed` (finding related pages), each with an optional `model` of its own. Out of the box there are none |
 
 **API keys never go in `settings.json`.** They're kept in Windows Credential Manager (the
-Keychain on a Mac), under "Lindley", with the connection's name. Save one through the API
-(`PUT /api/connections/<name>/key`); the app's Settings screen will do the same. A connection can
+Keychain on a Mac), under "Lindley", with the connection's name. Settings › AI and privacy saves
+it there for you (through `PUT /api/connections/<name>/key`). A connection can
 instead name an environment variable that holds its key (`api_key_env`, for example
 `OPENAI_API_KEY`).
 
@@ -358,17 +366,18 @@ folders.
 - [x] Intake: hashing, EXIF, splitting PDFs and TIFFs, Tesseract reading
 - [x] Folder watcher
 - [x] Image checks: blank pages, rotation, handwriting or print
-- [x] Duplicates: detection, decisions with undo, API and mockup (the React screen comes with the real UI)
+- [x] Duplicates: detection, decisions with undo, API, mockup and the app's screen
 - [x] AI connectors, one file each: a local AI, Anthropic, OpenAI, Google, and other OpenAI-compatible services
 - [x] Vision model reading for handwriting
-- [ ] API and the real React UI, built from the mockup
+- [x] API and the real React UI, built from the mockup
 - [x] Searchable PDF export, built from stored readings (no Ghostscript)
 - [ ] Searchable text for every alphabet: ship a glyphless font, so text outside Windows-1252
   (Greek, Cyrillic, Hebrew and so on) goes into the PDF as it was read
-- [ ] Search and Ask Lindley (chat with your documents)
+- [x] Search: full text, over every page's reading in use
+- [ ] Ask Lindley (chat with your documents)
 - [ ] Details view: everything Lindley found about a page or document
 - [x] API keys in Windows Credential Manager
-- [ ] Settings in the app, built from the mockup
+- [x] Settings in the app, built from the mockup
 - [ ] Advanced settings (hidden from standard users): an interface for creating custom connectors. They're files too, built the same way as the built-in ones
 - [x] When each AI may be used: ask first or automatic, with a daily and a monthly limit; every call recorded
 - [x] Throttling each AI: calls a minute and at once

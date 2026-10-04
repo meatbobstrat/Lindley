@@ -4,9 +4,10 @@ python scripts/fit_assembler.py                       # made-up batches only
 python scripts/fit_assembler.py --real lindley.db     # plus real scans (PDFs or sorted folders)
 python scripts/fit_assembler.py --real lindley.db --write
 
-Real scans count as much as all the made-up batches together. Each real document is also left
-out in turn and its pairs predicted by weights fitted without it, which says how well the
-weights should do on documents they've never seen. --write saves them to
+Pages are filed by each scanning habit in turn (HABITS in lindley.assembler.bench), or those
+given with --habits. Real scans count as much as all the made-up batches together. Each real
+document is also left out in turn and its pairs predicted by weights fitted without it, which
+says how well the weights should do on documents they've never seen. --write saves them to
 src/lindley/assembler/weights.py. Only the weights are saved: no text from any scan.
 """
 
@@ -16,7 +17,15 @@ import argparse
 import tempfile
 from pathlib import Path
 
-from lindley.assembler.bench import ORDERS, arrange, load, load_real, make_batch, real_answers
+from lindley.assembler.bench import (
+    HABITS,
+    ORDERS,
+    arrange,
+    load,
+    load_real,
+    make_batch,
+    real_answers,
+)
 from lindley.assembler.evidence import FEATURES
 from lindley.assembler.learn import L2, Example, accuracy, examples, fit, log_loss
 from lindley.assembler.run import load_inbox
@@ -44,26 +53,32 @@ def batch(fill) -> tuple[list, dict[int, tuple[str, int]]]:
     }
 
 
-def made_up() -> list[Example]:
+def made_up(habits=HABITS) -> list[Example]:
     out = []
-    for seed in MADE_UP:
-        pages, truth = batch(lambda conn, s=seed: load(conn, make_batch(s).pages))
-        out += examples(pages, truth, seed)
+    for habit in habits:
+        for seed in MADE_UP:
+            pages, truth = batch(
+                lambda conn, s=seed, h=habit: load(conn, make_batch(s).pages, habit=h, seed=s)
+            )
+            out += examples(pages, truth, seed)
     return out
 
 
-def real(db: Path) -> list[tuple[set[str], Example]]:
+def real(db: Path, habits=HABITS) -> list[tuple[set[str], Example]]:
     """Examples from real scans, each with the documents its two pages came from."""
     src = connect(db)
     docs = real_answers(src)
     out = []
-    for order in ORDERS:
-        for seed in REAL_SEEDS:
-            pages, truth = batch(
-                lambda conn, o=order, s=seed: load_real(conn, src, arrange(docs, o, s))
-            )
-            for e in examples(pages, truth, seed):
-                out.append(({f"{db}:{truth[i][0]}" for i in e.pages}, e))
+    for habit in habits:
+        for order in ORDERS:
+            for seed in REAL_SEEDS:
+                pages, truth = batch(
+                    lambda conn, o=order, s=seed, h=habit: load_real(
+                        conn, src, arrange(docs, o, s), h, s
+                    )
+                )
+                for e in examples(pages, truth, seed):
+                    out.append(({f"{db}:{truth[i][0]}" for i in e.pages}, e))
     src.close()
     return out
 
@@ -73,10 +88,12 @@ def main() -> None:
     ap.add_argument("--real", type=Path, action="append", default=[])
     ap.add_argument("--l2", type=float, default=L2)
     ap.add_argument("--write", action="store_true")
+    ap.add_argument("--habits", default=",".join(HABITS))
     a = ap.parse_args()
 
-    synthetic = made_up()
-    tagged = [x for db in a.real for x in real(db)]
+    habits = a.habits.split(",")
+    synthetic = made_up(habits)
+    tagged = [x for db in a.real for x in real(db, habits)]
     print(f"pairs: {len(synthetic)} made-up, {len(tagged)} real")
     if tagged:
         share = sum(e.w for e in synthetic) / len(tagged)

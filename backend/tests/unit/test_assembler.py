@@ -500,3 +500,28 @@ def test_folders_a_person_sorted_are_an_answer_key(conn):
         scan("Notes", "Image.jpg")
     # Abe, then Burbanks, each in file name order; no blank pages, and no one-page folders
     assert real_answers(conn) == [[a[1], a[0]], [b1, b2]]
+
+
+def test_the_bench_files_scans_by_each_habit():
+    from lindley.assembler.bench import folder_plan
+
+    docs = ["a", "a", "b", "a", "c"]
+    assert folder_plan(docs, "one_folder") == [
+        ("D:/Scans", f"scan_{n:04d}.jpg") for n in range(1, 6)
+    ]
+    assert folder_plan(docs, "per_document") == [
+        ("D:/Scans/a", "Image.jpg"),
+        ("D:/Scans/a", "Image (2).jpg"),
+        ("D:/Scans/b", "Image.jpg"),
+        ("D:/Scans/a", "Image (3).jpg"),
+        ("D:/Scans/c", "Image.jpg"),
+    ]
+    mixed = [folder_plan(docs, "mixed", seed) for seed in range(20)]
+    for plan in mixed:  # a document's scans all go in one place; loose ones are numbered apart
+        for d in "abc":
+            assert len({f for (f, _), x in zip(plan, docs, strict=True) if x == d}) == 1
+        loose = [n for f, n in plan if f == "D:/Scans"]
+        assert loose == [f"scan_{n:04d}.jpg" for n in range(1, len(loose) + 1)]
+    assert any(p[0][0] == "D:/Scans" for p in mixed) and any(p[0][0] != "D:/Scans" for p in mixed)
+    # Pages of a document scanned later go in the same folder, numbered on
+    assert folder_plan(["a"], "per_document", start=90) == [("D:/Scans/a", "Image (90).jpg")]

@@ -218,14 +218,53 @@ def make_batch(seed: int) -> Batch:
     return Batch(pages, late)
 
 
+# How a person files their scans. "one_folder": everything goes into one folder, loose scans
+# numbered as they come off the scanner. "per_document": each document gets a folder of its
+# own, its scans named the way Windows names them (Image, Image (2), Image (3)...). "mixed":
+# about half the documents get a folder of their own, and the rest go loose into one folder.
+HABITS = ("one_folder", "per_document", "mixed")
+ROOT = "D:/Scans"
+
+
+def folder_plan(
+    docs: list[str], habit: str, seed: int = 0, start: int = 1, prefix: str = "scan_"
+) -> list[tuple[str, str]]:
+    """Where each scan, fed in this order, is filed: (folder, file name). `docs` holds each
+    scan's true document. Whether a document gets its own folder depends only on the seed and
+    the document, so pages of it scanned later go in the same place."""
+
+    def own(d: str) -> bool:
+        return habit == "per_document" or (
+            habit == "mixed" and random.Random(f"{seed}:{d}").random() < 0.5
+        )
+
+    count: dict[str, int] = {}
+    loose = start - 1
+    out = []
+    for d in docs:
+        if own(d):
+            n = count[d] = count.get(d, start - 1) + 1
+            out.append((f"{ROOT}/{d}", "Image.jpg" if n == 1 else f"Image ({n}).jpg"))
+        else:
+            loose += 1
+            out.append((ROOT, f"{prefix}{loose:04d}.jpg"))
+    return out
+
+
 def load(
-    conn: sqlite3.Connection, pages: list[TruePage], start_seq: int = 1, prefix: str = "scan_"
+    conn: sqlite3.Connection,
+    pages: list[TruePage],
+    start_seq: int = 1,
+    prefix: str = "scan_",
+    habit: str = "one_folder",
+    seed: int = 0,
 ) -> dict[int, TruePage]:
-    """Insert pages as read scans with current text. Returns page id -> the right answer."""
+    """Insert pages as read scans with current text, filed as `habit` says. Returns page id ->
+    the right answer."""
     truth = {}
+    plan = folder_plan([tp.doc for tp in pages], habit, seed, start_seq, prefix)
     with conn:
-        for i, tp in enumerate(pages):
-            name = f"{prefix}{start_seq + i:04d}.jpg"
+        for i, (tp, (folder, name)) in enumerate(zip(pages, plan, strict=True)):
             scan = conn.execute(
                 "INSERT INTO scans"
                 " (sha256, original_name, source_path, origin, import_mode, status,"
@@ -233,7 +272,7 @@ def load(
                 (
                     f"{name}:{hash(tp.text)}:{tp.doc}:{start_seq + i}",
                     name,
-                    f"D:/Scans/{name}",
+                    f"{folder}/{name}",
                     f"+{start_seq + i} seconds",
                 ),
             ).lastrowid
@@ -428,24 +467,30 @@ def arrange(docs: list[list[int]], order: str, seed: int) -> list[tuple[int, int
 
 
 def load_real(
-    conn: sqlite3.Connection, src: sqlite3.Connection, arranged: list[tuple[int, int, int]]
+    conn: sqlite3.Connection,
+    src: sqlite3.Connection,
+    arranged: list[tuple[int, int, int]],
+    habit: str = "one_folder",
+    seed: int = 0,
 ) -> dict[int, TruePage]:
-    """Copy real pages, with their readings and image checks, into a bench database as loose
-    scans named scan_0001.jpg, scan_0002.jpg... in the arranged order."""
+    """Copy real pages, with their readings and image checks, into a bench database as scans
+    fed in the arranged order and filed as `habit` says (see folder_plan)."""
     truth = {}
+    plan = folder_plan([f"doc{doc:03d}" for _, doc, _ in arranged], habit, seed)
     with conn:
-        for n, (pid, doc, index) in enumerate(arranged, 1):
+        for n, ((pid, doc, index), (folder, name)) in enumerate(
+            zip(arranged, plan, strict=True), 1
+        ):
             p = src.execute(
                 "SELECT p.*, t.text, t.words, t.confidence FROM pages p"
                 " JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1 WHERE p.id = ?",
                 (pid,),
             ).fetchone()
-            name = f"scan_{n:04d}.jpg"
             scan = conn.execute(
                 "INSERT INTO scans (sha256, original_name, source_path, origin, import_mode,"
                 " status, page_count, imported_at)"
                 " VALUES (?, ?, ?, 'watched', 'copy', 'read', 1, datetime('now', ?))",
-                (f"real:{pid}:{n}", name, f"D:/Scans/{name}", f"+{n} seconds"),
+                (f"real:{pid}:{n}", name, f"{folder}/{name}", f"+{n} seconds"),
             ).lastrowid
             page = conn.execute(
                 "INSERT INTO pages (scan_id, width_px, height_px, dpi, color_mode, phash,"

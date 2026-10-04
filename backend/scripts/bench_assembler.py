@@ -5,12 +5,16 @@ python scripts/bench_assembler.py --ai oracle     # plus a stand-in AI that is a
 python scripts/bench_assembler.py --ai settings   # plus the chat AI in your settings.json
 
 python scripts/bench_assembler.py --real lindley.db [--orders in_order,shuffled] [--seeds 10]
+python scripts/bench_assembler.py --habits one_folder,per_document
+
+--habits says how the scans are filed: all in one folder, a folder per document, or mixed (see
+HABITS in lindley.assembler.bench). Each is reported apart; the default is all of them.
 
 --real scores it on real scans instead, read into a Lindley database with scripts/intake.py.
 The answer key is its assembled PDFs, or if it has none, the folders a person sorted the scans
 into, one document each (lindley.assembler.bench.real_answers). Each document's pages are fed
-in as loose scans, all the documents together, in each order (see ORDERS in
-lindley.assembler.bench), once per seed.
+in again, all the documents together, in each order (see ORDERS in lindley.assembler.bench) and
+filed by each habit, once per seed.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from pathlib import Path
 
 from lindley.assembler import assemble
 from lindley.assembler.bench import (
+    HABITS,
     ORDERS,
     OracleChat,
     Score,
@@ -53,7 +58,7 @@ def show(conn, truth, s: Score, label: str, calls: int, asks: tuple[int, int]) -
 
 
 def run(
-    seed: int, ai: str, verbose: bool, real=None, order: str = ""
+    seed: int, ai: str, verbose: bool, real=None, order: str = "", habit: str = "one_folder"
 ) -> tuple[Score, int, tuple, tuple[int, int]]:
     with tempfile.TemporaryDirectory() as tmp:
         db = Path(tmp) / "bench.db"
@@ -64,11 +69,11 @@ def run(
         settings.assembler.ask_ai_after_days = 0
         if real:
             src, docs = real
-            truth = load_real(conn, src, arrange(docs, order, seed))
+            truth = load_real(conn, src, arrange(docs, order, seed), habit, seed)
             batch = None
         else:
             batch = make_batch(seed)
-            truth = load(conn, batch.pages)
+            truth = load(conn, batch.pages, habit=habit, seed=seed)
         proposal = score_groups(segment(load_inbox(conn))[0], truth)
         chat = None
         if ai == "oracle":
@@ -78,7 +83,7 @@ def run(
         r = assemble(conn, settings.assembler, chat)
         calls, asks = r.ai_calls, (r.ai_windows, r.ai_pages)
         if batch and batch.late:
-            late = load(conn, batch.late, start_seq=len(batch.pages) + 50)
+            late = load(conn, batch.late, len(batch.pages) + 50, habit=habit, seed=seed)
             truth |= late
             if isinstance(chat, OracleChat):
                 chat.truth = truth
@@ -87,7 +92,7 @@ def run(
             asks = (asks[0] + r.ai_windows, asks[1] + r.ai_pages)
         s = score(conn, truth)
         if verbose:
-            show(conn, truth, s, f"{order or 'seed'} {seed:3d}", calls, asks)
+            show(conn, truth, s, f"{habit} {order or 'seed'} {seed:3d}", calls, asks)
         conn.close()
         return s, calls, proposal, asks
 
@@ -128,23 +133,32 @@ def main() -> None:
         "--real", type=Path, help="a Lindley database of assembled PDFs or sorted folders"
     )
     ap.add_argument("--orders", default=",".join(ORDERS))
+    ap.add_argument("--habits", default=",".join(HABITS))
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
     if a.real:
         src = connect(a.real)
         docs = real_answers(src)
         print(f"{len(docs)} documents, {sum(map(len, docs))} pages, from {a.real}  AI: {a.ai}")
-        for order in a.orders.split(","):
-            scores, calls, proposals, asks = zip(
-                *(run(s, a.ai, a.verbose, (src, docs), order) for s in range(a.seeds or 10)),
-                strict=True,
-            )
-            report(order, list(scores), list(calls), list(proposals), list(asks))
+        for habit in a.habits.split(","):
+            for order in a.orders.split(","):
+                scores, calls, proposals, asks = zip(
+                    *(
+                        run(s, a.ai, a.verbose, (src, docs), order, habit)
+                        for s in range(a.seeds or 10)
+                    ),
+                    strict=True,
+                )
+                report(f"{habit}, {order}", *map(list, (scores, calls, proposals, asks)))
+        src.close()
         return
-    scores, calls, proposals, asks = zip(
-        *(run(s, a.ai, a.verbose) for s in range(a.seeds or 30)), strict=True
-    )
-    report(f"made-up batches, AI: {a.ai}", list(scores), list(calls), list(proposals), list(asks))
+    for habit in a.habits.split(","):
+        scores, calls, proposals, asks = zip(
+            *(run(s, a.ai, a.verbose, habit=habit) for s in range(a.seeds or 30)), strict=True
+        )
+        report(
+            f"made-up batches, {habit}, AI: {a.ai}", *map(list, (scores, calls, proposals, asks))
+        )
 
 
 if __name__ == "__main__":

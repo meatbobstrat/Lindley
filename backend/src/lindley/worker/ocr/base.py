@@ -43,6 +43,18 @@ def unsure_spans(text: str, words: list[dict] | None = None) -> list[list[int]]:
     return sorted(spans)
 
 
+def marked_confidence(text: str) -> float | None:
+    """How sure the vision model was of a reading, 0-100: the share of its words it didn't mark
+    as unsure or illegible. AIs don't say how sure they are, but they mark words as the prompt
+    asks, so a page of [illegible] scores near 0 and a clean one 100. None: no words (a blank
+    page)."""
+    words = [w for w in text.split() if w != "[?]"]
+    if not words:
+        return None
+    unsure = len(_MARKED.findall(text))
+    return round(100 * max(0, len(words) - unsure) / len(words), 1)
+
+
 class OcrEngine(Protocol):
     name: str
 

@@ -80,7 +80,9 @@ watched folders ─► watcher ─► intake ───────────�
    - **What you see.** Confident groups appear under In progress with italic, suggested names
      and the reasons behind them.
 3. **Review.** Any page read with less than 90% confidence (adjustable) goes to *Needs your
-   review*, so a person checks it before it's trusted for search and chat.
+   review*, so a person checks it before it's trusted for search and chat. AIs don't say how
+   sure they are, so a vision model's confidence is the share of words it didn't mark as
+   unsure or illegible. A reading that's mostly `[illegible]` doesn't replace Tesseract's.
 4. **Export.** A finished document becomes a searchable PDF in your library: each page is its
    scan, with what Lindley read from it as invisible text over the writing. Corrections and
    the vision model's readings are laid over Tesseract's word positions, so search and

@@ -14,7 +14,7 @@ from PIL import Image
 
 from lindley.providers.base import VisionProvider
 from lindley.worker.image import open_upright
-from lindley.worker.ocr.base import PageResult
+from lindley.worker.ocr.base import PageResult, marked_confidence
 
 MAX_SIDE = 2000
 SEND_AS_IS = frozenset({"JPEG", "PNG", "WEBP"})  # formats every provider takes
@@ -44,8 +44,9 @@ class VisionEngine:
 
     def recognize(self, image_path: Path) -> list[PageResult]:
         result = self.provider.transcribe(image_bytes(image_path, self.max_side))
+        confidence = result.confidence
+        if confidence is None:  # as none of the AIs say: from the words it marked
+            confidence = marked_confidence(result.text)
         return [
-            PageResult(
-                page_number=1, text=result.text, confidence=result.confidence, engine=self.name
-            )
+            PageResult(page_number=1, text=result.text, confidence=confidence, engine=self.name)
         ]

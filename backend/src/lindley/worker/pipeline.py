@@ -27,7 +27,7 @@ from lindley.providers import allowance
 from lindley.providers.base import ProviderError, VisionProvider
 from lindley.providers.registry import get_provider
 from lindley.worker import image as pageimage
-from lindley.worker.ocr.base import OcrEngine, PageResult
+from lindley.worker.ocr.base import OcrEngine, PageResult, marked_confidence
 from lindley.worker.ocr.tesseract import ORIENTATION_MIN_CONF, TesseractEngine
 from lindley.worker.ocr.vision import VisionEngine
 
@@ -822,10 +822,21 @@ def _removed_after(path: Path) -> Iterator[Path]:
 
 
 def _preference(reading: tuple[str, str, PageResult]) -> tuple[bool, float]:
-    """Which reading becomes current. Vision is only asked when Tesseract struggled, so a vision
-    reading with text wins unless it reports a lower confidence than Tesseract's."""
-    source, _, r = reading
-    has_text = bool(r.text.strip())
-    if source == "vision":
-        return has_text, r.confidence if r.confidence is not None else 100.0
-    return has_text, r.confidence or 0.0
+    """Which reading becomes current: one with text, then the more confident. A vision reading's
+    confidence is the share of its words it didn't mark as unsure (marked_confidence), so one
+    that's mostly [illegible] doesn't replace Tesseract's."""
+    _, _, r = reading
+    return bool(r.text.strip()), r.confidence or 0.0
+
+
+def rate_vision_readings(conn: sqlite3.Connection) -> int:
+    """Vision readings made before they had a confidence get one, from the words they marked,
+    so a poor one waits for a person's review. Which reading is in use isn't changed. Run at
+    start-up; returns the readings rated."""
+    rows = conn.execute(
+        "SELECT id, text FROM transcriptions WHERE source = 'vision' AND confidence IS NULL"
+    ).fetchall()
+    rated = [(c, r["id"]) for r in rows if (c := marked_confidence(r["text"] or "")) is not None]
+    with conn:
+        conn.executemany("UPDATE transcriptions SET confidence = ? WHERE id = ?", rated)
+    return len(rated)

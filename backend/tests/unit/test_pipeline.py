@@ -4,15 +4,18 @@ import threading
 import pytest
 from PIL import Image, ImageDraw
 
+from lindley import browse
 from lindley.assembler import assemble
 from lindley.config import Settings
 from lindley.db.database import connect, init_db
 from lindley.providers import allowance
+from lindley.providers.base import Transcription
 from lindley.providers.connectors.fake import FakeProvider
 from lindley.worker.intake import import_file
 from lindley.worker.ocr.base import PageResult
 from lindley.worker.pipeline import (
     Pipeline,
+    rate_vision_readings,
     recover_interrupted,
     unfinished_scans,
     waiting_for_vision,
@@ -623,3 +626,65 @@ def test_a_scan_whose_reading_raises_is_logged_and_left(conn, settings, scan, mo
     pipe = Pipeline(settings, StubOcr(("text", 90.0)))
     monkeypatch.setattr(pipe, "_settle", lambda *a: 1 / 0)
     assert pipe.process_scans(conn, [sid]) == {sid: None}
+
+
+class Says:
+    """A vision model that reads every page as `text`, and says nothing of how sure it is."""
+
+    model = "says"
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def transcribe(self, image, hints=None):
+        return Transcription(text=self.text)
+
+
+def test_a_vision_reading_that_is_mostly_illegible_doesnt_replace_tesseracts(conn, settings, scan):
+    sid = scan()
+    pipe = Pipeline(settings, StubOcr(("Dcar Sistcr, wc arc wcll", 41.0)), Says("x"))
+    pipe.process_scan(conn, sid)
+    pipe.vision = Says("Dear [illegible] [illegible] [illegible] [illegible]")
+    assert pipe.read_waiting(conn).read == 1
+    rs = readings(conn, sid)
+    assert [(r["source"], r["confidence"], r["is_current"]) for r in rs] == [
+        ("tesseract", 41.0, 1),
+        ("vision", 20.0, 0),
+    ]
+
+
+def test_a_clear_vision_reading_is_used_and_one_with_doubts_waits_for_review(conn, settings, scan):
+    clear, doubtful = scan("a.png"), scan("b.png")
+    reading = StubOcr(("Dcar Sistcr", 41.0), ("Dcar Sistcr", 41.0))
+    pipe = Pipeline(settings, reading, Says("Dear Sister, we are all well here."))
+    pipe.process_scan(conn, clear)
+    pipe.process_scan(conn, doubtful)
+    pipe.read_waiting(conn, [page_row(conn, clear)["id"]])
+    pipe.vision = Says("Dear Sister [?], we are well, and Uncle Zebulon [?] sends love.")
+    pipe.read_waiting(conn, [page_row(conn, doubtful)["id"]])
+    review = settings.ocr.review_below
+    states = {
+        p["file"]: (p["source"], p["confidence"], p["state"]) for p in browse.inbox(conn, review)
+    }
+    assert states == {
+        "a.png": ("vision", 100, "ok"),
+        "b.png": ("vision", 82, "review"),  # 2 unsure of 11 words
+    }
+
+
+def test_vision_readings_made_before_they_had_a_confidence_get_one(conn, settings, scan):
+    sid = scan()
+    Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), Says("x")).process_scan(conn, sid)
+    page = page_row(conn, sid)["id"]
+    for text in ("Dear [illegible] Sister [?]", ""):
+        conn.execute(
+            "INSERT INTO transcriptions (page_id, source, engine_model, text, is_current)"
+            " VALUES (?, 'vision', 'old', ?, 0)",
+            (page, text),
+        )
+    assert rate_vision_readings(conn) == 1  # a blank one has nothing to go on
+    rated = conn.execute(
+        "SELECT text, confidence FROM transcriptions WHERE source = 'vision' ORDER BY id"
+    ).fetchall()
+    assert [tuple(r) for r in rated] == [("Dear [illegible] Sister [?]", 33.3), ("", None)]
+    assert rate_vision_readings(conn) == 0

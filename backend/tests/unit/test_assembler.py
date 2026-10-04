@@ -567,6 +567,15 @@ def test_a_pdf_made_from_scans_gives_their_order(conn):
         page("", "loose.jpg", texts[1]), page("", "loose (2).jpg", texts[2])  # not sorted yet
     assert real_answers(conn) == [[first, second, third], [b1, b2]]
 
+    # Learning from a person's answers: the PDF as its scans; folders alone aren't answers, and
+    # a PDF read in without its scans is its own pages
+    from lindley.assembler.bench import assembled_answers
+
+    with conn:
+        alone, p1 = page("Elsewhere", "Letter.pdf", texts[2], "application/pdf")
+        _, p2 = page("Elsewhere", "Letter.pdf", texts[1], scan=alone, index=1)
+    assert assembled_answers(conn) == [[first, second, third], [p1, p2]]
+
 
 def test_the_bench_files_scans_by_each_habit():
     from lindley.assembler.bench import folder_plan

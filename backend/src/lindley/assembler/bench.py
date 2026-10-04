@@ -418,10 +418,9 @@ class OracleChat:
 ORDERS = ("in_order", "swapped", "shuffled")
 
 
-def pdf_answers(conn: sqlite3.Connection) -> list[list[int]]:
-    """An answer key from assembled PDFs: each read PDF of two or more pages is one document,
-    its pages in the PDF's order."""
-    docs = []
+def _pdf_pages(conn: sqlite3.Connection) -> dict[int, list[int]]:
+    """Each read PDF of two or more pages, by its scan id: its pages in the PDF's order."""
+    docs = {}
     for (scan,) in conn.execute(
         "SELECT id FROM scans WHERE mime_type = 'application/pdf' AND status = 'read' ORDER BY id"
     ).fetchall():
@@ -435,8 +434,14 @@ def pdf_answers(conn: sqlite3.Connection) -> list[list[int]]:
             )
         ]
         if len(ids) >= 2:
-            docs.append(ids)
+            docs[scan] = ids
     return docs
+
+
+def pdf_answers(conn: sqlite3.Connection) -> list[list[int]]:
+    """An answer key from assembled PDFs: each read PDF of two or more pages is one document,
+    its pages in the PDF's order."""
+    return list(_pdf_pages(conn).values())
 
 
 def _file_order(pages: list[sqlite3.Row]) -> list[int]:
@@ -516,34 +521,63 @@ def _match(pdf: list[sqlite3.Row], scans: list[sqlite3.Row]) -> list[int]:
     return [made[i] for i in sorted(made)]
 
 
+_READ_PAGES = (
+    "SELECT p.id, p.page_index, p.image_path, (p.detected_rotation + p.user_rotation) % 360"
+    " AS rotation, s.id AS scan, s.mime_type, s.original_name, s.source_path, t.text"
+    " FROM pages p JOIN scans s ON s.id = p.scan_id"
+    " JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
+    " WHERE s.status = 'read' AND coalesce(p.blank_score, 0) < ?"
+    " ORDER BY s.id, p.page_index"
+)
+PDF = "application/pdf"
+
+
+def _made_from(rows: list[sqlite3.Row]) -> dict[int, list[int]]:
+    """Each read PDF found with the scans it was made from, in a folder of its own or among
+    loose scans, by its scan id: those scans' pages in the PDF's order (_match). Only PDFs at
+    least two of whose pages are found."""
+    folders: dict[str, list[sqlite3.Row]] = {}
+    for r in rows:
+        folders.setdefault(str(PurePath(r["source_path"]).parent), []).append(r)
+    made = {}
+    for found in folders.values():
+        scans = [r for r in found if r["mime_type"] != PDF]
+        for pdf in dict.fromkeys(r["scan"] for r in found if r["mime_type"] == PDF):
+            if len(doc := _match([r for r in found if r["scan"] == pdf], scans)) >= 2:
+                made[pdf] = doc
+    return made
+
+
+def assembled_answers(conn: sqlite3.Connection) -> list[list[int]]:
+    """An answer key from assembled PDFs: each read PDF is one document, as the scans it was
+    made from, in its order, when they're in Lindley too (_made_from); otherwise its own pages
+    (pdf_answers). Scans the PDF left out (scanned again, or not used) aren't in it."""
+    made = _made_from(conn.execute(_READ_PAGES, (BLANK_AT,)).fetchall())
+    return [made.get(scan, ids) for scan, ids in _pdf_pages(conn).items()]
+
+
 def scan_answers(conn: sqlite3.Connection) -> list[list[int]]:
-    """An answer key from assembled PDFs and the scans they were made from. In a folder
-    holding a read PDF, its document is the folder's scans each PDF page was made from, in the
-    PDF's order (_match); scans that aren't in the PDF (scanned again, or left out) aren't in
-    it. Other folders are as folder_answers has them. Empty when no PDF matches any scans, as
-    when the PDFs were read in without the scans."""
-    rows = conn.execute(
-        "SELECT p.id, p.page_index, p.image_path, (p.detected_rotation + p.user_rotation) % 360"
-        " AS rotation, s.id AS scan, s.mime_type, s.original_name, s.source_path, t.text"
-        " FROM pages p JOIN scans s ON s.id = p.scan_id"
-        " JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1"
-        " WHERE s.status = 'read' AND coalesce(p.blank_score, 0) < ?"
-        " ORDER BY s.id, p.page_index",
-        (BLANK_AT,),
-    ).fetchall()
+    """An answer key from assembled PDFs and the scans they were made from, with the folders
+    a person sorted: in a folder holding a PDF made from its scans, those scans in the PDF's
+    order (_made_from); other folders as folder_answers has them. Empty when no PDF was found
+    with its scans, as when the PDFs were read in without them."""
+    rows = conn.execute(_READ_PAGES, (BLANK_AT,)).fetchall()
+    made = _made_from(rows)
+    if not made:
+        return []
+    pdf_folders: dict[str, list[int]] = {}
+    for r in rows:
+        if r["scan"] in made:
+            pdfs = pdf_folders.setdefault(str(PurePath(r["source_path"]).parent), [])
+            pdfs += [] if r["scan"] in pdfs else [r["scan"]]
+    sorted_folders = _by_folder(rows)
     docs: list[list[int]] = []
-    matched = False
-    for found in _by_folder(rows).values():
-        pdfs = [r for r in found if r["mime_type"] == "application/pdf"]
-        scans = [r for r in found if r["mime_type"] != "application/pdf"]
-        made = [
-            _match([r for r in pdfs if r["scan"] == pdf], scans)
-            for pdf in dict.fromkeys(r["scan"] for r in pdfs)
-        ]
-        made = [d for d in made if len(d) >= 2]
-        matched |= bool(made)
-        docs += made or [_file_order(scans)]
-    return [d for d in docs if len(d) >= 2] if matched else []
+    for folder in sorted(set(sorted_folders) | set(pdf_folders)):
+        if folder in pdf_folders:
+            docs += [made[pdf] for pdf in pdf_folders[folder]]
+        else:
+            docs.append(_file_order([r for r in sorted_folders[folder] if r["mime_type"] != PDF]))
+    return [d for d in docs if len(d) >= 2]
 
 
 def real_answers(conn: sqlite3.Connection) -> list[list[int]]:

@@ -51,7 +51,8 @@ def learned(conn: sqlite3.Connection) -> dict[str, float] | None:
 
 def answer_key(conn: sqlite3.Connection) -> list[list[int]]:
     """Documents whose pages a person vouched for, each as its page ids in reading order: made
-    or accepted by a person, finished, or worked on; and assembled PDFs read in."""
+    or accepted by a person, finished, or worked on; and assembled PDFs read in, as the scans
+    they were made from when those are in Lindley too (bench.assembled_answers)."""
     docs: list[list[int]] = []
     taken: set[int] = set()
     rows = conn.execute(
@@ -72,7 +73,7 @@ def answer_key(conn: sqlite3.Connection) -> list[list[int]]:
         if len(ids) >= 2:
             docs.append(ids)
             taken |= set(ids)
-    docs += [d for d in bench.pdf_answers(conn) if not taken & set(d)]
+    docs += [d for d in bench.assembled_answers(conn) if not taken & set(d)]
     return docs
 
 

@@ -28,6 +28,11 @@
   - `export/`: searchable PDFs. `textlayer.py` (word boxes; other readings aligned to Tesseract's),
     `pdf.py` (fpdf2, invisible text), `document.py` (Exports folder, status, `exports` row).
     API in `api/documents.py`; `scripts/export.py` exports from the command line
+  - `browse.py`: what the UI shows (pages with a `state`, documents, folders, review queue,
+    counts); `organise.py`: a person's changes (move, reorder, rotate, new document, rename,
+    folders, checking text), each one undoable batch in `history`. API in `api/library.py`,
+    `api/documents.py`, `api/pages.py`, `api/folders.py`; search in `search/fts.py`;
+    Add scans… uploads in `api/scans.py` (read by the watcher, `read_later`)
   - `scripts/intake.py` reads real scans end to end; tests stub Tesseract (not installed in CI)
 - `frontend/`: Vite, React and TypeScript. The dev server proxies `/api` to `127.0.0.1:8765`
 - `scripts/dev.ps1`: runs both dev servers

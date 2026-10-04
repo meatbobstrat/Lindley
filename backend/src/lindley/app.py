@@ -16,9 +16,12 @@ from lindley.api import (
     connections,
     documents,
     duplicates,
+    folders,
     health,
+    library,
     needs_ai,
     pages,
+    scans,
     search,
     suggestions,
 )
@@ -75,6 +78,8 @@ def create_app(
 
     for router in (
         health.router,
+        library.router,
+        folders.router,
         settings_api.router,
         connections.router,
         documents.router,
@@ -82,6 +87,7 @@ def create_app(
         chat.router,
         duplicates.router,
         pages.router,
+        scans.router,
         history_api.router,
         suggestions.router,
         assembler_api.router,

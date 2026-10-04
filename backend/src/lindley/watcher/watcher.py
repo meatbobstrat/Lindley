@@ -93,6 +93,7 @@ class FolderWatcher:
         self.stuck_s = stuck_s
         self._pending: dict[Path, _Arrival] = {}
         self._tries: dict[Path, int] = {}  # files whose import raised: how many times
+        self._added: list[int] = []  # scans a person added with Add scans…, to read
         self._assemble_after = 0.0  # after a failure, the assembler waits until then
         self._backoff = 0.0
         self._lock = threading.Lock()
@@ -186,6 +187,12 @@ class FolderWatcher:
         with self._lock:
             self._pending.setdefault(path, _Arrival())
 
+    def read_later(self, scan_ids: list[int]) -> None:
+        """Scans a person added (Add scans… in the Inbox), imported already: they're read with
+        the next files, and the Inbox is sorted once things settle."""
+        with self._lock:
+            self._added.extend(s for s in scan_ids if s not in self._added)
+
     def tick(self) -> list[Path]:
         """Take the files that have finished arriving, then assemble once things settle.
 
@@ -205,7 +212,12 @@ class FolderWatcher:
                 log.exception("Couldn't take %s", path)
                 self._try_again(path)
         to_read = [r.scan_id for _, r in taken if needs_reading(conn, r)]
-        read = self.pipeline.process_scans(conn, to_read, stop=self._stop)
+        with self._lock:
+            added, self._added = [s for s in self._added if s not in to_read], []
+        read = self.pipeline.process_scans(conn, to_read + added, stop=self._stop)
+        if any(read.get(s) for s in added):
+            self._unassembled = True
+            self._last_new = time.monotonic()
         for path, r in taken:
             self._tries.pop(path, None)
             if r.scan_id in to_read:

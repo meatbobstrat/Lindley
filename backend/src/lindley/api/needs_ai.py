@@ -58,7 +58,7 @@ def _in_inbox(conn: sqlite3.Connection, pages: list[int]) -> bool:
     ).fetchone()[0] == len(pages)
 
 
-def _sort_items(conn: sqlite3.Connection) -> list[dict]:
+def sort_items(conn: sqlite3.Connection) -> list[dict]:
     out = []
     for r in conn.execute("SELECT * FROM needs_ai ORDER BY since, id").fetchall():
         pages = json.loads(r["pages"])
@@ -99,7 +99,7 @@ def list_needs_ai(request: Request, conn: Conn) -> dict:
         }
         for r in vision_queue(conn)
     ]
-    sort = _sort_items(conn)
+    sort = sort_items(conn)
     return {
         "count": len(read) + len(sort),
         "read": {"connection": _connection(conn, settings, "vision"), "pages": read},
@@ -132,7 +132,7 @@ def read(body: ReadRequest, request: Request, conn: Conn) -> dict:
 @router.post("/sort")
 def sort_all(request: Request, conn: Conn) -> dict:
     """Send every question waiting for the sorting AI now."""
-    pages = {p["id"] for item in _sort_items(conn) for p in item["pages"]}
+    pages = {p["id"] for item in sort_items(conn) for p in item["pages"]}
     if not pages:
         raise HTTPException(404, "Nothing is waiting for the AI to sort")
     return ask_about(conn, request.app.state.settings, pages)

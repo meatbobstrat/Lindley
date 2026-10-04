@@ -1,6 +1,7 @@
-"""Documents: exporting one as a searchable PDF, and reopening it.
+"""Documents: listing and viewing them, starting one, naming and filing it, putting its pages
+in order, exporting it as a searchable PDF, and reopening it.
 
-Listing and viewing documents are designed in the UI phase; that endpoint is a stub for now.
+Each change returns `undo`: the batch to send to POST /api/undo/{batch} to take it back.
 """
 
 from __future__ import annotations
@@ -9,16 +10,74 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
+from lindley import browse, organise
 from lindley.api.deps import Conn
+from lindley.api.library import change_json, errors, review_below
 from lindley.export import export_document, latest_export, reopen_document
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
+class NewDocument(BaseModel):
+    page_ids: list[int] = Field(min_length=1)
+    name: str = ""
+    folder_id: int | None = None
+    suggested: bool = False  # the name is Lindley's, kept as it was
+
+
+class DocumentChanges(BaseModel):
+    """Only the fields sent are changed. folder_id null takes it out of any folder."""
+
+    name: str | None = None
+    doc_type: str | None = None
+    doc_date: str | None = None  # partial ISO 8601: 1892, 1892-03, 1892-03-04
+    folder_id: int | None = None
+
+
+class Order(BaseModel):
+    page_ids: list[int] = Field(min_length=1)
+
+
 @router.get("")
-def not_implemented() -> None:
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+def list_documents(request: Request, conn: Conn) -> dict:
+    return {"documents": browse.documents(conn, review_below(request))}
+
+
+@router.post("")
+def new_document(body: NewDocument, conn: Conn) -> dict:
+    try:
+        c = organise.new_document(conn, body.page_ids, body.name, body.folder_id, body.suggested)
+    except (LookupError, ValueError) as e:
+        raise errors(e) from e
+    return change_json(c)
+
+
+@router.get("/{doc_id}")
+def get_document(doc_id: int, request: Request, conn: Conn) -> dict:
+    d = browse.document(conn, doc_id, review_below(request))
+    if d is None:
+        raise HTTPException(404, f"There's no document {doc_id}")
+    return d
+
+
+@router.patch("/{doc_id}")
+def update_document(doc_id: int, body: DocumentChanges, conn: Conn) -> dict:
+    try:
+        c = organise.update_document(conn, doc_id, body.model_dump(exclude_unset=True))
+    except (LookupError, ValueError) as e:
+        raise errors(e) from e
+    return change_json(c)
+
+
+@router.put("/{doc_id}/order")
+def reorder(doc_id: int, body: Order, conn: Conn) -> dict:
+    try:
+        c = organise.reorder(conn, doc_id, body.page_ids)
+    except (LookupError, ValueError) as e:
+        raise errors(e) from e
+    return change_json(c)
 
 
 @router.post("/{doc_id}/export")

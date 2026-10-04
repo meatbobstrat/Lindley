@@ -17,6 +17,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from lindley import history
+from lindley.organise import close_gaps, move_page, remove_if_empty
 
 KIND_ORDER = {"same_page": 0, "similar": 1}
 
@@ -281,11 +282,11 @@ def keep(conn: sqlite3.Connection, set_id: int, page_id: int, batch: int | None 
         batch = batch or history.new_batch(conn)
         emptied: set[int] = set()
         for c in others:
-            _move(conn, batch, c.page_id, None, None, aside=True, action="set_aside_duplicate")
+            move_page(conn, batch, c.page_id, None, None, aside=True, action="set_aside_duplicate")
             if c.document_id and c is not home:
                 emptied.add(c.document_id)
         if home is not kept and home is not None:
-            _move(
+            move_page(
                 conn,
                 batch,
                 page_id,
@@ -295,12 +296,12 @@ def keep(conn: sqlite3.Connection, set_id: int, page_id: int, batch: int | None 
                 action="replace_with_duplicate",
             )
         elif kept.where == "aside" and any(c.where == "inbox" for c in others):
-            _move(conn, batch, page_id, None, None, aside=False, action="return_duplicate")
+            move_page(conn, batch, page_id, None, None, aside=False, action="return_duplicate")
         for doc in emptied:
-            _close_gaps(conn, batch, doc)
+            close_gaps(conn, batch, doc)
         _decide(conn, batch, "keep_duplicate", set_id, s.pair_ids, "resolved", page_id)
         for doc in emptied:
-            _remove_if_empty(conn, batch, doc)
+            remove_if_empty(conn, batch, doc)
     return Decision(batch, [c.page_id for c in others])
 
 
@@ -367,59 +368,3 @@ def _decide(
         [(status, kept, i) for i in pair_ids],
     )
     history.log(conn, batch, action, "duplicate_set", set_id, before, states())
-
-
-def _move(
-    conn: sqlite3.Connection,
-    batch: int,
-    page_id: int,
-    document_id: int | None,
-    position: int | None,
-    *,
-    aside: bool,
-    action: str,
-) -> None:
-    before = history.place(conn, page_id)
-    conn.execute(
-        "UPDATE pages SET document_id = ?, position = ?,"
-        " set_aside_at = CASE WHEN ? THEN datetime('now') END, updated_at = datetime('now')"
-        " WHERE id = ?",
-        (document_id, position, aside, page_id),
-    )
-    history.log(conn, batch, action, "page", page_id, before, history.place(conn, page_id))
-
-
-def _close_gaps(conn: sqlite3.Connection, batch: int, doc_id: int) -> None:
-    """Number a document's pages 0, 1, 2... again, recording each page that moves up."""
-    rows = conn.execute(
-        "SELECT id, position FROM pages WHERE document_id = ? ORDER BY position", (doc_id,)
-    ).fetchall()
-    for i, r in enumerate(rows):
-        if r["position"] != i:
-            before = history.place(conn, r["id"])
-            conn.execute("UPDATE pages SET position = ? WHERE id = ?", (i, r["id"]))
-            after = history.place(conn, r["id"])
-            history.log(conn, batch, "close_gap", "page", r["id"], before, after)
-
-
-def _remove_if_empty(conn: sqlite3.Connection, batch: int, doc_id: int) -> None:
-    """A document left with no pages goes, unless something else still refers to it. Its open
-    suggestions go with it; both are recorded so undo can bring them back."""
-    if conn.execute("SELECT 1 FROM pages WHERE document_id = ? LIMIT 1", (doc_id,)).fetchone():
-        return
-    doc = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
-    if doc is None:
-        return
-    suggestions = conn.execute(
-        "SELECT * FROM suggestions WHERE document_id = ? AND status = 'open'", (doc_id,)
-    ).fetchall()
-    conn.execute("SAVEPOINT remove_doc")
-    try:
-        conn.execute("DELETE FROM suggestions WHERE document_id = ? AND status = 'open'", (doc_id,))
-        conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
-    except sqlite3.IntegrityError:
-        conn.execute("ROLLBACK TO remove_doc")  # facts or an export still refer to it: keep it
-    else:
-        before = {"document": dict(doc), "suggestions": [dict(r) for r in suggestions]}
-        history.log(conn, batch, "remove_empty_document", "document", doc_id, before, None)
-    conn.execute("RELEASE remove_doc")

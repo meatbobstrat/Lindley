@@ -10,6 +10,11 @@ Targets undo knows how to put back:
 - duplicate_set: the status of each duplicate pair in it
 - document: a document removed because it had no pages left (and its open suggestions)
 - new_document: a document made by the decision, removed again once its pages have gone back
+- page_rotation: the turn a person gave a page
+- page_text: which reading of a page is in use, and whether a person checked it
+- document_fields: a document's name, type, date and folder
+- new_folder: a folder made by the decision, removed again while it's still empty
+- folder_fields: a folder's name
 """
 
 from __future__ import annotations
@@ -147,6 +152,68 @@ def _undo_new_document(conn: sqlite3.Connection, doc_id: int, _before: None, _af
     conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
 
 
+def _undo_rotation(conn: sqlite3.Connection, page_id: int, before: dict, after: dict) -> None:
+    now = conn.execute("SELECT user_rotation FROM pages WHERE id = ?", (page_id,)).fetchone()
+    if now is None or now[0] != after["user_rotation"]:
+        raise UndoError(f"Page {page_id} has been turned again since, so this can't be undone")
+    conn.execute(
+        "UPDATE pages SET user_rotation = ?, updated_at = datetime('now') WHERE id = ?",
+        (before["user_rotation"], page_id),
+    )
+
+
+def _undo_text(conn: sqlite3.Connection, page_id: int, before: dict, after: dict) -> None:
+    now = conn.execute(
+        "SELECT id, confirmed_at FROM transcriptions WHERE page_id = ? AND is_current = 1",
+        (page_id,),
+    ).fetchone()
+    if now is None or [now[0], now[1]] != [after["current"], after["confirmed_at"]]:
+        raise UndoError(f"Page {page_id}'s text has changed since, so this can't be undone")
+    if before["current"] != after["current"]:  # the correction stays, no longer in use
+        conn.execute("UPDATE transcriptions SET is_current = 0 WHERE id = ?", (after["current"],))
+        if before["current"] is not None:
+            conn.execute(
+                "UPDATE transcriptions SET is_current = 1 WHERE id = ?", (before["current"],)
+            )
+    if before["current"] is not None:
+        conn.execute(
+            "UPDATE transcriptions SET confirmed_at = ? WHERE id = ?",
+            (before["confirmed_at"], before["current"]),
+        )
+
+
+def _undo_document_fields(conn: sqlite3.Connection, doc_id: int, before: dict, after: dict) -> None:
+    row = conn.execute(
+        f"SELECT {', '.join(after)} FROM documents WHERE id = ?", (doc_id,)
+    ).fetchone()
+    if row is None or dict(zip(after, row, strict=True)) != after:
+        raise UndoError(f"Document {doc_id} has changed since, so this can't be undone")
+    sets = ", ".join(f"{k} = ?" for k in before)
+    conn.execute(
+        f"UPDATE documents SET {sets}, updated_at = datetime('now') WHERE id = ?",
+        (*before.values(), doc_id),
+    )
+
+
+def _undo_new_folder(conn: sqlite3.Connection, folder_id: int, _before: None, _after: dict) -> None:
+    if conn.execute(
+        "SELECT 1 FROM documents WHERE folder_id = ? UNION SELECT 1 FROM folders"
+        " WHERE parent_id = ?",
+        (folder_id, folder_id),
+    ).fetchone():
+        raise UndoError(f"Folder {folder_id} has had things put in it since, so it stays")
+    conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
+
+
+def _undo_folder_fields(
+    conn: sqlite3.Connection, folder_id: int, before: dict, after: dict
+) -> None:
+    row = conn.execute("SELECT name FROM folders WHERE id = ?", (folder_id,)).fetchone()
+    if row is None or row[0] != after["name"]:
+        raise UndoError(f"Folder {folder_id} has been renamed since, so this can't be undone")
+    conn.execute("UPDATE folders SET name = ? WHERE id = ?", (before["name"], folder_id))
+
+
 def _insert(conn: sqlite3.Connection, table: str, row: dict) -> None:
     cols = ", ".join(row)
     conn.execute(
@@ -159,4 +226,9 @@ _UNDO = {
     "duplicate_set": _undo_duplicate_set,
     "document": _undo_document,
     "new_document": _undo_new_document,
+    "page_rotation": _undo_rotation,
+    "page_text": _undo_text,
+    "document_fields": _undo_document_fields,
+    "new_folder": _undo_new_folder,
+    "folder_fields": _undo_folder_fields,
 }

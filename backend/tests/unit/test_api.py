@@ -18,9 +18,8 @@ def test_settings_get_and_put(client, tmp_path):
     assert (tmp_path / "settings.json").exists()
 
 
-def test_stub_endpoints_return_501(client):
-    for path in ("/api/documents", "/api/search", "/api/chat"):
-        assert client.get(path).status_code == 501
+def test_chat_is_still_a_stub(client):
+    assert client.get("/api/chat").status_code == 501
 
 
 def test_settings_say_when_each_ai_may_run_and_how_much_it_has_today(client, settings):

@@ -10,6 +10,7 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.20",  # Add scans…: files uploaded from the app
     "pydantic>=2.8",
     "platformdirs>=4.0",
     "watchdog>=5.0",

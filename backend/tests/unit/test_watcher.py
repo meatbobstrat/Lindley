@@ -442,3 +442,23 @@ def test_the_vision_queue_is_found_by_index(settings, inbox):
     plan = " ".join(r[3] for r in conn.execute(f"EXPLAIN QUERY PLAN {_LAST_VISION}"))
     conn.close()
     assert "idx_intake_steps_page" in plan
+
+
+def test_scans_a_person_added_are_read_and_sorted(settings, inbox, monkeypatch):
+    from lindley.worker.intake import import_file
+
+    calls = []
+    monkeypatch.setattr(watcher_mod, "sort_on_its_own", lambda *a: calls.append(a) or _Report())
+    w = make_watcher(settings)
+    path = settings.processing_dir / "letter.png"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(png_bytes())
+    conn = connect(settings.db_path)
+    r = import_file(conn, settings, path, origin="added")
+    conn.close()
+    w._unassembled = False  # nothing else to sort
+    w.read_later([r.scan_id])
+    w.tick()
+    assert scans(settings) == [("letter.png", "added", "read")]
+    w.tick()
+    assert len(calls) == 1

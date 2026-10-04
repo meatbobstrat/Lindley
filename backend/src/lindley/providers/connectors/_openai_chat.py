@@ -43,6 +43,7 @@ class OpenAIChat:
                 api_key=api_key or "none",
                 base_url=self.base_url,
                 timeout=config.timeout_s if config else 120,
+                max_retries=0,  # see _common: a busy AI is tried again by the throttle
                 http_client=http_client,
             )
             if self.base_url

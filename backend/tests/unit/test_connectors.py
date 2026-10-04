@@ -25,7 +25,7 @@ TALK = [
     ChatMessage("assistant", "Which letter?"),
     ChatMessage("user", "The first."),
 ]
-# Busy replies ask the library to wait a millisecond before trying again, so tests stay fast
+# Busy replies ask to be left a millisecond before trying again
 BUSY_NOW = {"retry-after-ms": "1"}
 
 
@@ -195,9 +195,25 @@ def test_local_check_finds_the_model():
 
 
 def test_a_server_that_isnt_there():
-    p = make(local, Server(down, down, down))
+    server = Server(down, down, down)
     with pytest.raises(ProviderError, match="Couldn't reach The AI at localhost"):
-        p.chat(TALK)
+        make(local, server).chat(TALK)
+    assert len(server.requests) == 1  # the library doesn't try again
+
+
+def test_a_call_that_took_too_long_or_failed_is_sent_once():
+    def slow(request):
+        raise httpx2.ReadTimeout("timed out")
+
+    server = Server(slow, slow, slow)
+    with pytest.raises(ProviderError, match="took too long") as e:
+        make(local, server).transcribe(PNG)
+    assert len(server.requests) == 1 and not e.value.busy
+    broken = httpx2.Response(500, json={"error": {"message": "out of memory"}})
+    server = Server(broken, broken, broken)
+    with pytest.raises(ProviderError, match="answered 500: out of memory"):
+        make(local, server).transcribe(PNG)
+    assert len(server.requests) == 1
 
 
 # OpenAI: the Responses API
@@ -306,15 +322,13 @@ def test_openai_errors_in_words_for_a_person():
         make(openai, Server(missing)).chat(TALK)
 
 
-def test_the_library_tries_again_when_busy():
+def test_busy_says_so_and_how_long_to_wait():
     busy = httpx2.Response(429, json={"error": {"message": "slow down"}}, headers=BUSY_NOW)
     server = Server(busy, response(said("ok")))
-    assert make(openai, server).chat(TALK) == "ok"
-    assert len(server.requests) == 2
-    server = Server(busy, busy, busy)
-    with pytest.raises(ProviderError, match="OpenAI is busy \\(429\\), even after trying again"):
+    with pytest.raises(ProviderError, match="OpenAI is busy \\(429\\), even after trying") as e:
         make(openai, server).chat(TALK)
-    assert len(server.requests) == 3  # tried twice more
+    assert e.value.busy and e.value.retry_after == 0.001
+    assert len(server.requests) == 1  # trying again is the throttle's (test_throttle)
 
 
 # Anthropic: the Messages API, through Anthropic's library
@@ -438,9 +452,9 @@ def test_anthropic_busy_in_a_stream_and_after_trying_again():
         headers=BUSY_NOW,
     )
     server = Server(busy, busy, busy)
-    with pytest.raises(ProviderError, match="Anthropic is busy \\(529\\), even after .*Overloaded"):
+    with pytest.raises(ProviderError, match="Anthropic is busy \\(529\\), even .*Overloaded") as e:
         claude(server).chat(TALK)
-    assert len(server.requests) == 3
+    assert len(server.requests) == 1 and e.value.busy and e.value.retry_after == 0.001
 
 
 def test_anthropic_check():
@@ -552,15 +566,21 @@ def test_google_errors_in_words_for_a_person(monkeypatch):
     with pytest.raises(ProviderError, match="Google refused the key .*API key not valid"):
         gemini(Server(error(403, "API key not valid"), lib=httpx)).check()
     server = Server(*[error(429, "Quota exceeded")] * 4, lib=httpx)
-    with pytest.raises(ProviderError, match="Google is busy \\(429\\)"):
+    with pytest.raises(ProviderError, match="Google is busy \\(429\\)") as e:
         gemini(server).chat(TALK)
-    assert len(server.requests) > 1  # the library tried again
+    assert len(server.requests) == 1 and e.value.busy and e.value.retry_after == 0.001
+    server = Server(*[error(500, "Internal")] * 4, lib=httpx)
+    with pytest.raises(ProviderError, match="Google answered 500"):
+        gemini(server).chat(TALK)
+    assert len(server.requests) == 1
 
     def gone(request):
         raise httpx.ConnectError("refused")
 
+    server = Server(*[gone] * 4, lib=httpx)
     with pytest.raises(ProviderError, match="Couldn't reach Google"):
-        gemini(Server(*[gone] * 4, lib=httpx)).chat(TALK)
+        gemini(server).chat(TALK)
+    assert len(server.requests) == 1
     monkeypatch.setenv("GEMINI_API_KEY", "from-the-environment")
     with pytest.raises(ProviderError, match="No API key"):
         gemini(Server(lib=httpx), key=None).chat(TALK)

@@ -1,8 +1,10 @@
 """What the connectors share: pages as images, and a failed call in words for a person.
 
 The connectors call each AI through its company's own library (its SDK), which sends the
-requests, reads the answers and tries again when the AI is busy. This module only turns what
-went wrong into a ProviderError a person can read.
+requests and reads the answers. Its own retries are turned off: they repeat a call that took too
+long, which the AI may still be working on, and that a cloud AI charges for each time. Only a
+call the AI said it's busy for is tried again, by lindley.providers.throttle. This module turns
+what went wrong into a ProviderError a person can read.
 """
 
 from __future__ import annotations
@@ -25,9 +27,24 @@ def detail(body: object, fallback: object = "") -> str:
     return str(fallback)[:200]
 
 
-def failure(who: str, status: int | None, why: str) -> ProviderError:
+def retry_after(headers) -> float | None:
+    """How long the AI asked to be left before trying again, in seconds, if it said."""
+    if headers is None:
+        return None
+    for name, scale in (("retry-after-ms", 1000), ("retry-after", 1)):
+        try:
+            if (v := headers.get(name)) is not None:
+                return max(0.0, float(v) / scale)
+        except (TypeError, ValueError):
+            continue  # an HTTP date, say: the throttle's own wait is used
+    return None
+
+
+def failure(who: str, status: int | None, why: str, wait: float | None = None) -> ProviderError:
     if status in BUSY:
-        return ProviderError(f"{who} is busy ({status}), even after trying again: {why}")
+        return ProviderError(
+            f"{who} is busy ({status}), even after trying again: {why}", busy=True, retry_after=wait
+        )
     if status in (401, 403):
         return ProviderError(f"{who} refused the key ({status}): {why}")
     if status == 404:
@@ -50,7 +67,8 @@ def sdk_errors(sdk, who: str, where: str | None = None) -> Iterator[None]:
         err = e.body.get("error") if isinstance(e.body, dict) else None
         if isinstance(err, dict) and err.get("type") in BUSY_ERRORS:  # sent mid-stream
             status = 529
-        raise failure(who, status, detail(e.body, e.message)) from e
+        wait = retry_after(getattr(e.response, "headers", None))
+        raise failure(who, status, detail(e.body, e.message), wait) from e
 
 
 def image_type(data: bytes) -> str:

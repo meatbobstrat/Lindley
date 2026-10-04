@@ -84,6 +84,66 @@ def test_a_failed_call_is_not_repeated_and_frees_its_place():
     assert t.call(lambda: "ok") == "ok"
 
 
+def busy(after=None):
+    return ProviderError("busy (429)", busy=True, retry_after=after)
+
+
+def test_a_busy_ai_is_tried_again_twice_after_as_long_as_it_asks():
+    clock = Clock()
+    t = Throttle(at_once=1, clock=clock, sleep=clock.sleep)
+    replies: list = [busy(7), busy(), "ok"]
+
+    def call():
+        r = replies.pop(0)
+        if isinstance(r, Exception):
+            assert not t._slots.acquire(blocking=False)  # its place is held while it's sent
+            raise r
+        return r
+
+    assert t.call(call) == "ok"
+    assert clock.slept == [7, 4.0]
+    replies[:] = [busy(), busy(), busy(), "ok"]
+    with pytest.raises(ProviderError, match="busy"):
+        t.call(call)
+    assert replies == ["ok"]  # three tries, then it gives up
+    replies[:] = [busy(3600), "ok"]
+    clock.slept.clear()
+    assert t.call(call) == "ok" and clock.slept == [60.0]  # never more than a minute
+
+
+def test_a_call_that_took_too_long_is_not_tried_again():
+    clock = Clock()
+    t = Throttle(clock=clock, sleep=clock.sleep)
+    calls = []
+
+    def slow():
+        calls.append(1)
+        raise ProviderError("The AI took too long to answer")
+
+    with pytest.raises(ProviderError):
+        t.call(slow)
+    assert calls == [1] and clock.slept == []
+
+
+def test_a_stream_is_tried_again_only_before_its_first_piece():
+    clock = Clock()
+    t = Throttle(clock=clock, sleep=clock.sleep)
+    tries = []
+
+    def answer():
+        tries.append(1)
+        if len(tries) == 1:
+            raise busy()
+        yield "Dear"
+        raise busy()
+
+    stream = t.stream(answer)
+    assert next(stream) == "Dear"
+    with pytest.raises(ProviderError):
+        next(stream)
+    assert len(tries) == 2 and clock.slept == [2.0]
+
+
 def test_a_stream_holds_its_place_until_the_last_piece():
     t = Throttle(at_once=1)
     stream = t.stream(lambda: iter(["Dear", "Sister"]))

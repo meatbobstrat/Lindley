@@ -61,6 +61,7 @@ class Provider:
                 api_key=api_key,
                 base_url=(config.base_url if config else None) or INFO.default_base_url,
                 timeout=config.timeout_s if config else 120,
+                max_retries=0,  # see _common: a busy AI is tried again by the throttle
                 http_client=http_client,
             )
             if api_key

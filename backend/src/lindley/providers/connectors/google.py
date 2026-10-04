@@ -10,9 +10,10 @@ from contextlib import contextmanager
 import httpx
 from google import genai
 from google.genai import types
+from google.genai._gaos.utils.retries import BackoffStrategy, RetryConfig
 
 from lindley.providers.base import JOBS, ChatMessage, ConnectorInfo, ProviderError, Transcription
-from lindley.providers.connectors._common import b64, detail, failure, image_type
+from lindley.providers.connectors._common import b64, detail, failure, image_type, retry_after
 from lindley.providers.prompts import transcribe_prompt
 
 INFO = ConnectorInfo(
@@ -33,7 +34,8 @@ INFO = ConnectorInfo(
     key_url="https://aistudio.google.com/apikey",
 )
 
-TRIES = 3  # the library tries again when Gemini is busy; the other connectors' libraries do too
+
+_NO_RETRIES = RetryConfig("none", BackoffStrategy(0, 0, 1, 0), False)
 
 
 @contextmanager
@@ -55,7 +57,10 @@ def _errors() -> Iterator[None]:
         if not isinstance(status, int):
             raise ProviderError(f"Couldn't reach Google: {e}") from e
         body = getattr(e, "body", None) or getattr(e, "details", None)
-        raise failure("Google", status, detail(body, getattr(e, "message", None) or e)) from e
+        response = getattr(e, "response", None)
+        headers = getattr(e, "headers", None) or getattr(response, "headers", None)
+        why = detail(body, getattr(e, "message", None) or e)
+        raise failure("Google", status, why, retry_after(headers)) from e
 
 
 def _content(text: str) -> list[dict]:
@@ -95,7 +100,9 @@ class Provider:
                 http_options=types.HttpOptions(
                     base_url=(config.base_url if config else None) or INFO.default_base_url,
                     timeout=(config.timeout_s if config else 120) * 1000,  # milliseconds
-                    retry_options=types.HttpRetryOptions(attempts=TRIES),
+                    # One try: the library would repeat a call that took too long, too (see
+                    # _common). A busy Gemini is tried again by the throttle.
+                    retry_options=types.HttpRetryOptions(attempts=1),
                     httpx_client=http_client,
                 ),
             )
@@ -110,9 +117,13 @@ class Provider:
         return self._client
 
     def _interact(self, system: str | None, steps: list[dict], **kw):
+        interactions = self.client.interactions
+        # Its Interactions client takes HttpRetryOptions.attempts as a count of retries, not of
+        # tries, so it's told plainly not to try again.
+        interactions.sdk_configuration.retry_config = _NO_RETRIES
         # store=False: Google keeps interactions unless asked not to. The whole conversation is
         # sent each time instead.
-        return self.client.interactions.create(
+        return interactions.create(
             model=self.model, system_instruction=system, input=steps, store=False, **kw
         )
 

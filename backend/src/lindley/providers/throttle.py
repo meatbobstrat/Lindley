@@ -4,8 +4,9 @@ Every call to an AI goes through its connection's Throttle, whether Lindley made
 or a person asked for it. There is one Throttle per connection for the whole process, so the
 watcher, the API and the scripts share it. A connection whose limits change gets a new one.
 
-Waiting when the AI says it's busy is left to its company's library, which each connector
-calls: they wait as long as the AI asks, and try again.
+When the AI says it's busy, the call is tried again, twice, after as long as the AI asks (or a
+few seconds), without holding a place meanwhile. Nothing else is tried again: a call that took
+too long may still be running at the AI, and is charged for each time it's sent.
 """
 
 from __future__ import annotations
@@ -18,11 +19,14 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
 from lindley.config import ProviderConfig
-from lindley.providers.base import ChatMessage, Transcription
+from lindley.providers.base import ChatMessage, ProviderError, Transcription
 
 log = logging.getLogger(__name__)
 
 WINDOW = 60.0  # per_minute counts calls started in the last minute
+TRIES = 3  # a call the AI said it's busy for is sent at most this many times
+BUSY_WAIT = (2.0, 4.0)  # seconds before each try again, when the AI doesn't say how long
+MAX_WAIT = 60.0  # the longest wait the AI may ask for
 
 
 class Throttle:
@@ -61,14 +65,38 @@ class Throttle:
             self._wait_for_turn()
             yield
 
+    def _wait_if_busy(self, e: ProviderError, tries: int) -> None:
+        """Raise `e` unless the AI said it's busy and there are tries left; else wait."""
+        if not e.busy or tries >= TRIES:
+            raise e
+        wait = min(e.retry_after if e.retry_after is not None else BUSY_WAIT[tries - 1], MAX_WAIT)
+        log.info("The AI is busy: trying again in %.0f s", wait)
+        self.sleep(wait)
+
     def call(self, fn: Callable, *args):
-        with self.slot():
-            return fn(*args)
+        for tries in range(1, TRIES + 1):
+            try:
+                with self.slot():
+                    return fn(*args)
+            except ProviderError as e:
+                self._wait_if_busy(e, tries)
+        raise AssertionError("unreachable")
 
     def stream(self, fn: Callable, *args) -> Iterator:
-        """Like call, for an answer that comes in pieces: the place is held until the last."""
-        with self.slot():
-            yield from fn(*args)
+        """Like call, for an answer that comes in pieces: the place is held until the last. Once
+        a piece has arrived, a busy AI isn't tried again: the answer would start over."""
+        for tries in range(1, TRIES + 1):
+            started = False
+            try:
+                with self.slot():
+                    for piece in fn(*args):
+                        started = True
+                        yield piece
+                    return
+            except ProviderError as e:
+                if started:
+                    raise
+                self._wait_if_busy(e, tries)
 
 
 _throttles: dict[str, tuple[tuple, Throttle]] = {}

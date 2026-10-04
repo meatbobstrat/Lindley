@@ -9,7 +9,8 @@ To add one, drop a module in this folder that defines:
 
 Call the AI through its company's own library (SDK), the way its documentation shows, and
 turn the library's errors into a ProviderError a person can read (`_common.py`). The library
-keeps up with the AI's API and tries again when it's busy; Lindley only throttles.
+keeps up with the AI's API. Turn its own retries off: the throttle tries again, only when the
+AI says it's busy.
 
 Modules starting with `_` are shared helpers, not connectors.
 """

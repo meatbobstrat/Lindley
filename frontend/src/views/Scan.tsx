@@ -1,7 +1,7 @@
 // One Inbox or Set aside scan, opened to read and correct before it joins a document.
 
 import { useRef } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { Navigate, useNavigate, useParams } from 'react-router'
 import { api, imageAt } from '../api/client'
 import { useApi } from '../api/store'
 import { textOf } from '../lib/view'
@@ -31,8 +31,7 @@ export function ScanView() {
   if (!p) return <Loading />
   if (p.where === 'document' && p.document) {
     // It joined a document since: show it there
-    nav(`/documents/${p.document.id}?view=side&page=${p.document.page_number - 1}`, { replace: true })
-    return null
+    return <Navigate to={`/documents/${p.document.id}?view=side&page=${p.document.page_number - 1}`} replace />
   }
   const aside = p.where === 'aside'
   const home = aside ? '/aside' : '/inbox'

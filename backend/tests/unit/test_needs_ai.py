@@ -10,6 +10,7 @@ from lindley.assembler import assemble
 from lindley.assembler.auto import read_on_its_own, sort_on_its_own
 from lindley.assembler.bench import TruePage, load
 from lindley.db.database import connect, init_db
+from lindley.providers.base import ProviderError
 from lindley.providers.connectors.fake import FakeProvider
 from lindley.worker.intake import import_file
 from lindley.worker.pipeline import Pipeline, follow_settings, waiting_for_vision
@@ -105,6 +106,25 @@ def test_pages_on_their_way_to_the_ai_are_marked_and_not_sent_twice(client, sett
         assert client.app.state.ai_work.wait_idle()
     overview = client.get("/api/overview").json()
     assert overview["ai"]["working"] == [] and len(overview["ai"]["finished"]) == 2
+
+
+def test_pages_the_ai_didnt_manage_say_so(client, settings, conn, scan):
+    queue_hard_pages(conn, settings, scan)
+
+    def cut_off(self, image, hints=None):
+        raise ProviderError("The AI stopped part way through its answer: it ran out of room")
+
+    with patch.object(FakeProvider, "transcribe", cut_off):
+        client.post("/api/needs-ai/read", json={})
+        assert client.app.state.ai_work.wait_idle()
+    [done] = client.get("/api/overview").json()["ai"]["finished"]
+    assert done["message"] == (
+        "The AI didn’t manage 1 page: The AI stopped part way through its answer:"
+        " it ran out of room"
+    )
+    assert not done["ok"]
+    [page] = client.get("/api/needs-ai").json()["read"]["pages"]
+    assert page["failed"] and not page["sending"] and "ran out of room" in page["why"]
 
 
 def test_with_no_ai_to_read_with_sending_says_so(client, settings):

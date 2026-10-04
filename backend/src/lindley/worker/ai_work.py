@@ -152,18 +152,18 @@ class AiWork:
         settings = self._settings()
         conn = connect(settings.db_path)
         try:
-            message = (self._read if job.kind == "read" else self._sort)(conn, settings, job)
-            activity.finished(job.kind, message)
+            message, ok = (self._read if job.kind == "read" else self._sort)(conn, settings, job)
+            activity.finished(job.kind, message, ok)
         except Exception as e:  # noqa: BLE001 - said to the person who asked, and logged
             log.exception("AI work a person asked for failed (%s)", job.kind)
             activity.finished(job.kind, f"The AI couldn't {job.kind} them: {e}", ok=False)
         finally:
             conn.close()
 
-    def _read(self, conn: sqlite3.Connection, settings: Settings, job: Job) -> str:
+    def _read(self, conn: sqlite3.Connection, settings: Settings, job: Job) -> tuple[str, bool]:
         pipeline = Pipeline.from_settings(settings)
         if pipeline.vision is None:
-            return "No AI is set up to read hard pages any more, so nothing was sent."
+            return "No AI is set up to read hard pages any more, so nothing was sent.", False
         label = connection_label(settings, "vision")
         log.info("Reading %s with %s, as a person asked", _plural(len(job.pages), "page"), label)
         with activity.doing("read", len(job.pages), asked=True, connection=label) as step:
@@ -171,15 +171,15 @@ class AiWork:
         if run.read:
             sort_on_its_own(conn, settings)  # new text: the rules may sort the pages now
         if not run.read and run.failed:
-            return f"The AI didn’t manage {_plural(run.failed, 'page')}: {run.error}"
+            return f"The AI didn’t manage {_plural(run.failed, 'page')}: {run.error}", False
         out = f"The AI read {_plural(run.read, 'page')}"
         if run.failed:
             out += f"; {run.failed} failed ({run.error})"
         if run.stopped:
             out += f". It stopped: {run.stopped}"
-        return out + ". Check its work: those pages may need your review."
+        return out + ". Check its work: those pages may need your review.", True
 
-    def _sort(self, conn: sqlite3.Connection, settings: Settings, job: Job) -> str:
+    def _sort(self, conn: sqlite3.Connection, settings: Settings, job: Job) -> tuple[str, bool]:
         label = connection_label(settings, "assemble")
         log.info("Sorting %s with %s, as a person asked", _plural(len(job.pages), "page"), label)
         with activity.doing("sort", len(job.pages), asked=True, connection=label):
@@ -188,4 +188,4 @@ class AiWork:
             f"The AI sorted the pages: {_plural(r['documents_created'], 'new document')} and"
             f" {_plural(r['pages_added'], 'page')} added to documents. Check its work under"
             " In progress."
-        )
+        ), True

@@ -545,8 +545,15 @@ class Pipeline:
                 )
             conn.execute(
                 "INSERT INTO transcriptions (page_id, source, engine_model, text, confidence,"
-                " is_current) VALUES (?, 'vision', ?, ?, ?, ?)",
-                (page_id, model, result.text, result.confidence, int(better)),
+                " unsure_spans, is_current) VALUES (?, 'vision', ?, ?, ?, ?, ?)",
+                (
+                    page_id,
+                    model,
+                    result.text,
+                    result.confidence,
+                    json.dumps(result.unsure_spans()),
+                    int(better),
+                ),
             )
 
     def _read_page(self, conn: sqlite3.Connection, scan_id: int, page_id: int, image: Path) -> None:
@@ -775,13 +782,14 @@ class Pipeline:
             for i, (source, model, r) in enumerate(readings):
                 conn.execute(
                     "INSERT INTO transcriptions (page_id, source, engine_model, text, confidence,"
-                    " words, is_current) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    " unsure_spans, words, is_current) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         page_id,
                         source,
                         model,
                         r.text,
                         r.confidence,
+                        json.dumps(r.unsure_spans()),
                         json.dumps(r.words) if r.words else None,
                         int(i == best),
                     ),

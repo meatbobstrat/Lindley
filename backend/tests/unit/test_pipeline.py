@@ -1,3 +1,4 @@
+import json
 import threading
 
 import pytest
@@ -399,6 +400,17 @@ def test_a_page_a_person_checked_isnt_sent_to_the_vision_model(conn, settings, s
     run = Pipeline(settings, StubOcr(), MustNotCall()).read_waiting(conn, retry_failed=True)
     assert run.read == run.failed == run.waiting == 0
     assert [(r["source"], r["is_current"]) for r in readings(conn, sid)] == [("tesseract", 1)]
+
+
+def test_words_tesseract_was_unsure_of_are_recorded(conn, settings, scan):
+    sid = scan()
+    Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), MustNotCall()).process_scan(conn, sid)
+    spans = conn.execute(
+        "SELECT t.unsure_spans FROM transcriptions t JOIN pages p ON p.id = t.page_id"
+        " WHERE p.scan_id = ?",
+        (sid,),
+    ).fetchone()[0]
+    assert json.loads(spans) == [[0, 4], [5, 11]]
 
 
 def test_a_blank_page_never_waits_for_vision(conn, settings, scan):

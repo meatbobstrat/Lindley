@@ -131,6 +131,26 @@ def record(
     )
 
 
+def record_run(
+    conn: sqlite3.Connection,
+    provider: str | None,
+    purpose: str,
+    automatic: bool,
+    worked: int,
+    failed: int,
+    used: list[Usage],
+) -> None:
+    """Record a run's calls, and commit: `worked`, and `failed`. A failed call the AI was paid
+    for (it answered, but the answer was cut off or refused) is among `used`, beyond `worked`;
+    record counts those as failed already."""
+    charged = max(0, len(used) - worked)
+    with conn:
+        if worked or used:
+            record(conn, provider, purpose, automatic, count=worked, used=used)
+        if failed > charged:
+            record(conn, provider, purpose, automatic, ok=False, count=failed - charged)
+
+
 def spent(conn: sqlite3.Connection, provider: str, period: str = "day") -> float:
     """What a provider's calls cost (estimated, US dollars) today or this calendar month,
     whoever made them."""

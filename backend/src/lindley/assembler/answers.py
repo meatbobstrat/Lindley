@@ -37,6 +37,7 @@ class Answers:
         self.conn = conn
         self.calls = 0  # calls made to the AI, or to be made once the database is let go
         self.reused = 0  # questions answered from earlier replies
+        self.failed = 0  # of the calls, those that failed: they answered nothing
         self._waiting: dict[str, tuple[ChatProvider, Purpose, list[ChatMessage], list[int]]] = {}
         self._fresh: set[str] = set()  # asked in this run: not reused when met again
         self._failed: dict[str, Exception] = {}  # failed in this run: fails the same way again
@@ -88,6 +89,7 @@ class Answers:
         try:
             reply = chat.chat(messages)
         except Exception as e:
+            self.failed += 1
             self._failed[k] = e
             raise
         with self.conn:

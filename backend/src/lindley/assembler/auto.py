@@ -42,14 +42,35 @@ def sort_on_its_own(
     chat_on_its_own, if the caller keeps one; else it's made here."""
     chat = chat if chat is not None else chat_on_its_own(settings)
     name = settings.ai.connection_for("assemble")
+    if chat is not None and allowance.failing(conn, name):
+        chat = None  # its last calls all failed: the rules sort alone for a while
     left = allowance.automatic_left(conn, settings, name) if chat else 0
-    with metered(chat) as used:
-        report = assemble(
-            conn, settings.assembler, chat if left is None or left > 0 else None, left
-        )
-    if report.ai_calls or used:
-        with conn:
-            allowance.record(conn, name, "assemble", True, count=report.ai_calls, used=used)
+    return sort_with(
+        conn, settings, chat if left is None or left > 0 else None, True, max_ai_calls=left
+    )
+
+
+def sort_with(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    chat: ChatProvider | None,
+    automatic: bool,
+    **kw,
+) -> RunReport:
+    """Sort the Inbox with `chat`, recording the calls made to it: those that worked and those
+    that failed, even when sorting itself then fails."""
+    report = None
+    used: list = []
+    try:
+        with metered(chat) as used:
+            report = assemble(conn, settings.assembler, chat, **kw)
+    finally:
+        if chat is not None:
+            worked, failed = (
+                (report.ai_calls - report.ai_failed, report.ai_failed) if report else (0, 0)
+            )
+            name = settings.ai.connection_for("assemble")
+            allowance.record_run(conn, name, "assemble", automatic, worked, failed, used)
     return report
 
 

@@ -10,6 +10,7 @@ from lindley.assembler import assemble
 from lindley.assembler.auto import read_on_its_own, sort_on_its_own
 from lindley.assembler.bench import TruePage, load
 from lindley.db.database import connect, init_db
+from lindley.providers import allowance
 from lindley.providers.base import ProviderError
 from lindley.providers.connectors.fake import FakeProvider
 from lindley.worker.intake import import_file
@@ -297,3 +298,31 @@ def test_pages_a_person_placed_leave_the_queue(client, settings, conn):
     [hint] = client.get("/api/suggestions").json()["suggestions"]
     client.post(f"/api/suggestions/{hint['id']}/accept")
     assert client.get("/api/needs-ai").json()["count"] == 0
+
+
+class Down:
+    """A sorting AI that can't be reached."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def chat(self, messages):
+        self.calls += 1
+        raise ProviderError("no route to host")
+
+
+def test_failed_sorting_calls_are_recorded_as_failed_and_an_ai_that_keeps_failing_is_rested(
+    conn, settings
+):
+    settings.ai.providers["local"].allow = "auto"
+    settings.ai.providers["local"].daily_limit = 10
+    down = Down()
+    story(conn)
+    for _ in range(3):  # a failed call isn't kept, so the same question is asked again
+        report = sort_on_its_own(conn, settings, down)
+        assert (report.ai_calls, report.ai_failed) == (1, 1)
+    calls = conn.execute("SELECT purpose, automatic, ok FROM ai_calls").fetchall()
+    assert [tuple(c) for c in calls] == [("assemble", 1, 0)] * 3
+    # Failed calls use up nothing of the day's limit, and after three the AI is left alone
+    assert allowance.automatic_left(conn, settings, "local") == 10
+    assert sort_on_its_own(conn, settings, down).ai_calls == 0 and down.calls == 3

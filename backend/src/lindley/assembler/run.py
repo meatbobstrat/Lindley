@@ -39,6 +39,7 @@ class RunReport:
     set_aside_hints: int = 0
     ai_calls: int = 0
     ai_reused: int = 0  # questions answered from the AI's earlier replies, with no call
+    ai_failed: int = 0  # of ai_calls, those that failed
     # What the rules left for the AI, whether or not one was asked: windows and their pages
     ai_windows: int = 0
     ai_pages: int = 0
@@ -488,5 +489,9 @@ def _assemble(
                 raise AskFirst  # put it all back, ask, and decide again
             answers.drop_waiting()
     report.inbox_left = report.considered - report.pages_grouped - report.pages_added
-    report.ai_calls, report.ai_reused = answers.calls, answers.reused
+    report.ai_calls, report.ai_reused, report.ai_failed = (
+        answers.calls,
+        answers.reused,
+        answers.failed,
+    )
     return report

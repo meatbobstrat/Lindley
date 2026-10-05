@@ -20,14 +20,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from lindley import activity
-from lindley.assembler import assemble
-from lindley.assembler.auto import sort_on_its_own
+from lindley.assembler.auto import sort_on_its_own, sort_with
 from lindley.config import Settings
 from lindley.db.database import connect
 from lindley.providers import allowance
 from lindley.providers.base import ProviderError
 from lindley.providers.registry import connectors, get_provider
-from lindley.providers.throttle import metered
 from lindley.worker.pipeline import Pipeline, queue_vision
 
 log = logging.getLogger(__name__)
@@ -55,11 +53,7 @@ def sort_as_asked(conn: sqlite3.Connection, settings: Settings, page_ids: set[in
     if not name:
         raise ProviderError("No AI is set up to sort pages. Choose one in Settings.")
     chat = get_provider(settings.ai, "assemble")
-    with metered(chat) as used:
-        report = assemble(conn, settings.assembler, chat, asked=page_ids)
-    if report.ai_calls or used:
-        with conn:
-            allowance.record(conn, name, "assemble", False, count=report.ai_calls, used=used)
+    report = sort_with(conn, settings, chat, False, asked=page_ids)
     return {
         "ai_calls": report.ai_calls,
         "reused": report.ai_reused,

@@ -189,6 +189,19 @@ def test_extra_pages_of_the_other_document_stay(conn):
     assert where(conn, extra) == (b, 0, 0)
 
 
+def test_a_page_only_like_one_of_the_others_stays_too(conn):
+    """A3 and B3 are copies; A3 and B9 only look alike, and B9 is a draft only B has."""
+    a, b = doc(conn, "Letter"), doc(conn, "Letter, again")
+    x, y = page(conn, a, 0), page(conn, b, 0)
+    draft = page(conn, b, 1)
+    dup(conn, x, y)
+    dup(conn, x, draft, kind="similar", score=50)
+    decision = keep_document(conn, a, b)
+    assert decision.sets == 1 and decision.set_aside == [y]
+    assert where(conn, draft) == (b, 0, 0)
+    assert where(conn, x) == (a, 0, 0)
+
+
 def test_keep_all_when_they_are_not_copies(conn):
     a, b = page(conn), page(conn)
     dup(conn, a, b, kind="similar", score=45)

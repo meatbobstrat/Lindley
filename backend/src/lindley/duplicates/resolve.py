@@ -262,11 +262,18 @@ def _order(c: Copy, copies: list[Copy]) -> int:
 # ---------------------------------------------------------------- Decisions (a person's)
 
 
-def keep(conn: sqlite3.Connection, set_id: int, page_id: int, batch: int | None = None) -> Decision:
+def keep(conn: sqlite3.Connection, set_id: int, page_id: int) -> Decision:
     """Keep one copy; set the others aside."""
     s = get_set(conn, set_id)
     if s is None:
         raise LookupError(f"No open duplicate set {set_id}")
+    with conn:
+        return _keep(conn, s, page_id, history.new_batch(conn))
+
+
+def _keep(conn: sqlite3.Connection, s: DuplicateSet, page_id: int, batch: int) -> Decision:
+    """Keep one copy of set `s`, in decision `batch` (the caller commits)."""
+    set_id = s.id
     kept = next((c for c in s.copies if c.page_id == page_id), None)
     if kept is None:
         raise ValueError(f"Page {page_id} isn't one of the copies")
@@ -284,44 +291,53 @@ def keep(conn: sqlite3.Connection, set_id: int, page_id: int, batch: int | None 
             None,
         )
     )
-    with conn:
-        batch = batch or history.new_batch(conn)
-        emptied: set[int] = set()
-        for c in others:
-            move_page(conn, batch, c.page_id, None, None, aside=True, action="set_aside_duplicate")
-            if c.document_id and c is not home:
-                emptied.add(c.document_id)
-        if home is not kept and home is not None:
-            move_page(
-                conn,
-                batch,
-                page_id,
-                home.document_id,
-                home.position,
-                aside=False,
-                action="replace_with_duplicate",
-            )
-        elif kept.where == "aside" and any(c.where == "inbox" for c in others):
-            move_page(conn, batch, page_id, None, None, aside=False, action="return_duplicate")
-        for doc in emptied:
-            close_gaps(conn, batch, doc)
-        _decide(conn, batch, "keep_duplicate", set_id, s.pair_ids, "resolved", page_id)
-        for doc in emptied:
-            remove_if_empty(conn, batch, doc)
+    emptied: set[int] = set()
+    for c in others:
+        move_page(conn, batch, c.page_id, None, None, aside=True, action="set_aside_duplicate")
+        if c.document_id and c is not home:
+            emptied.add(c.document_id)
+    if home is not kept and home is not None:
+        move_page(
+            conn,
+            batch,
+            page_id,
+            home.document_id,
+            home.position,
+            aside=False,
+            action="replace_with_duplicate",
+        )
+    elif kept.where == "aside" and any(c.where == "inbox" for c in others):
+        move_page(conn, batch, page_id, None, None, aside=False, action="return_duplicate")
+    for doc in emptied:
+        close_gaps(conn, batch, doc)
+    _decide(conn, batch, "keep_duplicate", set_id, s.pair_ids, "resolved", page_id)
+    for doc in emptied:
+        remove_if_empty(conn, batch, doc)
     return Decision(batch, [c.page_id for c in others])
 
 
 def keep_document(conn: sqlite3.Connection, keep_doc: int, other_doc: int) -> Decision:
-    """Keep one document of a pair scanned twice: in every set they share, the copy in
-    `keep_doc` is kept. Pages only the other document has stay where they are. It's one
-    decision, undone as one."""
-    sets = [
-        s for s in open_sets(conn) if {c.document_id for c in s.copies} >= {keep_doc, other_doc}
-    ]
-    decision = Decision(history.new_batch(conn), [], len(sets))
-    for s in sets:
-        kept = next(c for c in s.copies if c.document_id == keep_doc)
-        decision.set_aside += keep(conn, s.id, kept.page_id, decision.batch).set_aside
+    """Keep one document of a pair scanned twice: in every set of copies of one page that lie
+    only in these two documents (document_pairs), the copy in `keep_doc` is kept. Pages only
+    the other document has stay where they are. It's one decision, made and undone as one."""
+    pair = next(
+        (
+            dp
+            for dp in document_pairs(open_sets(conn), conn)
+            if set(dp.documents) == {keep_doc, other_doc}
+        ),
+        None,
+    )
+    set_ids = pair.set_ids if pair else []
+    with conn:
+        decision = Decision(history.new_batch(conn), [], 0)
+        for set_id in set_ids:
+            s = get_set(conn, set_id)
+            if s is None:  # decided with one before it
+                continue
+            kept = next(c for c in s.copies if c.document_id == keep_doc)
+            decision.set_aside += _keep(conn, s, kept.page_id, decision.batch).set_aside
+            decision.sets += 1
     return decision
 
 

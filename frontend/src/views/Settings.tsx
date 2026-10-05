@@ -2,7 +2,7 @@
 // looks. Changes are a draft until you save them. API keys never go in settings.json: they're
 // saved in the system's credential store, after the settings that name their connection.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker, useNavigate, useParams } from 'react-router'
 import { api, type AiCalls, type Connector, JOBS, type Settings } from '../api/client'
 import { invalidate, useApi } from '../api/store'
@@ -54,15 +54,33 @@ export function ConnEditor({
   const up = (p: Partial<Edit>) => set({ ...e, ...p, tested: 'tested' in p ? (p.tested ?? null) : null })
   const who = cloud ? co : 'this AI'
 
+  // A test takes a while: what's typed meanwhile stays, and a result for a connection since
+  // changed, or closed, is dropped
+  const latest = useRef(e)
+  const open = useRef(true)
+  useEffect(() => {
+    latest.current = e
+  })
+  useEffect(() => {
+    open.current = true
+    return () => {
+      open.current = false
+    }
+  }, [])
+  const asTried = (x: Edit) => JSON.stringify([x.id, cfgOf(x, connectors.find((k) => k.id === x.type)), x.key])
   const test = async () => {
     setTesting(true)
+    const tried = asTried(e)
+    const result = (tested: Edit['tested']) => {
+      if (open.current && asTried(latest.current) === tried) set({ ...latest.current, tested })
+    }
     try {
       const r = await api.testConnection(cfg, saved ? e.id : null, e.key.trim() || null)
-      set({ ...e, tested: { ok: r.ok, message: r.message } })
+      result({ ok: r.ok, message: r.message })
     } catch (err) {
-      set({ ...e, tested: { ok: false, message: (err as Error).message } })
+      result({ ok: false, message: (err as Error).message })
     } finally {
-      setTesting(false)
+      if (open.current) setTesting(false)
     }
   }
 
@@ -395,8 +413,9 @@ function SettingsScreen({ settings }: { settings: Settings }) {
 
   const sec = SECTIONS.find((s) => s[0] === section) ?? SECTIONS[0]
 
-  const save = async (): Promise<boolean> => {
-    if (edit) {
+  // `dropEdit`: the connection being added is left out (leaving Settings: "Save and continue")
+  const save = async ({ dropEdit = false } = {}): Promise<boolean> => {
+    if (edit && !dropEdit) {
       toast('Finish the connection you’re adding first: add it or cancel it.')
       document.getElementById('st-ed')?.scrollIntoView({ block: 'center' })
       return false
@@ -505,7 +524,7 @@ function SettingsScreen({ settings }: { settings: Settings }) {
       <Dock label="Settings actions">
         <DockText>{changes ? plural(changes, 'unsaved change') : 'No unsaved changes'}</DockText>
         <DBtn icon="back" label="Discard changes" disabled={!dirty} tip={dirty ? 'Put the settings back as they were saved' : 'Nothing to discard'} onClick={discard} />
-        <DBtn icon="check" label={saving ? 'Saving…' : 'Save changes'} kind="primary" disabled={!changes || saving} tip={changes ? 'Save your changes. They take effect at once.' : 'Nothing to save'} onClick={save} />
+        <DBtn icon="check" label={saving ? 'Saving…' : 'Save changes'} kind="primary" disabled={!changes || saving} tip={changes ? 'Save your changes. They take effect at once.' : 'Nothing to save'} onClick={() => save()} />
       </Dock>
       {blocker.state === 'blocked' && (
         <Modal title="Save your settings?" onClose={() => blocker.reset()}>
@@ -534,9 +553,10 @@ function SettingsScreen({ settings }: { settings: Settings }) {
                 className="btn primary"
                 autoFocus
                 onClick={async () => {
-                  setEdit(null)
-                  if (await save()) blocker.proceed()
-                  else blocker.reset()
+                  if (await save({ dropEdit: true })) {
+                    setEdit(null)
+                    blocker.proceed()
+                  } else blocker.reset()
                 }}
                 data-tip="Save, then go where you were going"
               >

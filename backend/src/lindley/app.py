@@ -8,6 +8,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException
+from starlette.responses import Response
+from starlette.types import Scope
 
 from lindley import __version__
 from lindley.api import assembler as assembler_api
@@ -38,6 +41,21 @@ from lindley.worker.pipeline import follow_settings, rate_vision_readings, recov
 FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
 DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+class Frontend(StaticFiles):
+    """The built frontend. It finds its pages in the browser (/inbox, /documents/5...), so an
+    address that's none of its files gets index.html, to open there: opened directly, or the
+    page reloaded. A missing file (a name with a dot) and an unknown /api address are still 404."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as e:
+            parts = path.replace("\\", "/").split("/")  # a path from the OS: \ on Windows
+            if e.status_code != 404 or parts[0] == "api" or "." in parts[-1]:
+                raise
+            return await super().get_response("index.html", scope)
 
 
 def create_app(
@@ -101,6 +119,6 @@ def create_app(
         app.include_router(router, prefix="/api")
 
     if FRONTEND_DIST.is_dir():
-        app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+        app.mount("/", Frontend(directory=FRONTEND_DIST, html=True), name="frontend")
 
     return app

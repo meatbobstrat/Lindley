@@ -393,6 +393,8 @@ Page 282 is scanned as a mirror image, probably the back of a carbon copy. Claud
 
 The app tried with Claude Opus 5.5 doing the vision and sorting jobs (October 2026, the dev library: 344 test scans, most of them pages of Lindley Branson's memoir typescript, about 100 pages in several drafts). Each job was started by a person from Needs AI, with the connection at "ask". The costs are from `ai_calls`.
 
+The bill agrees with the estimates. The account's prepaid credit was $4.33 before Lindley's first call and $1.46 after the test, so the test spent $2.87. Lindley's estimate was $2.89: $2.53 in `ai_calls`, and about 36¢ for `bench_reading.py`, which doesn't record its calls. The account had started at $4.96, but the other 63¢ was spent before Lindley had the key.
+
 **Reading.** 48 pages, every one Tesseract read below 70%, for $1.62, about 3.4¢ a page. Each call took 3–19 seconds, and none failed. Claude's readings came back at 99–100% confidence (few words marked `[?]`), so those pages left the review queue. It copies the author's own typos ("lookingg", "Ggeat Eastern") and struck-out words, as the prompt asks. That's right for a transcript, but search won't find the corrected spelling. A page where Claude wrote about 2,000 tokens (thinking included) cost twice as much as one where it wrote 850. Lower `effort` is untested.
 
 **Sorting.** 24 calls for $0.94, about 4¢ each. The largest was a 40-page question, at 14,500 tokens sent. They made 9 documents that Claude was at least 75% sure of (`assembler.group_at`). It did things the rules can't:

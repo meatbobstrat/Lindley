@@ -27,6 +27,7 @@ from lindley.db.database import connect
 from lindley.providers import allowance
 from lindley.providers.base import ProviderError
 from lindley.providers.registry import connectors, get_provider
+from lindley.providers.throttle import metered
 from lindley.worker.pipeline import Pipeline
 
 log = logging.getLogger(__name__)
@@ -54,10 +55,11 @@ def sort_as_asked(conn: sqlite3.Connection, settings: Settings, page_ids: set[in
     if not name:
         raise ProviderError("No AI is set up to sort pages. Choose one in Settings.")
     chat = get_provider(settings.ai, "assemble")
-    report = assemble(conn, settings.assembler, chat, asked=page_ids)
-    if report.ai_calls:
+    with metered(chat) as used:
+        report = assemble(conn, settings.assembler, chat, asked=page_ids)
+    if report.ai_calls or used:
         with conn:
-            allowance.record(conn, name, "assemble", False, count=report.ai_calls)
+            allowance.record(conn, name, "assemble", False, count=report.ai_calls, used=used)
     return {
         "ai_calls": report.ai_calls,
         "reused": report.ai_reused,

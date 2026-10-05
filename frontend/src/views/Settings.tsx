@@ -11,7 +11,7 @@ import { cloudInUse, companyOf, connection, hostOf, JOB_WORDS, reachOf } from '.
 import { useApp, useLooking } from '../lib/appContext'
 import { cfgOf, type Edit, editOf, editReady, LANGS, newEdit, newId } from '../lib/connEdit'
 import { useDockPos, useTheme } from '../lib/view'
-import { plural } from '../lib/words'
+import { dollars, plural } from '../lib/words'
 import { DBtn, Dock, DockText } from '../ui/Dock'
 import { Modal } from '../ui/feedback'
 import { useFeedback } from '../ui/feedbackContext'
@@ -656,6 +656,11 @@ function SetAi({
                       {c.cfg.allow === 'auto'
                         ? `Calls on its own: ${use.automatic_today}${use.daily_limit ? ` of ${use.daily_limit.toLocaleString()}` : ''} today · ${use.automatic_month}${use.monthly_limit ? ` of ${use.monthly_limit.toLocaleString()}` : ''} this month`
                         : `Calls you OKed: ${use.oked_today} today · ${use.oked_month} this month`}
+                    </span>
+                  )}
+                  {use && (c.cloud || use.spent_month > 0) && (
+                    <span className="conn-usage" data-tip="Worked out from the tokens each call used, at the company’s list prices. Your bill from them is the real figure.">
+                      Cost, estimated: {dollars(use.spent_today)} today · {dollars(use.spent_month)} this month
                     </span>
                   )}
                 </div>

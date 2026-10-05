@@ -327,7 +327,16 @@ CREATE TABLE IF NOT EXISTS ai_calls (
     automatic  INTEGER NOT NULL CHECK (automatic IN (0, 1)),
     page_id    INTEGER REFERENCES pages(id),        -- the page it was about, if one
     ok         INTEGER NOT NULL DEFAULT 1 CHECK (ok IN (0, 1)),  -- 0: it failed
-    at         TEXT NOT NULL DEFAULT (datetime('now'))
+    at         TEXT NOT NULL DEFAULT (datetime('now')),
+    -- What it used, when the AI says (NULL when it doesn't): the model, the tokens sent and
+    -- written, and its cost in US dollars, estimated (lindley.providers.prices; NULL when the
+    -- model's price isn't known, as for an AI on this computer)
+    model              TEXT,
+    input_tokens       INTEGER,
+    output_tokens      INTEGER,
+    cache_read_tokens  INTEGER,
+    cache_write_tokens INTEGER,
+    cost_usd           REAL
 );
 CREATE INDEX IF NOT EXISTS idx_ai_calls_provider ON ai_calls(provider, at);
 

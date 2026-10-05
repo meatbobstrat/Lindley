@@ -17,6 +17,7 @@ from lindley.config import Settings
 from lindley.providers import allowance
 from lindley.providers.base import ChatProvider, ProviderError
 from lindley.providers.registry import get_provider
+from lindley.providers.throttle import metered
 from lindley.worker.pipeline import Pipeline, WaitingRun, waiting_for_vision
 
 log = logging.getLogger(__name__)
@@ -42,10 +43,13 @@ def sort_on_its_own(
     chat = chat if chat is not None else chat_on_its_own(settings)
     name = settings.ai.connection_for("assemble")
     left = allowance.automatic_left(conn, settings, name) if chat else 0
-    report = assemble(conn, settings.assembler, chat if left is None or left > 0 else None, left)
-    if report.ai_calls:
+    with metered(chat) as used:
+        report = assemble(
+            conn, settings.assembler, chat if left is None or left > 0 else None, left
+        )
+    if report.ai_calls or used:
         with conn:
-            allowance.record(conn, name, "assemble", True, count=report.ai_calls)
+            allowance.record(conn, name, "assemble", True, count=report.ai_calls, used=used)
     return report
 
 

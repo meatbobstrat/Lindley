@@ -35,9 +35,8 @@ def test_asking_the_ai_sends_the_pages_at_once_and_is_recorded_as_asked(client, 
     conn, ids = inbox(client, settings)
     body = client.post("/api/assembler/ask", json={"page_ids": ids[:1]}).json()
     assert body["ai_calls"] == 1 and body["rejected"]  # the fake AI's reply isn't sorting
-    assert [tuple(r) for r in conn.execute("SELECT purpose, automatic FROM ai_calls")] == [
-        ("assemble", 0)
-    ]
+    calls = conn.execute("SELECT purpose, automatic, model, output_tokens > 0 FROM ai_calls")
+    assert [tuple(r) for r in calls] == [("assemble", 0, "fake", 1)]  # with what it used
     again = client.post("/api/assembler/ask", json={"page_ids": ids[:1]}).json()
     assert again["ai_calls"] == 0 and again["reused"] == 1
 

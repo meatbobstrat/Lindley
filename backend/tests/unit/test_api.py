@@ -39,6 +39,8 @@ def test_settings_say_when_each_ai_may_run_and_how_much_it_has_today(client, set
         "automatic_month": 0,
         "oked_month": 0,
         "automatic_left": 50,
+        "spent_today": 0,
+        "spent_month": 0,
         "key_hint": None,
     }
     current["ai"]["providers"]["local"]["daily_limit"] = 0

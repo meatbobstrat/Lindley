@@ -29,6 +29,18 @@ class Transcription:
     metadata: dict = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class Usage:
+    """What one call used, as the AI reported it: the tokens it was sent (input, not counting
+    any read from or written to its cache) and the tokens it wrote, thinking included."""
+
+    model: str | None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+
+
 @runtime_checkable
 class ChatProvider(Protocol):
     def chat(self, messages: list[ChatMessage]) -> str: ...

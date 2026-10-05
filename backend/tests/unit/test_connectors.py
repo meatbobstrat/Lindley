@@ -13,7 +13,7 @@ import httpx2
 import pytest
 
 from lindley.config import ProviderConfig
-from lindley.providers.base import ChatMessage, ProviderError
+from lindley.providers.base import ChatMessage, ProviderError, Usage
 from lindley.providers.connectors import anthropic, google, local, openai, openai_compat
 from lindley.providers.prompts import TRANSCRIBE
 
@@ -446,6 +446,21 @@ def test_anthropic_chat():
         ],
     }
     assert "anthropic-beta" not in req.headers
+
+
+def test_anthropic_says_what_each_call_used():
+    used = []
+    p = claude(Server(message(text("ok")), anthropic_stream("Wi", "ll"), message(stop="refusal")))
+    p.on_usage = used.append
+    p.chat(TALK)
+    list(p.chat_stream(TALK))
+    with pytest.raises(ProviderError, match="declined"):
+        p.chat(TALK)  # charged all the same
+    assert used == [
+        Usage("claude-opus-5-5", input_tokens=1, output_tokens=1),
+        Usage("claude-opus-5-5", input_tokens=1, output_tokens=2),
+        Usage("claude-opus-5-5", input_tokens=1, output_tokens=1),
+    ]
 
 
 def test_anthropic_effort_when_asked():

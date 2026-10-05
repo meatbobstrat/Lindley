@@ -11,6 +11,7 @@ from lindley.db.database import connect, init_db
 from lindley.providers import allowance
 from lindley.providers.base import Transcription
 from lindley.providers.connectors.fake import FakeProvider
+from lindley.providers.throttle import Guarded, Throttle
 from lindley.worker.intake import import_file
 from lindley.worker.ocr.base import PageResult
 from lindley.worker.pipeline import (
@@ -168,7 +169,8 @@ def test_automatic_vision_calls_are_recorded_and_stop_at_the_daily_limit(conn, s
     cfg = settings.ai.providers["local"]
     cfg.allow, cfg.daily_limit = "auto", 1
     first, second = scan("a.png"), scan("b.png")
-    pipe = Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0), ("Dcar Sistcr", 41.0)), FakeProvider())
+    vision = Guarded(FakeProvider(), "local", Throttle())  # as get_provider makes it
+    pipe = Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0), ("Dcar Sistcr", 41.0)), vision)
     assert pipe.process_scan(conn, first) == "read"
     assert pipe.process_scan(conn, second) == "read"  # Tesseract's reading, for now
     assert steps(conn, first, "vision") == [("done", None)]
@@ -177,8 +179,11 @@ def test_automatic_vision_calls_are_recorded_and_stop_at_the_daily_limit(conn, s
     calls = conn.execute("SELECT provider, purpose, automatic, ok FROM ai_calls").fetchall()
     assert [tuple(c) for c in calls] == [("local", "vision", 1, 1)]
     pipe.read_waiting(conn)  # a person's OK: sent, recorded, not counted against the limit
-    calls = conn.execute("SELECT automatic FROM ai_calls ORDER BY id").fetchall()
-    assert [c[0] for c in calls] == [1, 0]
+    calls = conn.execute(
+        "SELECT automatic, p.scan_id, model, input_tokens FROM ai_calls c"
+        " JOIN pages p ON p.id = c.page_id ORDER BY c.id"
+    ).fetchall()
+    assert [tuple(c) for c in calls] == [(1, first, "fake", 1000), (0, second, "fake", 1000)]
 
 
 def test_when_the_vision_model_fails_tesseract_still_counts(conn, settings, scan):

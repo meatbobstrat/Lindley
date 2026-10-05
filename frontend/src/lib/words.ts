@@ -4,6 +4,9 @@ import type { Page } from '../api/client'
 
 export const plural = (n: number, w: string, ws = `${w}s`) => `${n.toLocaleString()} ${n === 1 ? w : ws}`
 
+// US dollars to the cent; a cost too small to show is "under 1¢"
+export const dollars = (n: number) => (n > 0 && n < 0.005 ? 'under 1¢' : `${n.toFixed(2)}`)
+
 export const shortName = (n: string, max = 26) => (n.length > max ? `${n.slice(0, max - 1)}…` : n)
 
 /** A name in quotes, unless it has its own: Lindley's (Pages starting “…”) do, as

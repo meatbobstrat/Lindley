@@ -280,6 +280,10 @@ export interface AiCalls {
       automatic_month: number
       oked_month: number
       automatic_left: number | null
+      // What the calls cost, estimated from the tokens they used (US dollars); 0 for an AI
+      // whose price Lindley doesn't know, such as one on this computer
+      spent_today: number
+      spent_month: number
       key_hint: string | null
     }
   >

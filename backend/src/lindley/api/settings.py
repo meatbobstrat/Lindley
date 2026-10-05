@@ -55,8 +55,8 @@ def put_settings(new: Settings, request: Request, conn: Conn) -> Settings:
 
 @router.get("/ai-calls")
 def ai_calls_today(request: Request, conn: Conn) -> dict:
-    """For each AI connection: its limits, and its calls today and this month, on its own and
-    OKed."""
+    """For each AI connection: its limits, its calls today and this month, on its own and
+    OKed, and what they cost (estimated, US dollars)."""
     settings: Settings = request.app.state.settings
     out = {}
     for name, cfg in settings.ai.providers.items():
@@ -71,6 +71,8 @@ def ai_calls_today(request: Request, conn: Conn) -> dict:
             "automatic_month": allowance.calls_this_month(conn, name, automatic=True),
             "oked_month": allowance.calls_this_month(conn, name, automatic=False),
             "automatic_left": allowance.automatic_left(conn, settings, name),
+            "spent_today": allowance.spent(conn, name, "day"),
+            "spent_month": allowance.spent(conn, name, "month"),
             "key_hint": keys.key_hint(name),
         }
     return {"providers": out}

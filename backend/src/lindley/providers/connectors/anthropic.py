@@ -3,12 +3,18 @@ no embeddings."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Literal
 
 import anthropic
 
-from lindley.providers.base import ChatMessage, ConnectorInfo, ProviderError, Transcription
+from lindley.providers.base import (
+    ChatMessage,
+    ConnectorInfo,
+    ProviderError,
+    Transcription,
+    Usage,
+)
 from lindley.providers.connectors._common import b64, cut_off, image_type, sdk_errors
 from lindley.providers.prompts import transcribe_prompt
 
@@ -59,6 +65,9 @@ def _split(messages: list[ChatMessage]) -> tuple[str | None, list[dict]]:
 class Provider:
     """Implements ChatProvider and VisionProvider."""
 
+    # Told what each call used, even one that then fails (it's charged): set by throttle.Guarded.
+    on_usage: Callable[[Usage], None] | None = None
+
     def __init__(
         self,
         config=None,
@@ -98,10 +107,23 @@ class Provider:
             params["output_config"] = {"effort": self.effort}
         return params
 
+    def _used(self, usage) -> None:
+        if self.on_usage is not None and usage is not None:
+            self.on_usage(
+                Usage(
+                    model=self.model,
+                    input_tokens=usage.input_tokens or 0,
+                    output_tokens=usage.output_tokens or 0,
+                    cache_read_tokens=usage.cache_read_input_tokens or 0,
+                    cache_write_tokens=usage.cache_creation_input_tokens or 0,
+                )
+            )
+
     def _create(self, system: str | None, messages: list[dict]) -> str:
         api, extra = self._messages()
         with sdk_errors(anthropic, "Anthropic"):
             r = api.create(**self._params(system, messages), **extra)
+        self._used(r.usage)
         _finished(r.stop_reason)
         return "".join(b.text for b in r.content if b.type == "text")
 
@@ -115,7 +137,9 @@ class Provider:
             api.stream(**self._params(*_split(messages)), **extra) as stream,
         ):
             yield from stream.text_stream
-            _finished(stream.get_final_message().stop_reason)
+            final = stream.get_final_message()
+            self._used(final.usage)
+            _finished(final.stop_reason)
 
     def transcribe(self, image: bytes, hints: str | None = None) -> Transcription:
         content = [

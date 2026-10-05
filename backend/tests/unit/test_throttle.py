@@ -6,9 +6,9 @@ import time
 import pytest
 
 from lindley.config import AiSettings, JobConfig, ProviderConfig
-from lindley.providers.base import ChatMessage, ProviderError
+from lindley.providers.base import ChatMessage, ProviderError, Usage
 from lindley.providers.registry import get_provider
-from lindley.providers.throttle import Guarded, Throttle, throttle_for
+from lindley.providers.throttle import Guarded, Throttle, metered, throttle_for
 
 
 class Clock:
@@ -173,3 +173,42 @@ def test_providers_for_a_job_are_throttled():
     assert "".join(p.chat_stream([ChatMessage("user", "a b")])) == "[fake]ab"
     assert p.transcribe(b"1234").text == "<4 bytes transcribed>"
     assert len(p.embed(["x"])[0]) == 8
+
+
+def guarded_fake() -> Guarded:
+    ai = AiSettings(
+        providers={"f": ProviderConfig(type="fake")}, jobs={"chat": JobConfig(connection="f")}
+    )
+    return get_provider(ai, "chat")
+
+
+def test_what_each_call_used_is_noted_inside_metered():
+    p = guarded_fake()
+    p.chat([ChatMessage("user", "not noted")])  # outside any `with`
+    with metered(p) as used:
+        p.chat([ChatMessage("user", "one two")])
+        with metered(p) as inner:
+            p.transcribe(b"1234")
+    assert inner == [Usage("fake", 1000, 3)]
+    assert used == [Usage("fake", 2, 3), Usage("fake", 1000, 3)]  # the inner one counts too
+    with metered(object()) as nothing:  # not a Guarded provider: nothing to say
+        pass
+    assert nothing == []
+
+
+def test_calls_on_other_threads_are_kept_apart():
+    p = guarded_fake()
+    seen: dict[int, list] = {}
+
+    def read(n: int) -> None:
+        with metered(p) as used:
+            for _ in range(n):
+                p.transcribe(b"x")
+            seen[n] = used
+
+    threads = [threading.Thread(target=read, args=(n,)) for n in (1, 2, 3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert {n: len(u) for n, u in seen.items()} == {1: 1, 2: 2, 3: 3}

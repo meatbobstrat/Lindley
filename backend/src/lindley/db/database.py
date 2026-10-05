@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
-# Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}.
+# Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}, or a function
+# given the connection.
 # schema.sql always describes the latest version, for new databases.
-MIGRATIONS: dict[int, str] = {
+MIGRATIONS: dict[int, str | Callable[[sqlite3.Connection], None]] = {
     2: "ALTER TABLE documents ADD COLUMN reasons TEXT;",
     3: "",  # new tables only (duplicates, duplicate_checks, text_sketch): schema.sql adds them
     4: "ALTER TABLE history ADD COLUMN batch INTEGER;",
@@ -28,6 +30,7 @@ MIGRATIONS: dict[int, str] = {
         WHERE t.source = 'tesseract' AND t.confirmed_at IS NULL AND coalesce(t.confidence, 0) < 100
           AND p.detected_rotation = 0 AND p.user_rotation = 0;
     """,
+    11: lambda conn: _ai_call_usage(conn),
 }
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.
@@ -48,6 +51,24 @@ def connect(db_path: Path, *, any_thread: bool = False) -> sqlite3.Connection:
 
 def _tables(conn: sqlite3.Connection) -> set[str]:
     return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+
+
+def _ai_call_usage(conn: sqlite3.Connection) -> None:
+    """v11: what each AI call used and cost. A database from before v5 has no ai_calls yet:
+    schema.sql makes it whole."""
+    if "ai_calls" not in _tables(conn):
+        return
+    has = {r[1] for r in conn.execute("PRAGMA table_info(ai_calls)")}
+    for column in (
+        "model TEXT",
+        "input_tokens INTEGER",
+        "output_tokens INTEGER",
+        "cache_read_tokens INTEGER",
+        "cache_write_tokens INTEGER",
+        "cost_usd REAL",
+    ):
+        if column.split()[0] not in has:
+            conn.execute(f"ALTER TABLE ai_calls ADD COLUMN {column}")
 
 
 def _drop_placeholder(conn: sqlite3.Connection) -> None:
@@ -80,7 +101,8 @@ def init_db(db_path: Path) -> None:
             _drop_placeholder(conn)
         # A new database is built from schema.sql; an existing one is upgraded step by step.
         for target in range(version + 1 if version else SCHEMA_VERSION + 1, SCHEMA_VERSION + 1):
-            conn.executescript(MIGRATIONS[target])
+            step = MIGRATIONS[target]
+            step(conn) if callable(step) else conn.executescript(step)
         conn.executescript(schema)  # idempotent: creates a new database, fills in anything missing
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         conn.commit()

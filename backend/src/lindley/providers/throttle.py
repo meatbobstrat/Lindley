@@ -7,6 +7,9 @@ watcher, the API and the scripts share it. A connection whose limits change gets
 When the AI says it's busy, the call is tried again, twice, after as long as the AI asks (or a
 few seconds), without holding a place meanwhile. Nothing else is tried again: a call that took
 too long may still be running at the AI, and is charged for each time it's sent.
+
+Each connection's provider is wrapped in a Guarded, which keeps to its Throttle and notes what
+each call used, when the connector says (see `metered`).
 """
 
 from __future__ import annotations
@@ -17,9 +20,10 @@ import time
 from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import Any
 
 from lindley.config import ProviderConfig
-from lindley.providers.base import ChatMessage, ProviderError, Transcription
+from lindley.providers.base import ChatMessage, ProviderError, Transcription, Usage
 
 log = logging.getLogger(__name__)
 
@@ -114,6 +118,43 @@ def throttle_for(name: str, config: ProviderConfig) -> Throttle:
         return held[1]
 
 
+class Meter:
+    """What a provider's calls used, kept apart for each thread: scans read side by side each
+    see only their own calls."""
+
+    def __init__(self) -> None:
+        self._here = threading.local()
+
+    def add(self, usage: Usage) -> None:
+        if (noted := getattr(self._here, "noted", None)) is not None:
+            noted.append(usage)
+
+    @contextmanager
+    def watch(self) -> Iterator[list[Usage]]:
+        """The calls made on this thread inside the `with`, each as it was reported."""
+        outer = getattr(self._here, "noted", None)
+        self._here.noted = noted = []
+        try:
+            yield noted
+        finally:
+            self._here.noted = outer
+            if outer is not None:
+                outer.extend(noted)
+
+
+@contextmanager
+def metered(provider: Any) -> Iterator[list[Usage]]:
+    """`with metered(provider) as used:` makes `used` the list of what each call to the
+    provider inside the `with` used, on this thread. Empty when the connector doesn't say, or
+    the provider isn't a Guarded one."""
+    meter = getattr(provider, "meter", None)
+    if meter is None:
+        yield []
+        return
+    with meter.watch() as used:
+        yield used
+
+
 class Guarded:
     """A provider whose every call keeps to its connection's throttle."""
 
@@ -121,6 +162,9 @@ class Guarded:
         self.inner = inner
         self.name = name
         self.throttle = throttle
+        self.meter = Meter()
+        if hasattr(inner, "on_usage"):
+            inner.on_usage = self.meter.add
 
     @property
     def model(self) -> str | None:

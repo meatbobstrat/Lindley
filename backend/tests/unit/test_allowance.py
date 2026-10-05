@@ -4,6 +4,8 @@ import pytest
 
 from lindley.db.database import connect, init_db
 from lindley.providers import allowance
+from lindley.providers.base import Usage
+from lindley.providers.prices import cost
 
 
 @pytest.fixture
@@ -81,3 +83,36 @@ def test_an_ai_whose_calls_keep_failing_is_left_alone_for_a_while(conn, settings
     assert not allowance.failing(conn, "local")  # time to try it again
     allowance.record(conn, "local", "vision", True)
     assert not allowance.failing(conn, "local")
+
+
+def test_what_each_call_used_and_cost_is_recorded(conn):
+    opus = Usage("claude-opus-5-5", input_tokens=2000, output_tokens=500)
+    allowance.record(conn, "claude", "assemble", False, count=2, used=[opus])
+    # a call the AI answered, then failed (cut off): charged, and recorded as failed
+    allowance.record(conn, "claude", "vision", True, page_id=None, count=0, used=[opus])
+    allowance.record(conn, "local", "vision", True, used=[Usage("gemma4:e4b", 1000, 300)])
+    rows = conn.execute(
+        "SELECT provider, purpose, ok, model, input_tokens, output_tokens, cost_usd"
+        " FROM ai_calls ORDER BY id"
+    ).fetchall()
+    assert [tuple(r) for r in rows] == [
+        ("claude", "assemble", 1, "claude-opus-5-5", 2000, 500, 0.018),
+        ("claude", "assemble", 1, None, None, None, None),  # the AI didn't say
+        ("claude", "vision", 0, "claude-opus-5-5", 2000, 500, 0.018),
+        ("local", "vision", 1, "gemma4:e4b", 1000, 300, None),  # no price on a laptop
+    ]
+    assert allowance.spent(conn, "claude") == pytest.approx(0.036)
+    assert allowance.spent(conn, "claude", "month") == pytest.approx(0.036)
+    assert allowance.spent(conn, "local") == 0
+    conn.execute("UPDATE ai_calls SET at = datetime('now', 'start of month', '-1 day')")
+    assert allowance.spent(conn, "claude", "month") == 0
+
+
+def test_the_cost_of_a_call():
+    assert cost(Usage("claude-opus-5-5", input_tokens=1_000_000)) == 4.0
+    assert cost(Usage("claude-opus-5-5", output_tokens=1_000_000)) == 20.0
+    assert cost(Usage("claude-opus-5-5", cache_read_tokens=1_000_000)) == pytest.approx(0.2)
+    assert cost(Usage("claude-opus-5-5", cache_write_tokens=1_000_000)) == 5.0
+    assert cost(Usage("claude-sonnet-5-5", 1000, 1000)) == pytest.approx(0.012)
+    assert cost(Usage("llama", 1000, 1000)) is None
+    assert cost(Usage(None)) is None

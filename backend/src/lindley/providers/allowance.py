@@ -5,7 +5,8 @@ documents) is sent as soon as there is some, or waits for a person's OK. With "a
 `daily_limit` and `monthly_limit` cap the calls made on its own each day and each calendar
 month; past either, work waits for an OK again. Only calls that worked count: a failed call
 returns nothing. Calls a person OKed or asked for are recorded too, but never count against the
-limits. When the last FAILING_AFTER calls made on its own all failed, the AI looks down, and
+limits. Each call's tokens and estimated cost are kept too, when the AI says what it used.
+When the last FAILING_AFTER calls made on its own all failed, the AI looks down, and
 Lindley waits FAILING_WAIT_MIN minutes before trying it on its own again.
 (Calls a minute and at once are in throttle.py.)
 """
@@ -13,8 +14,11 @@ Lindley waits FAILING_WAIT_MIN minutes before trying it on its own again.
 from __future__ import annotations
 
 import sqlite3
+from itertools import zip_longest
 
 from lindley.config import ProviderConfig, Settings
+from lindley.providers.base import Usage
+from lindley.providers.prices import cost
 
 FAILING_AFTER = 3  # calls made on its own that failed in a row: the AI looks down
 FAILING_WAIT_MIN = 15  # then Lindley waits this long before calling it on its own again
@@ -103,9 +107,36 @@ def record(
     page_id: int | None = None,
     ok: bool = True,
     count: int = 1,
+    used: list[Usage] | None = None,
 ) -> None:
-    """Record calls made (the caller commits)."""
+    """Record calls made (the caller commits). `used`: what each call used, as the provider
+    reported it (throttle.metered). One reported beyond `count` was a call that failed after
+    the AI had answered, and was charged: it's recorded as a failed call."""
+    rows = []
+    for i, usage in enumerate(zip_longest(range(count), used or [])):
+        u = usage[1]
+        tokens = (
+            (u.model, u.input_tokens, u.output_tokens, u.cache_read_tokens, u.cache_write_tokens)
+            if u
+            else (None,) * 5
+        )
+        worked = ok and i < count
+        row = (provider or "unnamed", purpose, int(automatic), page_id, int(worked))
+        rows.append((*row, *tokens, cost(u) if u else None))
     conn.executemany(
-        "INSERT INTO ai_calls (provider, purpose, automatic, page_id, ok) VALUES (?, ?, ?, ?, ?)",
-        [(provider or "unnamed", purpose, int(automatic), page_id, int(ok))] * count,
+        "INSERT INTO ai_calls (provider, purpose, automatic, page_id, ok, model, input_tokens,"
+        " output_tokens, cache_read_tokens, cache_write_tokens, cost_usd)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
     )
+
+
+def spent(conn: sqlite3.Connection, provider: str, period: str = "day") -> float:
+    """What a provider's calls cost (estimated, US dollars) today or this calendar month,
+    whoever made them."""
+    fmt = "%Y-%m-%d" if period == "day" else "%Y-%m"
+    return conn.execute(
+        "SELECT coalesce(sum(cost_usd), 0) FROM ai_calls WHERE provider = ?"
+        " AND strftime(?, at, 'localtime') = strftime(?, 'now', 'localtime')",
+        (provider, fmt, fmt),
+    ).fetchone()[0]

@@ -25,8 +25,9 @@ from pathlib import Path
 from lindley.config import Settings
 from lindley.db.database import connect
 from lindley.providers import allowance
-from lindley.providers.base import ProviderError, VisionProvider
+from lindley.providers.base import ProviderError, Usage, VisionProvider
 from lindley.providers.registry import get_provider
+from lindley.providers.throttle import metered
 from lindley.worker import image as pageimage
 from lindley.worker.ocr.base import OcrEngine, PageResult, marked_confidence
 from lindley.worker.ocr.tesseract import ORIENTATION_MIN_CONF, TesseractEngine
@@ -595,13 +596,16 @@ class Pipeline:
                     supersedes=None if queued else r["id"],
                 ):
                     image = Path(r["image_path"])
-                    with self._upright(r["page_id"], image, rotation, r["dpi"]) as upright:
+                    with (
+                        self._upright(r["page_id"], image, rotation, r["dpi"]) as upright,
+                        metered(self.vision) as used,
+                    ):
                         try:
                             result = self._vision_reader().recognize(upright)[0]
                         except Exception:
-                            self._record_call(conn, r["page_id"], automatic, ok=False)
+                            self._record_call(conn, r["page_id"], automatic, False, used)
                             raise
-                    self._record_call(conn, r["page_id"], automatic, ok=True)
+                    self._record_call(conn, r["page_id"], automatic, True, used)
                     self._add_vision_reading(conn, r["page_id"], model, result)
             except StepTaken:
                 continue  # the watcher or a person's request is reading it already
@@ -625,11 +629,16 @@ class Pipeline:
         return run
 
     def _record_call(
-        self, conn: sqlite3.Connection, page_id: int, automatic: bool, ok: bool
+        self,
+        conn: sqlite3.Connection,
+        page_id: int,
+        automatic: bool,
+        ok: bool,
+        used: list[Usage],
     ) -> None:
         """A vision call: one a person OKed isn't counted against the limits."""
         with conn:
-            allowance.record(conn, self.vision_name, "vision", automatic, page_id, ok)
+            allowance.record(conn, self.vision_name, "vision", automatic, page_id, ok, used=used)
 
     def _add_vision_reading(
         self, conn: sqlite3.Connection, page_id: int, model: str, result: PageResult
@@ -877,19 +886,21 @@ class Pipeline:
                 else:
                     model = getattr(self.vision, "model", None) or "vision"
                     ok = False
-                    try:
-                        with run_step(
-                            conn, scan_id, Step.VISION, page_id=page_id, engine_version=model
-                        ):
-                            readings.append(
-                                ("vision", model, self._vision_reader().recognize(image)[0])
-                            )
-                        ok = True
-                    except Exception:
-                        pass  # recorded as failed; the page waits for a person to try again
-                    finally:
-                        with conn:
-                            allowance.record(conn, self.vision_name, "vision", True, page_id, ok)
+                    with metered(self.vision) as used:
+                        try:
+                            with run_step(
+                                conn, scan_id, Step.VISION, page_id=page_id, engine_version=model
+                            ):
+                                readings.append(
+                                    ("vision", model, self._vision_reader().recognize(image)[0])
+                                )
+                            ok = True
+                        except Exception:
+                            pass  # recorded as failed; the page waits for a person to try again
+                    with conn:
+                        allowance.record(
+                            conn, self.vision_name, "vision", True, page_id, ok, used=used
+                        )
 
         if not readings:
             return  # vision only, and the page is waiting for the vision model

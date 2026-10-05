@@ -308,6 +308,25 @@ def test_v8_database_gains_seen_files_and_the_page_step_index(tmp_path):
     c.close()
 
 
+def test_v10_database_gains_what_each_ai_call_used(tmp_path):
+    db = tmp_path / "v10.db"
+    c = sqlite3.connect(db)
+    c.executescript(
+        "CREATE TABLE ai_calls (id INTEGER PRIMARY KEY, provider TEXT NOT NULL,"
+        " purpose TEXT NOT NULL, automatic INTEGER NOT NULL, page_id INTEGER,"
+        " ok INTEGER NOT NULL DEFAULT 1, at TEXT NOT NULL DEFAULT (datetime('now')));"
+        "INSERT INTO ai_calls (provider, purpose, automatic) VALUES ('local', 'vision', 1);"
+        "PRAGMA user_version = 10;"
+    )
+    c.close()
+    init_db(db)
+    c = connect(db)
+    row = c.execute("SELECT provider, model, input_tokens, cost_usd FROM ai_calls").fetchone()
+    assert tuple(row) == ("local", None, None, None)
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    c.close()
+
+
 def test_v9_database_queues_pages_read_before_upside_down_was_tried(tmp_path):
     db = tmp_path / "v9.db"
     init_db(db)
@@ -342,7 +361,7 @@ def test_v9_database_queues_pages_read_before_upside_down_was_tried(tmp_path):
         "SELECT page_id, step, status FROM intake_steps WHERE status = 'queued'"
     ).fetchall()
     assert [tuple(r) for r in queued] == [(poor, "ocr", "queued")]
-    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 10
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     init_db(db)  # an upgraded database isn't queued again
     assert c.execute("SELECT count(*) FROM intake_steps").fetchone()[0] == 1
     c.close()

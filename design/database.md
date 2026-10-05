@@ -379,6 +379,16 @@ EmbeddingGemma finds a page's document a little more often than rare words, and 
 
 So printed and typed pages stay with Tesseract: it's nearly as good, in seconds. For the few handwritten pages Tesseract can't read, Gemma 4 E4B, the local connector's default, is a free and private vision model at about half a minute a page on a laptop. The pipeline already keeps a vision reading only when it's better than Tesseract's. Six pages is a first look, not a measure: pages whose text a person checks are `bench_reading.py`'s answer key.
 
+**Claude as the reference** (`bench_reading.py --hard --reference anthropic`, October 2026, Ollama 0.35 on the graphics card). The ten pages Tesseract read worst. Each was read by Claude Opus 5.5 at its default effort, and that reading stood in for the right answer. By eye, Claude's readings are faithful: they keep typed lines as typed, put handwritten insertions where they go, and mark struck-out typing `[illegible]`. Claude took 3–19 seconds a page, about 4,000 tokens sent and 850 written (thinking included), about 3¢ a page and 33¢ for all ten. Character error rate against Claude:
+
+| Reader | CER | What it did |
+|---|---|---|
+| Tesseract | 0.39 | Typed text read, with handwriting and strike-outs as noise |
+| gemma4:e4b | 0.15 | Close to Claude on nine pages (0.04–0.22). It read a mirror-image page letter by letter, backwards (0.80) |
+| glm-ocr | 2.79 | It repeated itself on six pages, and Ollama 0.35 stopped it ("token repeat limit"); the other four were cut off at 2048 tokens |
+
+Page 282 is scanned as a mirror image, probably the back of a carbon copy. Claude read it as if it were the right way round, but Tesseract and the local models can't. Lindley checks pages for rotation, not mirroring.
+
 ## Duplicates
 
 The same page is often scanned more than once, sometimes with different settings: another dpi, colour or grey, a different exposure, more or less margin. That changes every pixel and the file's hash, but not the words. So duplicates are found by their text (`lindley.duplicates.detect`), checked before the assembler runs:

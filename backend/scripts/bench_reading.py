@@ -92,7 +92,8 @@ def choose(
 
 
 def read(client: httpx.Client, model: str, image: bytes, cpu: bool) -> str:
-    """The model's reading, marked [cut off] if it ran on to MOST_TOKENS."""
+    """The model's reading, marked [cut off] if it ran on to MOST_TOKENS. One Ollama stopped
+    because it kept repeating itself (since Ollama 0.35) is [repeated itself], with no text."""
     r = client.post(
         "/api/chat",
         json={
@@ -110,6 +111,8 @@ def read(client: httpx.Client, model: str, image: bytes, cpu: bool) -> str:
             | ({"num_gpu": 0} if cpu else {}),
         },
     )
+    if r.status_code == 500 and "repeat" in r.text:
+        return "[repeated itself]"
     r.raise_for_status()
     text = r.json()["message"]["content"].strip()
     return text + " [cut off]" if r.json().get("done_reason") == "length" else text
@@ -206,6 +209,7 @@ def main() -> None:
                 if f:
                     f.write_text(text, encoding="utf-8")
                 cut = " (cut off)" if text.endswith("[cut off]") else ""
+                cut = " (repeated itself)" if text == "[repeated itself]" else cut
                 print(f"  {name} page {r['id']}: {took[-1]:.0f} s{cut}", flush=True)
             if took:
                 seconds[name] = sum(took) / len(took)

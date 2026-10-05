@@ -116,11 +116,13 @@ def _add(conn: sqlite3.Connection, batch: int, s: sqlite3.Row, pages: list[int])
     at_start = json.loads(s["payload"] or "{}").get("at") == "start"
     sql = "UPDATE pages SET document_id = ?, position = ?"
     if at_start:  # the pages there move down to make room, each recorded so undo can move it back
-        for pid, pos in conn.execute(
+        there = conn.execute(
             "SELECT id, position FROM pages WHERE document_id = ? ORDER BY position DESC", (doc,)
-        ).fetchall():
+        ).fetchall()
+        for pid, pos in there:
             _move(conn, batch, "accept_addition", pid, sql, (doc, pos + len(pages)))
-        first = 1
+        # the first places, whether the document counts from 0 (a person's) or 1 (Lindley's)
+        first = there[-1][1] if there else 1
     else:
         first = (
             1

@@ -103,9 +103,12 @@ def attach(
             "SELECT COALESCE(MAX(position), 0) FROM pages WHERE document_id = ?", (doc_id,)
         ).fetchone()[0]
         rows = [(doc_id, top + i + 1, pid) for i, pid in enumerate(g.ids)]
-    else:
+    else:  # the new pages take the first places, whether a document counts from 0 or 1
+        low = conn.execute(
+            "SELECT COALESCE(MIN(position), 1) FROM pages WHERE document_id = ?", (doc_id,)
+        ).fetchone()[0]
         conn.execute("UPDATE pages SET position = position + ? WHERE document_id = ?", (n, doc_id))
-        rows = [(doc_id, i + 1, pid) for i, pid in enumerate(g.ids)]
+        rows = [(doc_id, low + i, pid) for i, pid in enumerate(g.ids)]
     conn.executemany(
         "UPDATE pages SET document_id = ?, position = ?, updated_at = datetime('now') WHERE id = ?",
         rows,

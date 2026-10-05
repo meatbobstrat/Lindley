@@ -6,8 +6,11 @@ import pytest
 
 from lindley import history
 from lindley.assembler import assemble
+from lindley.assembler.apply import attach
 from lindley.assembler.bench import TruePage, load
 from lindley.assembler.decide import accept, dismiss
+from lindley.assembler.model import Group
+from lindley.assembler.run import load_inbox
 from lindley.config import AssemblerSettings
 from lindley.db.database import connect, init_db
 
@@ -132,9 +135,9 @@ def test_an_out_of_date_hint_is_refused(conn):
         accept(conn, 999)
 
 
-def _doc(conn, pages):
+def _doc(conn, pages, base=1):
     d = conn.execute("INSERT INTO documents (name, origin) VALUES ('Mine', 'user')").lastrowid
-    for i, pid in enumerate(pages, 1):
+    for i, pid in enumerate(pages, base):
         conn.execute("UPDATE pages SET document_id = ?, position = ? WHERE id = ?", (d, i, pid))
     return d
 
@@ -148,11 +151,13 @@ def _hint(conn, pid, doc, pages, at):
     ).lastrowid
 
 
+# A document a person has changed counts from 0 (organise.close_gaps); one Lindley made, from 1
+@pytest.mark.parametrize("base", [0, 1])
 @pytest.mark.parametrize("at", ["end", "start"])
-def test_accepting_an_addition_adds_every_page_hinted_and_undo_moves_them_back(conn, at):
+def test_accepting_an_addition_adds_every_page_hinted_and_undo_moves_them_back(conn, at, base):
     texts = [TruePage(f"Page {i} of something. " + BODY, "x", i, "page") for i in range(4)]
     old1, old2, new1, new2 = load(conn, texts)
-    d = _doc(conn, [old1, old2])
+    d = _doc(conn, [old1, old2], base)
     first = _hint(conn, new1, d, [new1, new2], at)
     _hint(conn, new2, d, [new1, new2], at)
     conn.commit()
@@ -162,9 +167,32 @@ def test_accepting_an_addition_adds_every_page_hinted_and_undo_moves_them_back(c
         for r in conn.execute("SELECT id FROM pages WHERE document_id = ? ORDER BY position", (d,))
     ]
     assert order == ([old1, old2, new1, new2] if at == "end" else [new1, new2, old1, old2])
+    assert _no_two_share_a_place(conn, d)
     assert not hints(conn, "add_to_document")
     history.undo(conn, done.batch)
     assert [
         r[0]
         for r in conn.execute("SELECT id FROM pages WHERE document_id = ? ORDER BY position", (d,))
     ] == [old1, old2]
+
+
+def _no_two_share_a_place(conn, doc):
+    places = [
+        r[0] for r in conn.execute("SELECT position FROM pages WHERE document_id = ?", (doc,))
+    ]
+    return len(places) == len(set(places))
+
+
+@pytest.mark.parametrize("base", [0, 1])
+def test_pages_lindley_adds_at_the_start_never_share_a_place(conn, base):
+    texts = [TruePage(f"Page {i} of something. " + BODY, "x", i, "page") for i in range(4)]
+    old1, old2, new1, new2 = load(conn, texts)
+    d = _doc(conn, [old1, old2], base)
+    inbox = {p.id: p for p in load_inbox(conn)}
+    attach(conn, d, Group([inbox[new1], inbox[new2]], 90), False, 90, [])
+    order = [
+        r[0]
+        for r in conn.execute("SELECT id FROM pages WHERE document_id = ? ORDER BY position", (d,))
+    ]
+    assert order == [new1, new2, old1, old2]
+    assert _no_two_share_a_place(conn, d)

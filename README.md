@@ -193,7 +193,6 @@ cd backend
 py -3.13 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
-pip install -e ".[embed]"   # optional: compare what pages are about (Model2Vec, 8 MB, no GPU)
 
 # frontend
 cd ..\frontend
@@ -429,7 +428,7 @@ and you can ask it about them. All of it from a one-click install.
 - [ ] Performance tiers: Lindley runs on anything from a 10-year-old laptop to a gaming PC with
   32 GB of graphics memory, and the AI each job uses is picked to suit the computer
   (design/database.md, "Local models on a CPU"):
-  - **Basic** (any computer): Tesseract, the rules and the small built-in model. No AI; pages
+  - **Basic** (any computer): Tesseract and the rules. No AI; pages
     Tesseract can't read wait for a person, or for a cloud AI if one is set up
   - **Light** (8 GB of memory): EmbeddingGemma for what pages are about, and the check whether a
     page carries on from the last one. Handwriting is read slowly, a few minutes a page

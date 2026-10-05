@@ -50,7 +50,7 @@ FEATURES = (
     "size_differs",  # sheets of clearly different sizes
     "settings_differ",  # scanned at another resolution, or in colour and in grey
     "script_differs",  # one handwritten, the other typed or printed
-    "topic_alike",  # about the same things, by a small embedding model (meaning.py)
+    "topic_alike",  # about the same things, by an embedding model (meaning.py; none yet)
     "folder_shared",  # found in the same folder: up to 1 for a folder about one document's
     # size, less for a bigger one, nothing for a folder everything is scanned into (folder_says)
     "folder_differs",  # found in different folders

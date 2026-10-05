@@ -165,19 +165,15 @@ def test_a_fitted_group_confidence_is_used_when_there_is_one(monkeypatch):
     assert rule.confidence > 1
 
 
-def test_pages_about_the_same_things_are_alike(monkeypatch):
-    from lindley.assembler import model
-
-    vectors = {"mine": (1.0, 0.0), "shaft": (0.8, 0.6), "quilt": (0.0, 1.0)}
-    monkeypatch.setattr(model, "encode", lambda texts: [vectors[t.split()[0]] for t in texts])
-    pages = [_sheet(i, w + " " + BODY) for i, w in enumerate(vectors, 1)]
-    weigh_terms(pages)
-    assert pair(pages[0], pages[1]).features["topic_alike"] == pytest.approx(1.0)  # cosine 0.8
-    assert pair(pages[0], pages[2]).features["topic_alike"] == 0.0
-
-
-def test_without_the_model_pages_have_no_topic():
+def test_pages_about_the_same_things_are_alike():
     from lindley.assembler import meaning
 
-    assert meaning.encode(["anything"]) == [None]  # the tests turn the model off
+    vectors = {"mine": (1.0, 0.0), "shaft": (0.8, 0.6), "quilt": (0.0, 1.0)}
+    pages = [_sheet(i, w + " " + BODY) for i, w in enumerate(vectors, 1)]
+    weigh_terms(pages)
+    assert pair(pages[0], pages[1]).features["topic_alike"] == 0.0  # no vectors: not measured
+    for p, v in zip(pages, vectors.values(), strict=True):
+        p.topic = v
+    assert pair(pages[0], pages[1]).features["topic_alike"] == pytest.approx(1.0)  # cosine 0.8
+    assert pair(pages[0], pages[2]).features["topic_alike"] == 0.0
     assert meaning.alike(None, (1.0,)) is None

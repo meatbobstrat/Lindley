@@ -30,14 +30,6 @@ class MemoryKeyring(KeyringBackend):
 
 
 @pytest.fixture(autouse=True)
-def no_embedding_model(monkeypatch):
-    """Tests never download or load the embedding model, even where it's installed."""
-    from lindley.assembler import meaning
-
-    monkeypatch.setattr(meaning, "enabled", False)
-
-
-@pytest.fixture(autouse=True)
 def no_activity_left():
     """What the AI was doing is kept for the whole process: each test starts with none."""
     from lindley import activity

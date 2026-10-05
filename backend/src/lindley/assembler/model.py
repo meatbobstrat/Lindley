@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from lindley.assembler.clues import PageClues, page_clues, text_lines
 from lindley.assembler.layout import Layout, page_layout
-from lindley.assembler.meaning import Vector, encode
+from lindley.assembler.meaning import Vector
 from lindley.assembler.terms import Library, page_terms, weigh
 
 
@@ -45,7 +45,7 @@ class Page:
     layout: Layout | None = field(init=False)
     # Rare words, weighed against the other pages being sorted (see weigh_terms)
     terms: dict[str, float] = field(init=False, default_factory=dict)
-    topic: Vector | None = field(init=False, default=None)  # what it's about (meaning.py)
+    topic: Vector | None = field(init=False, default=None)  # what it's about: none yet (meaning.py)
 
     def __post_init__(self) -> None:
         self.clues = page_clues(
@@ -80,12 +80,9 @@ class Page:
 
 def weigh_terms(pages: list[Page], library: Library | None = None) -> None:
     """Get pages ready to compare: weigh each page's words by how rare they are (in the whole
-    library when it's given, else among these pages), and say what each is about, when there's
-    a model for that."""
+    library when it's given, else among these pages)."""
     for p, v in zip(pages, weigh([page_terms(p.text) for p in pages], library), strict=True):
         p.terms = v
-    for p, t in zip(pages, encode([p.text for p in pages]), strict=True):
-        p.topic = t
 
 
 @dataclass

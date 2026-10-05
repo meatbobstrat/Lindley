@@ -5,9 +5,8 @@ python scripts/bench_meaning.py --real lindley.db --models embeddinggemma
 
 For each page of a real answer key (lindley.assembler.bench.real_answers), the page most like it
 among the others is found, and the report says how often that page is from its own document:
-by rare words (lindley.assembler.terms), by the small static model Lindley can use
-(lindley.assembler.meaning, when `lindley[embed]` is installed), and by each embedding model
-named, called through the local connector's `embed` (an Ollama on this computer by default).
+by rare words (lindley.assembler.terms), and by each embedding model named, called through the
+local connector's `embed` (an Ollama on this computer by default).
 Also, how far apart the scores are: the average of each page's best score from its own
 document less its best from any other (higher separates better; scores differ in scale from
 one way to another, so compare the counts first).
@@ -21,7 +20,6 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from lindley.assembler import meaning
 from lindley.assembler.bench import arrange, load_real, real_answers
 from lindley.assembler.model import weigh_terms
 from lindley.assembler.run import library_terms, load_inbox
@@ -71,10 +69,6 @@ def main() -> None:
     n = len(pages)
     print(f"{len(set(doc))} documents, {n} pages")
     judge("rare words", n, doc, lambda i, j: overlap(pages[i].terms, pages[j].terms)[0], took)
-    if meaning.available() and pages[0].topic is not None:
-        judge(meaning.MODEL, n, doc, lambda i, j: meaning.alike(pages[i].topic, pages[j].topic), 0)
-    else:
-        print(f"{meaning.MODEL:>24}: not installed (pip install -e .[embed])")
     for model in a.models.split(","):
         embedder = build_provider(ProviderConfig(type="local", base_url=a.url), "embed", model)
         embedder.embed([pages[0].text])  # load it

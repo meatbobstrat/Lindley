@@ -405,7 +405,7 @@ and you can ask it about them. All of it from a one-click install.
 - [ ] Advanced settings (hidden from standard users): an interface for creating custom connectors. They're files too, built the same way as the built-in ones
 - [ ] Settings lists the models each AI offers (each library can list them), so the defaults
   can't go out of date
-- [ ] AI spending: a monthly limit, and the cost of each call
+- [x] AI spending: a monthly limit, and the tokens and estimated cost of each call, shown in Settings
 - [ ] Suggest groups of pages Lindley isn't sure of (typescripts, notes) for a person to confirm
 - [ ] Local AI models for intake, tuned on real scans. Small models were measured on real scans
   (design/database.md, "Local models"): none makes intake quicker, and Tesseract stays for typed

@@ -24,7 +24,8 @@
     (fitting the weights). Benches: `scripts/bench_assembler.py` (made-up, or `--real DB` with
     assembled PDFs as the answer key) and `scripts/fit_assembler.py`. `search/`: stub for now
   - `providers/allowance.py`: when an AI may be called on its own (`allow`, `daily_limit`);
-    every call is recorded in `ai_calls`
+    every call is recorded in `ai_calls`, with its tokens (`throttle.metered`) and estimated
+    cost (`providers/prices.py`, list prices by model id: update it when prices change)
   - `duplicates/`: `detect.py` (pages scanned twice, found by text), `resolve.py` (keep a copy or
     document, not duplicates). API in `api/duplicates.py`; page images in `api/pages.py`
   - `export/`: searchable PDFs. `textlayer.py` (word boxes; other readings aligned to Tesseract's),

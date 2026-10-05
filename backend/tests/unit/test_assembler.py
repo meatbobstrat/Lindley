@@ -6,7 +6,7 @@ import pytest
 
 from lindley.assembler import assemble
 from lindley.assembler.ai import refine
-from lindley.assembler.bench import TruePage, load, make_batch, score
+from lindley.assembler.bench import TruePage, load, make_batch, proposed_groups, score
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page
 from lindley.assembler.run import load_inbox
@@ -211,6 +211,18 @@ def test_a_group_the_ai_is_less_sure_of_is_suggested_and_marked_as_its(conn):
     assert report.documents_created == 0 and report.inbox_left == 2
     [s] = open_suggestions(conn, "group_pages")
     assert s["confidence"] == 65 and json.loads(s["payload"])["checked_by_ai"] is True
+
+
+def test_proposed_groups_are_judged_against_the_answer_key(conn):
+    truth = load(conn, pages(LETTER + [LAST]) + pages(AMBIGUOUS, "notes"))
+    a, b = (pid for pid, tp in truth.items() if tp.doc == "notes")
+    reply = {"pages": [a, b], "name": "Farm notes", "confidence": 65, "reasons": ["Farm"]}
+    assemble(conn, AI_ON, chat=Scripted(json.dumps({"documents": [reply], "unplaced": []})))
+    groups = sorted(proposed_groups(conn, truth), key=lambda g: g.made)
+    assert [(g.made, g.by_ai, g.pure, g.exact) for g in groups] == [
+        (False, True, True, True),  # the AI's hint
+        (True, False, True, True),  # the letter
+    ]
 
 
 def test_without_ai_the_same_pages_wait_in_the_inbox(conn):

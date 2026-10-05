@@ -436,6 +436,17 @@ So `review_below` is now 80, the lowest bar where the median error is at most 0.
 
 The same bar applies to an AI's reading, whose confidence is the share of words it didn't mark unsure (`marked_confidence`). At 80, a reading with up to one word in five marked passes review, but the marked words stay marked in its text. Of Claude's 48 readings, only the two shortest (86 and 89%) pass now and didn't at 90.
 
+**The bars against the answer key** (`bench_assembler.py --real lindley.db --sweep`, rules only, no AI). The dev library's 23 sorted folders (147 pages) are fed in again, 10 times in each order and filing habit, and every group Lindley proposed is judged: pure (one document's pages) and exact (all of them).
+
+| Confidence | Made or hinted | One folder | A folder each | Mixed |
+|---|---|---|---|---|
+| 90–100 | documents made | none | 601, all exact | 317, all exact |
+| 75–89 | documents made | 21, 5 pure | 14, all pure, none whole | 24, 14 pure |
+| 60–74 | "Do these go together?" | 115, 85–93% pure in scan order, 0% shuffled | none | 99, 86–92% pure in scan order |
+| 45–59 | "Do these go together?" | 405, 77–81% pure in scan order, 54% exact at best | 52, all pure, none whole | 164, 77–81% pure in scan order |
+
+What Lindley is 90% sure of on its own is a whole folder that looks like one document's, and those were always right. Below that, the rules make wrong documents: with every scan in one folder, 16 of the 21 documents made at 75–89% mixed pages of two documents. So `group_at` 75 is too low for groups the rules make without a folder to go on. Shuffled scans, fed in no order, defeat the rules' hints altogether.
+
 ## Duplicates
 
 The same page is often scanned more than once, sometimes with different settings: another dpi, colour or grey, a different exposure, more or less margin. That changes every pixel and the file's hash, but not the words. So duplicates are found by their text (`lindley.duplicates.detect`), checked before the assembler runs:

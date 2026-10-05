@@ -354,6 +354,54 @@ def score(conn: sqlite3.Connection, truth: dict[int, TruePage]) -> Score:
     )
 
 
+# Confidence bands bench_assembler.py --sweep reports groups by, each from its number up to the
+# one before: so the bars (assembler.group_at, offer_at, hint_at) can be checked against them.
+BANDS = (90, 75, 60, 45, 0)
+
+
+@dataclass
+class Proposed:
+    """A group the assembler proposed: a document it made, or a "Do these go together?" hint."""
+
+    confidence: float
+    made: bool  # a document Lindley made; else a hint
+    by_ai: bool  # the AI grouped them
+    pure: bool  # every page from one true document
+    exact: bool  # every page of that document, and only those
+
+
+def proposed_groups(conn: sqlite3.Connection, truth: dict[int, TruePage]) -> list[Proposed]:
+    """Every document Lindley made and every open "Do these go together?" hint, judged against
+    the answer key."""
+    real = {pid: tp.doc for pid, tp in truth.items() if tp.kind not in ("blank", "notes")}
+    sizes: dict[str, int] = {}
+    for d in real.values():
+        sizes[d] = sizes.get(d, 0) + 1
+
+    def judge(ids: list[int], confidence: float, made: bool, by_ai: bool) -> Proposed:
+        docs = {real.get(i, f"single{i}") for i in ids}
+        pure = len(docs) == 1
+        exact = pure and len(ids) == sizes.get(next(iter(docs)), 0)
+        return Proposed(confidence, made, by_ai, pure, exact)
+
+    out = []
+    for r in conn.execute(
+        "SELECT d.id, d.grouping_confidence, (SELECT h.after FROM history h"
+        " WHERE h.action = 'group_pages' AND h.target_type = 'document' AND h.target_id = d.id"
+        " ORDER BY h.id LIMIT 1) AS made FROM documents d WHERE d.origin = 'lindley'"
+    ):
+        ids = [i for (i,) in conn.execute("SELECT id FROM pages WHERE document_id = ?", (r[0],))]
+        by_ai = bool(json.loads(r["made"] or "{}").get("checked_by_ai"))
+        out.append(judge(ids, r["grouping_confidence"] or 0, True, by_ai))
+    for r in conn.execute(
+        "SELECT payload, confidence FROM suggestions WHERE status = 'open' AND kind = 'group_pages'"
+    ):
+        payload = json.loads(r["payload"] or "{}")
+        by_ai = bool(payload.get("checked_by_ai"))
+        out.append(judge(payload.get("pages", []), r["confidence"], False, by_ai))
+    return out
+
+
 class OracleChat:
     """A stand-in AI that always knows the right answer. It shows the best the AI step can add,
     and exercises the whole AI path; it is not a measure of any real model."""

@@ -7,6 +7,10 @@ python scripts/bench_assembler.py --ai settings   # plus the chat AI in your set
 python scripts/bench_assembler.py --real lindley.db [--orders in_order,shuffled] [--seeds 10]
 python scripts/bench_assembler.py --habits one_folder,per_document
 
+--sweep also reports every group Lindley proposed, by its confidence: documents it made, and
+"Do these go together?" hints (the rules', and the AI's), with how many were pure (one document's
+pages) and exact (all of them). That's the check for assembler.group_at, offer_at and hint_at.
+
 --habits says how the scans are filed: all in one folder, a folder per document, or mixed (see
 HABITS in lindley.assembler.bench). Each is reported apart; the default is all of them.
 
@@ -25,14 +29,17 @@ from pathlib import Path
 
 from lindley.assembler import assemble
 from lindley.assembler.bench import (
+    BANDS,
     HABITS,
     ORDERS,
     OracleChat,
+    Proposed,
     Score,
     arrange,
     load,
     load_real,
     make_batch,
+    proposed_groups,
     real_answers,
     score,
     score_groups,
@@ -59,7 +66,7 @@ def show(conn, truth, s: Score, label: str, calls: int, asks: tuple[int, int]) -
 
 def run(
     seed: int, ai: str, verbose: bool, real=None, order: str = "", habit: str = "one_folder"
-) -> tuple[Score, int, tuple, tuple[int, int]]:
+) -> tuple[Score, int, tuple, tuple[int, int], list[Proposed]]:
     with tempfile.TemporaryDirectory() as tmp:
         db = Path(tmp) / "bench.db"
         init_db(db)
@@ -93,8 +100,9 @@ def run(
         s = score(conn, truth)
         if verbose:
             show(conn, truth, s, f"{habit} {order or 'seed'} {seed:3d}", calls, asks)
+        groups = proposed_groups(conn, truth)
         conn.close()
-        return s, calls, proposal, asks
+        return s, calls, proposal, asks, groups
 
 
 def report(
@@ -125,6 +133,26 @@ def report(
     )
 
 
+def sweep(groups: list[Proposed]) -> None:
+    """Every group proposed, by confidence band: how many, and how many pure and exact."""
+    kinds = (
+        ("made", lambda g: g.made),
+        ("hints", lambda g: not g.made and not g.by_ai),
+        ("AI hints", lambda g: not g.made and g.by_ai),
+    )
+    print("  by confidence: groups (pure, exact)")
+    for i, lo in enumerate(BANDS):
+        hi = BANDS[i - 1] if i else 101
+        band = [g for g in groups if lo <= g.confidence < hi]
+        cells = []
+        for name, want in kinds:
+            gs = [g for g in band if want(g)]
+            n = max(1, len(gs))
+            pure, exact = sum(g.pure for g in gs) / n, sum(g.exact for g in gs) / n
+            cells.append(f"{name} {len(gs)}" + (f" ({pure:.0%}, {exact:.0%})" if gs else ""))
+        print(f"    {f'{lo}-{hi - 1}':>7}: " + " | ".join(cells))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=int, default=None, help="default 30, or 10 with --real")
@@ -135,6 +163,7 @@ def main() -> None:
     ap.add_argument("--orders", default=",".join(ORDERS))
     ap.add_argument("--habits", default=",".join(HABITS))
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--sweep", action="store_true", help="groups by confidence band")
     a = ap.parse_args()
     if a.real:
         src = connect(a.real)
@@ -142,7 +171,7 @@ def main() -> None:
         print(f"{len(docs)} documents, {sum(map(len, docs))} pages, from {a.real}  AI: {a.ai}")
         for habit in a.habits.split(","):
             for order in a.orders.split(","):
-                scores, calls, proposals, asks = zip(
+                scores, calls, proposals, asks, groups = zip(
                     *(
                         run(s, a.ai, a.verbose, (src, docs), order, habit)
                         for s in range(a.seeds or 10)
@@ -150,15 +179,19 @@ def main() -> None:
                     strict=True,
                 )
                 report(f"{habit}, {order}", *map(list, (scores, calls, proposals, asks)))
+                if a.sweep:
+                    sweep([g for gs in groups for g in gs])
         src.close()
         return
     for habit in a.habits.split(","):
-        scores, calls, proposals, asks = zip(
+        scores, calls, proposals, asks, groups = zip(
             *(run(s, a.ai, a.verbose, habit=habit) for s in range(a.seeds or 30)), strict=True
         )
         report(
             f"made-up batches, {habit}, AI: {a.ai}", *map(list, (scores, calls, proposals, asks))
         )
+        if a.sweep:
+            sweep([g for gs in groups for g in gs])
 
 
 if __name__ == "__main__":

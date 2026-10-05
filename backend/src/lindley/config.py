@@ -230,5 +230,9 @@ def load_settings(path: str | Path | None = None) -> Settings:
 def save_settings(settings: Settings, path: str | Path | None = None) -> Path:
     resolved = resolve_settings_path(path)
     resolved.parent.mkdir(parents=True, exist_ok=True)
-    resolved.write_text(settings.model_dump_json(indent=2), encoding="utf-8")
+    # Written beside it, then put in its place: a crash part-way never leaves half a file,
+    # which Lindley couldn't start with
+    tmp = resolved.with_name(resolved.name + ".tmp")
+    tmp.write_text(settings.model_dump_json(indent=2), encoding="utf-8")
+    os.replace(tmp, resolved)
     return resolved

@@ -51,6 +51,19 @@ def test_round_trip(tmp_path: Path):
     assert load_settings(path) == s
 
 
+def test_saving_never_leaves_half_a_file(tmp_path: Path, monkeypatch):
+    path = tmp_path / "settings.json"
+    save_settings(Settings(move_files=True), path)
+
+    def crash(*a):
+        raise OSError("the power went")
+
+    monkeypatch.setattr("lindley.config.os.replace", crash)
+    with pytest.raises(OSError):
+        save_settings(Settings(move_files=False), path)
+    assert load_settings(path).move_files is True
+
+
 def test_example_settings_file_is_valid():
     s = load_settings(REPO_ROOT / "settings.example.json")
     assert all(s.ai.connection_for(job) in s.ai.providers for job in JOBS)

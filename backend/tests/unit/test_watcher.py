@@ -12,6 +12,7 @@ from lindley.db.database import connect, init_db
 from lindley.watcher import watcher as watcher_mod
 from lindley.watcher.watcher import FolderWatcher
 from lindley.worker.ocr.base import PageResult
+from lindley.worker.ocr.tesseract import TesseractNotFound
 from lindley.worker.pipeline import Pipeline
 
 
@@ -349,6 +350,35 @@ def test_a_scan_whose_reading_failed_is_read_when_lindley_starts_again(settings,
     assert len(later.resume()) == 1
     assert scans(settings) == [("a.png", "watched", "read")]
     assert later.resume() == []
+
+
+class TesseractMissing:
+    """Like TesseractEngine with no program to run: even asking its version raises."""
+
+    name = "tesseract"
+
+    def is_available(self):
+        return False
+
+    @property
+    def version(self):
+        raise TesseractNotFound("Tesseract isn't installed")
+
+    def recognize(self, image_path):
+        raise TesseractNotFound("Tesseract isn't installed")
+
+
+def test_without_tesseract_dropped_files_are_still_imported(settings, inbox):
+    w = make_watcher(settings, pipeline=Pipeline(settings, TesseractMissing()), poll_s=0.05)
+    w.start()
+    try:
+        (inbox / "dropped.png").write_bytes(png_bytes("ivory"))
+        deadline = time.monotonic() + 10
+        while not scans(settings) and time.monotonic() < deadline:
+            time.sleep(0.05)
+    finally:
+        w.stop()
+    assert [s[:2] for s in scans(settings)] == [("dropped.png", "watched")]
 
 
 def test_a_new_watcher_waits_for_the_old_one_to_finish(settings, inbox):

@@ -146,10 +146,17 @@ class FolderWatcher:
 
     def _run(self, folders: list[Path]) -> None:
         try:
+            # Whatever goes wrong picking up old work, new files are still watched for
             with _WORK:
                 if not self._stop.is_set():
-                    self.resume()
-            self.sweep(folders)
+                    try:
+                        self.resume()
+                    except Exception:
+                        log.exception("Picking up work cut off when Lindley closed failed")
+            try:
+                self.sweep(folders)
+            except Exception:
+                log.exception("Looking for files dropped in while Lindley was closed failed")
             while not self._stop.wait(self.poll_s):
                 with _WORK:
                     if self._stop.is_set():

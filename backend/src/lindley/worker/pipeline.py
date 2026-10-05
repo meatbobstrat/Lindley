@@ -30,7 +30,7 @@ from lindley.providers.registry import get_provider
 from lindley.providers.throttle import metered
 from lindley.worker import image as pageimage
 from lindley.worker.ocr.base import OcrEngine, PageResult, marked_confidence
-from lindley.worker.ocr.tesseract import ORIENTATION_MIN_CONF, TesseractEngine
+from lindley.worker.ocr.tesseract import ORIENTATION_MIN_CONF, TesseractEngine, TesseractNotFound
 from lindley.worker.ocr.vision import VisionEngine
 
 
@@ -355,6 +355,15 @@ class Pipeline:
         self._vision_turn = threading.Lock()
 
     @property
+    def tesseract_version(self) -> str:
+        """For transcriptions.engine_model. Its name alone when Tesseract isn't installed: then
+        reading with it fails, and says why, rather than everything that asks."""
+        try:
+            return getattr(self.tesseract, "version", self.tesseract.name)
+        except TesseractNotFound:
+            return self.tesseract.name
+
+    @property
     def vision_name(self) -> str | None:
         """The connection that reads hard pages (ai.jobs.vision)."""
         return self.settings.ai.connection_for("vision")
@@ -552,7 +561,7 @@ class Pipeline:
         changed the page. Each is done once; one cut off when Lindley closed isn't done again.
         Returns (pages checked, pages changed)."""
         checked = changed = 0
-        version = getattr(self.tesseract, "version", self.tesseract.name)
+        version = self.tesseract_version
         for r in rows:
             if stop and stop.is_set():
                 break
@@ -632,7 +641,7 @@ class Pipeline:
     ) -> None:
         """A better Tesseract reading of a page read before, turned another way: the reading in
         use if `current`, else kept beside it. In the caller's transaction."""
-        version = getattr(self.tesseract, "version", self.tesseract.name)
+        version = self.tesseract_version
         if current:
             conn.execute(
                 "UPDATE transcriptions SET is_current = 0 WHERE page_id = ? AND is_current = 1",
@@ -839,7 +848,7 @@ class Pipeline:
         if oriented is None or page["user_rotation"] or page["user_mirror"]:
             reading = self._tesseract_reading(conn, scan_id, page_id, image, rotation, dpi, flip)
             return rotation, flip, reading
-        version = getattr(self.tesseract, "version", self.tesseract.name)
+        version = self.tesseract_version
         with (
             run_step(conn, scan_id, Step.OCR, page_id=page_id, engine_version=version),
             self._upright(page_id, image, rotation, dpi, flip) as upright,
@@ -907,7 +916,7 @@ class Pipeline:
         read well, upside down too (turned round top to bottom), and keep the better only if it
         reads clearly better than as it is. Returns the rotation, whether it's mirrored, and the
         reading to use. No person has turned it: their turn is trusted (_read_any_way_up)."""
-        version = getattr(self.tesseract, "version", self.tesseract.name)
+        version = self.tesseract_version
         found = self._read_mirrored(
             page_id,
             image,
@@ -987,7 +996,7 @@ class Pipeline:
         dpi: int | None,
         flip: bool = False,
     ) -> PageResult:
-        version = getattr(self.tesseract, "version", self.tesseract.name)
+        version = self.tesseract_version
         with (
             run_step(conn, scan_id, Step.OCR, page_id=page_id, engine_version=version),
             self._upright(page_id, image, rotation, dpi, flip) as upright,
@@ -1047,7 +1056,7 @@ class Pipeline:
         blank = blank_score >= pageimage.BLANK_AT
         readings: list[tuple[str, str, PageResult]] = []  # (source, engine_model, result)
         if ocr.engine != "vision":
-            version = getattr(self.tesseract, "version", self.tesseract.name)
+            version = self.tesseract_version
             if first is None:
                 with run_step(conn, scan_id, Step.OCR, page_id=page_id, engine_version=version):
                     first = self.tesseract.recognize(image)[0]

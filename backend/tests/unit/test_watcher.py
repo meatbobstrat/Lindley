@@ -133,7 +133,7 @@ def test_the_background_watcher_picks_up_a_dropped_file(settings, inbox):
 
 def test_the_app_starts_and_stops_the_watcher(settings, inbox, tmp_path):
     app = create_app(settings, settings_path=tmp_path / "settings.json")
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://127.0.0.1") as client:
         assert client.get("/api/health").status_code == 200
         w = app.state.watcher
         assert w._thread and w._thread.is_alive()
@@ -404,7 +404,7 @@ def test_the_app_picks_up_work_cut_off_when_it_closed(settings, inbox, tmp_path)
     conn.execute("INSERT INTO intake_steps (scan_id, step, status) VALUES (1, 'split', 'running')")
     conn.commit()
     app = create_app(settings, settings_path=tmp_path / "settings.json", watch=False)
-    with TestClient(app):
+    with TestClient(app, base_url="http://127.0.0.1"):
         status = conn.execute("SELECT status FROM intake_steps").fetchone()[0]
     conn.close()
     assert status == "failed"

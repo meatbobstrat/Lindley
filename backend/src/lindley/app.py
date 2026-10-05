@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import Headers
 from starlette.exceptions import HTTPException
-from starlette.responses import Response
-from starlette.types import Scope
+from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from lindley import __version__
 from lindley.api import assembler as assembler_api
@@ -42,6 +46,44 @@ FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
 DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
+# The address the server listens on (python -m lindley --host): set for --reload, which makes
+# the app afresh on each change.
+HOST_ENV_VAR = "LINDLEY_HOST"
+LOCAL_NAMES = ["127.0.0.1", "localhost"]
+
+
+def allowed_hosts(host: str) -> list[str]:
+    """The names Lindley answers to. Listening only on this computer, only its own names: then a
+    web page can't reach Lindley by pointing a name of its own at this computer (DNS rebinding).
+    Listening on a network, any name: whoever chose that knows who can reach it."""
+    if host in LOCAL_NAMES or host.startswith("127."):
+        return sorted({*LOCAL_NAMES, host})
+    return ["*"]
+
+
+class FromLindleyOnly:
+    """Changes come only from Lindley's own pages. A browser says which page sent a request
+    (Origin); one from another site is refused, so a page a person happens to visit can't add
+    scans, undo their work or send pages to an AI. Reading isn't affected, and nor is a request
+    with no Origin (scripts, curl)."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["method"] not in ("GET", "HEAD", "OPTIONS"):
+            headers = Headers(scope=scope)
+            origin = headers.get("origin")
+            if (
+                origin is not None
+                and origin not in DEV_ORIGINS
+                and urlparse(origin).netloc != headers.get("host")
+            ):
+                refused = JSONResponse({"detail": "Only Lindley's own pages can do that"}, 403)
+                await refused(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
 
 class Frontend(StaticFiles):
     """The built frontend. It finds its pages in the browser (/inbox, /documents/5...), so an
@@ -59,10 +101,15 @@ class Frontend(StaticFiles):
 
 
 def create_app(
-    settings: Settings | None = None, settings_path: Path | None = None, watch: bool = True
+    settings: Settings | None = None,
+    settings_path: Path | None = None,
+    watch: bool = True,
+    host: str | None = None,
 ) -> FastAPI:
-    """`watch=False` leaves the folder watcher off (tests, or serving without intake)."""
+    """`watch=False` leaves the folder watcher off (tests, or serving without intake). `host`:
+    the address the server listens on (default 127.0.0.1)."""
     settings = settings or load_settings(settings_path)
+    host = host or os.environ.get(HOST_ENV_VAR) or LOCAL_NAMES[0]
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -98,6 +145,8 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(FromLindleyOnly)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts(host))  # outermost
 
     for router in (
         health.router,

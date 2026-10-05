@@ -84,7 +84,7 @@ class Draft(BaseModel):
 
 
 @router.post("/connections/test")
-def try_connection(draft: Draft) -> dict:
+def try_connection(draft: Draft, request: Request) -> dict:
     """Try the connection: a cheap call that checks the address, the key and the model."""
     connector = connectors().get(draft.connection.type)
     if connector is None:
@@ -92,7 +92,11 @@ def try_connection(draft: Draft) -> dict:
     info, cfg = connector.info, draft.connection
     job = draft.job or next(j for j in JOBS if j in info.jobs)
     model = cfg.model if job != "embed" and cfg.model else info.default_models.get(job)
-    key = (draft.key or "").strip() or cfg.api_key(draft.name)
+    # A saved key only goes where it was saved for: not to an address changed since
+    saved: Settings = request.app.state.settings
+    was = saved.ai.providers.get(draft.name) if draft.name else None
+    name = draft.name if was and (was.type, was.base_url) == (cfg.type, cfg.base_url) else None
+    key = (draft.key or "").strip() or cfg.api_key(name)
     if info.needs_key and not key:
         return {"ok": False, "message": f"Paste your API key from {info.company or info.label}."}
     try:

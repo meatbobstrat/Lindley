@@ -95,3 +95,13 @@ def test_trying_a_connection_looks_for_the_jobs_model(client, monkeypatch, job, 
         "/api/connections/test", json={"connection": {"type": "fake", "model": "m"}, "job": job}
     )
     assert seen == [model]
+
+
+def test_a_saved_key_only_goes_where_it_was_saved_for(client, keys):
+    current = client.get("/api/settings").json()
+    current["ai"]["providers"]["claude"] = {"type": "anthropic"}
+    assert client.put("/api/settings", json=current).status_code == 200
+    client.put("/api/connections/claude/key", json={"key": "sk-ant-secret"})
+    elsewhere = {"type": "anthropic", "base_url": "https://evil.example"}
+    r = client.post("/api/connections/test", json={"connection": elsewhere, "name": "claude"})
+    assert r.json() == {"ok": False, "message": "Paste your API key from Anthropic."}

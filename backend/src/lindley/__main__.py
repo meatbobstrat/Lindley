@@ -10,7 +10,7 @@ from pathlib import Path
 import uvicorn
 from uvicorn.config import LOGGING_CONFIG
 
-from lindley.app import create_app
+from lindley.app import HOST_ENV_VAR, create_app
 from lindley.config import SETTINGS_ENV_VAR
 
 DEFAULT_HOST = "127.0.0.1"
@@ -37,6 +37,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.reload:  # the server is started afresh on each change, so it's named, not made
         if args.settings:
             os.environ[SETTINGS_ENV_VAR] = str(args.settings)
+        os.environ[HOST_ENV_VAR] = args.host
         uvicorn.run(
             "lindley.app:create_app",
             factory=True,
@@ -47,7 +48,7 @@ def main(argv: list[str] | None = None) -> None:
             log_config=log_config(),
         )
         return
-    app = create_app(settings_path=args.settings)
+    app = create_app(settings_path=args.settings, host=args.host)
     uvicorn.run(app, host=args.host, port=args.port, log_config=log_config())
 
 

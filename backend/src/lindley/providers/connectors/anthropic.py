@@ -4,6 +4,7 @@ no embeddings."""
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Literal
 
 import anthropic
 
@@ -19,9 +20,9 @@ INFO = ConnectorInfo(
     company="Anthropic",
     jobs=frozenset({"vision", "assemble", "chat"}),
     default_models={
-        "vision": "claude-opus-5",
-        "assemble": "claude-opus-5",
-        "chat": "claude-opus-5",
+        "vision": "claude-opus-5-5",
+        "assemble": "claude-opus-5-5",
+        "chat": "claude-opus-5-5",
     },
     default_base_url="https://api.anthropic.com",
     needs_key=True,
@@ -34,8 +35,12 @@ DECLINED = "Claude declined to answer this"
 # recommends for that kind of refusal, in the same call, instead of returning the refusal.
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 FALLBACK_MODELS = frozenset(
-    {"claude-opus-5", "claude-opus-5-5", "claude-fable-5", "claude-fable-5-1"}
+    {"claude-opus-5", "claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5", "claude-fable-5-1"}
 )
+# How hard the model thinks: low, medium, high, xhigh or max. None: the model's own default
+# (medium on Opus 5.5). Thinking can't be turned off on the newest models; less effort is the
+# way to spend fewer tokens on it.
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 
 def _finished(stop_reason: str | None) -> None:
@@ -60,8 +65,10 @@ class Provider:
         model: str | None = None,
         api_key: str | None = None,
         http_client=None,  # an httpx2.Client, for tests
+        effort: Effort | None = None,
     ) -> None:
         self.model = model or INFO.default_models["chat"]
+        self.effort = effort
         # With no key there's no client: the library would use ANTHROPIC_API_KEY instead.
         self._client = (
             anthropic.Anthropic(
@@ -87,6 +94,8 @@ class Provider:
         params: dict = {"model": self.model, "max_tokens": MAX_TOKENS, "messages": messages}
         if system:
             params["system"] = system
+        if self.effort:
+            params["output_config"] = {"effort": self.effort}
         return params
 
     def _create(self, system: str | None, messages: list[dict]) -> str:

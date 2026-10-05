@@ -406,8 +406,8 @@ def test_busy_says_so_and_how_long_to_wait():
 # Anthropic: the Messages API, through Anthropic's library
 
 
-def claude(server, model="claude-opus-5", key="k"):
-    return anthropic.Provider(model=model, api_key=key, http_client=server.client())
+def claude(server, model="claude-opus-5-5", key="k", effort=None):
+    return anthropic.Provider(model=model, api_key=key, http_client=server.client(), effort=effort)
 
 
 def message(*blocks, stop="end_turn"):
@@ -446,6 +446,13 @@ def test_anthropic_chat():
         ],
     }
     assert "anthropic-beta" not in req.headers
+
+
+def test_anthropic_effort_when_asked():
+    server = Server(message(text("ok")))
+    claude(server, effort="low").chat(TALK)
+    assert server.body["output_config"] == {"effort": "low"}
+    assert anthropic.INFO.default_models["vision"] == "claude-opus-5-5"
 
 
 def test_anthropic_falls_back_on_a_refusal_where_the_model_can():
@@ -538,14 +545,14 @@ def test_anthropic_out_of_room_is_a_failed_call():
 
 def test_anthropic_check():
     model = {
-        "id": "claude-opus-5",
+        "id": "claude-opus-5-5",
         "type": "model",
-        "display_name": "Claude Opus 5",
+        "display_name": "Claude Opus 5.5",
         "created_at": "2026-01-01T00:00:00Z",
     }
     server = Server(httpx2.Response(200, json=model))
-    assert claude(server).check() == "Connected. Anthropic has Claude Opus 5."
-    assert str(server.requests[0].url) == "https://api.anthropic.com/v1/models/claude-opus-5"
+    assert claude(server).check() == "Connected. Anthropic has Claude Opus 5.5."
+    assert str(server.requests[0].url) == "https://api.anthropic.com/v1/models/claude-opus-5-5"
 
 
 def test_pages_must_be_an_image_every_ai_takes():

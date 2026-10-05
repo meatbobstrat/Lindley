@@ -72,7 +72,7 @@ def test_registry_builds_each_type():
     assert isinstance(build_provider(ProviderConfig(type="fake")), FakeProvider)
     local = build_provider(ProviderConfig(type="local", model="x"))
     assert local.base_url == "http://localhost:11434/v1" and local.model == "x"
-    assert build_provider(ProviderConfig(type="anthropic")).model == "claude-opus-5"
+    assert build_provider(ProviderConfig(type="anthropic")).model == "claude-opus-5-5"
     with pytest.raises(ProviderError, match="Unknown"):
         build_provider(ProviderConfig(type="nobody"))
 
@@ -104,7 +104,7 @@ def test_each_job_gets_its_connection_and_model():
     assert get_provider(ai, "chat").model == "qwen2.5vl"
     assert get_provider(ai, "embed").model == "nomic-embed-text"  # the connector's default
     ai.providers["claude"].model = None
-    assert get_provider(ai, "vision").model == "claude-opus-5"
+    assert get_provider(ai, "vision").model == "claude-opus-5-5"
 
 
 def test_get_provider_errors():

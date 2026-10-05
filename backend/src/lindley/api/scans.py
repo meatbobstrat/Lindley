@@ -8,6 +8,7 @@ The folder watcher then reads them, and sorts the Inbox once things settle.
 
 from __future__ import annotations
 
+import logging
 import shutil
 import uuid
 from pathlib import Path
@@ -19,6 +20,7 @@ from lindley.config import Settings
 from lindley.worker.intake import import_file, needs_reading
 
 router = APIRouter(prefix="/scans", tags=["scans"])
+log = logging.getLogger(__name__)
 
 
 @router.post("")
@@ -32,22 +34,29 @@ def add_scans(files: list[UploadFile], request: Request, conn: Conn) -> dict:
     try:
         for i, f in enumerate(files):
             name = Path(f.filename or "scan").name or "scan"
-            path = drop / str(i) / name  # two files of the same name are both taken
-            path.parent.mkdir()
-            with path.open("wb") as out:
-                shutil.copyfileobj(f.file, out)
-            r = import_file(conn, taking, path, origin="added")
-            if r.status == "new":
-                with conn:  # the person's own file stays where it was: a copy
-                    conn.execute(
-                        "UPDATE scans SET import_mode = 'copy', source_path = ? WHERE id = ?",
-                        (name, r.scan_id),
-                    )
-            if needs_reading(conn, r):
-                to_read.append(r.scan_id)
-            added.append({"file": name, "status": r.status, "pages": r.pages, "error": r.error})
+            try:  # one file that can't be taken doesn't stop the others
+                path = drop / str(i) / name  # two files of the same name are both taken
+                path.parent.mkdir()
+                with path.open("wb") as out:
+                    shutil.copyfileobj(f.file, out)
+                r = import_file(conn, taking, path, origin="added")
+                if r.status == "new":
+                    with conn:  # the person's own file stays where it was: a copy
+                        conn.execute(
+                            "UPDATE scans SET import_mode = 'copy', source_path = ? WHERE id = ?",
+                            (name, r.scan_id),
+                        )
+                if needs_reading(conn, r):
+                    to_read.append(r.scan_id)
+                added.append({"file": name, "status": r.status, "pages": r.pages, "error": r.error})
+            except Exception as e:  # noqa: BLE001 - reported for that file
+                log.exception("Couldn't add %s", name)
+                if conn.in_transaction:
+                    conn.rollback()
+                added.append({"file": name, "status": "failed", "pages": 0, "error": str(e)})
     finally:
         shutil.rmtree(drop, ignore_errors=True)
-    if to_read and (watcher := getattr(request.app.state, "watcher", None)) is not None:
-        watcher.read_later(to_read)
+        # Those taken are read, even if a later one failed
+        if to_read and (watcher := getattr(request.app.state, "watcher", None)) is not None:
+            watcher.read_later(to_read)
     return {"added": added, "reading": len(to_read)}

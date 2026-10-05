@@ -307,6 +307,31 @@ def test_search_finds_words_on_the_reading_in_use(client, settings, tmp_path):
     assert client.get("/api/search", params={"q": '"("'}).json()["results"] == []
 
 
+def test_one_scan_that_cant_be_added_doesnt_stop_the_others(client, settings, monkeypatch):
+    db(client, settings)
+    from lindley.api import scans
+
+    real = scans.import_file
+
+    def flaky(conn, s, path, origin):
+        if path.name == "bad.png":
+            raise RuntimeError("database is locked")
+        return real(conn, s, path, origin=origin)
+
+    monkeypatch.setattr(scans, "import_file", flaky)
+    files = []
+    for name, color in (("bad.png", "white"), ("good.png", "ivory")):
+        buf = io.BytesIO()
+        Image.new("RGB", (300, 400), color).save(buf, "PNG")
+        files.append(("files", (name, buf.getvalue(), "image/png")))
+    body = client.post("/api/scans", files=files).json()
+    assert [(a["file"], a["status"]) for a in body["added"]] == [
+        ("bad.png", "failed"),
+        ("good.png", "new"),
+    ]
+    assert body["added"][0]["error"] == "database is locked"
+
+
 def test_adding_scans_imports_them_into_the_inbox(client, settings):
     db(client, settings)
     buf = io.BytesIO()

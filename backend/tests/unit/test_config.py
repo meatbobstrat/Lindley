@@ -31,7 +31,7 @@ def test_out_of_the_box_there_is_no_ai():
 
 def test_reading_and_review_settings_keep_to_what_settings_offers():
     s = Settings()
-    assert (s.ocr.review_below, s.ocr.confidence_threshold, s.add_mode) == (90, 70, "ask")
+    assert (s.ocr.review_below, s.ocr.confidence_threshold, s.add_mode) == (80, 70, "ask")
     for bad in ({"review_below": 49}, {"review_below": 100}, {"confidence_threshold": 19}):
         with pytest.raises(ValueError):
             Settings.model_validate({"ocr": bad})

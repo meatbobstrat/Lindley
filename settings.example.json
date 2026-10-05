@@ -11,7 +11,7 @@
     "tesseract_path": null,
     "languages": ["eng"],
     "confidence_threshold": 70,
-    "review_below": 90,
+    "review_below": 80,
     "vision_max_side": 2000,
     "workers": null
   },

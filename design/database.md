@@ -412,6 +412,28 @@ What it showed needs doing:
 - **Is 75% the right bar for groups the AI checked?** Its 60–74% groups, with its reasons, may be worth a one-click accept.
 - **Mirror-image scans.** Lindley could find them and turn them round, the way it turns upside-down pages.
 
+### Confidence bars
+
+The bars were checked against the same test (October 2026). For sorting, the answer key is the folders a person sorted the test scans into, so loose scans can't be checked.
+
+| Bar | Was | What the test showed | Now |
+|---|---|---|---|
+| `ocr.confidence_threshold`: send a page to the reading AI | 70 | Below 70, Tesseract's error against Claude is flat at about 0.2 (0.27 at 55, 0.20 at 67): its confidence says little about how wrong it is. Claude read all 48 pages well. | 70 |
+| `ocr.review_below` | 90 | It held 339 of the library's pages, nearly all of Tesseract's: a queue that tells a person little. See below. | 80 |
+| `assembler.group_at`: make a document | 75 | All 18 documents the rules made (76–90%) hold pages from one folder, as do Claude's 4 on folder pages (80–92%). | 75 |
+
+**Tesseract above 70.** Fifteen pages, five from each band, were read by Claude as the reference (`bench_reading.py --reference anthropic --pages ...`, 52¢). Here, unlike below 70, Tesseract's confidence does follow its error:
+
+| Tesseract confidence | Character error rate against Claude |
+|---|---|
+| 70–79 | median 0.16 (0.11–0.27) |
+| 80–89 | median 0.09 (0.03–0.14); 85–89: 0.03–0.09 |
+| 90–96 | median 0.02 (0.00–0.03) |
+
+So `review_below` is now 80, the lowest bar where the median error is at most 0.10: a page above it reads well enough for search. 128 pages wait for review instead of 339.
+
+The same bar applies to an AI's reading, whose confidence is the share of words it didn't mark unsure (`marked_confidence`). At 80, a reading with up to one word in five marked passes review, but the marked words stay marked in its text. Of Claude's 48 readings, only the two shortest (86 and 89%) pass now and didn't at 90.
+
 ## Duplicates
 
 The same page is often scanned more than once, sometimes with different settings: another dpi, colour or grey, a different exposure, more or less margin. That changes every pixel and the file's hash, but not the words. So duplicates are found by their text (`lindley.duplicates.detect`), checked before the assembler runs:

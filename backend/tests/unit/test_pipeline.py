@@ -736,7 +736,7 @@ def test_a_clear_vision_reading_is_used_and_one_with_doubts_waits_for_review(con
     pipe.process_scan(conn, clear)
     pipe.process_scan(conn, doubtful)
     pipe.read_waiting(conn, [page_row(conn, clear)["id"]])
-    pipe.vision = Says("Dear Sister [?], we are well, and Uncle Zebulon [?] sends love.")
+    pipe.vision = Says("Dear Sister [?], we are well [?], and Uncle Zebulon [?] sends love.")
     pipe.read_waiting(conn, [page_row(conn, doubtful)["id"]])
     review = settings.ocr.review_below
     states = {
@@ -744,7 +744,7 @@ def test_a_clear_vision_reading_is_used_and_one_with_doubts_waits_for_review(con
     }
     assert states == {
         "a.png": ("vision", 100, "ok"),
-        "b.png": ("vision", 82, "review"),  # 2 unsure of 11 words
+        "b.png": ("vision", 75, "review"),  # 3 unsure of 11 words
     }
 
 

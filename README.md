@@ -79,7 +79,7 @@ watched folders ─► watcher ─► intake ───────────�
      couldn't sort, each with the rules' own guess at the documents. Send one, or all.
    - **What you see.** Confident groups appear under In progress with italic, suggested names
      and the reasons behind them.
-3. **Review.** Any page read with less than 90% confidence (adjustable) goes to *Needs your
+3. **Review.** Any page read with less than 80% confidence (adjustable) goes to *Needs your
    review*, so a person checks it before it's trusted for search and chat. AIs don't say how
    sure they are, so a vision model's confidence is the share of words it didn't mark as
    unsure or illegible. A reading that's mostly `[illegible]` doesn't replace Tesseract's.
@@ -300,7 +300,7 @@ file in these places, in order:
 | `db_path` | SQLite database location. It's kept outside the library, so back up both |
 | `move_files` | `true` moves scans out of watched folders; `false` copies them and leaves the originals |
 | `add_mode` | Files added with Add scans… in the Inbox: `ask` each time (the default), or always `copy` or `move` them |
-| `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this (20 to 95; 70), a page needs the vision model. `review_below`: a page whose reading falls below this (50 to 99; 90) waits for a person's review. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000). `workers`: scans read at once; Tesseract uses one core a page, so a few side by side finish sooner (`null`: one fewer than the computer's cores, at most 3) |
+| `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this (20 to 95; 70), a page needs the vision model. `review_below`: a page whose reading falls below this (50 to 99; 80) waits for a person's review. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000). `workers`: scans read at once; Tesseract uses one core a page, so a few side by side finish sooner (`null`: one fewer than the computer's cores, at most 3) |
 | `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" or "Do these go together?" hint (45). `ai_band`: which uncertain breaks may be sent to the AI. `ask_ai_after_days`: when the sorting AI may run on its own, how long pages wait for a person first (0: at once) |
 | `ai.providers` | Named AI connections. `type` is a connector (`local`, `anthropic`, `openai`, `google`, `openai_compat`), with `base_url` and `model` where needed. `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some). `daily_limit` and `monthly_limit` cap the calls it makes on its own. `per_minute` and `at_once` throttle every call |
 | `ai.jobs` | Which connection does each job: `vision` (reading hard pages), `assemble` (sorting pages into documents), `chat` (Ask Lindley) and `embed` (finding related pages), each with an optional `model` of its own. Out of the box there are none |

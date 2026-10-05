@@ -16,7 +16,7 @@ from lindley.providers.base import JOBS, Job
 APP_NAME = "Lindley"
 SETTINGS_ENV_VAR = "LINDLEY_SETTINGS"
 SETTINGS_FILENAME = "settings.json"
-REVIEW_BELOW = 90  # ocr.review_below out of the box
+REVIEW_BELOW = 80  # ocr.review_below out of the box: see design/database.md, "Confidence bars"
 
 
 class OcrSettings(BaseModel):

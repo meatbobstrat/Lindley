@@ -257,7 +257,7 @@ export function Tree({ onGo }: { onGo: () => void }) {
         className={`t-item t-review${on('/review') ? ' is-active' : ''}`}
         aria-current={on('/review') ? 'page' : undefined}
         onClick={() => go('/review')}
-        data-tip={`Pages Lindley read with less than ${settings?.ocr.review_below ?? 90}% confidence, for you to check before they’re trusted for search and chat.`}
+        data-tip={`Pages Lindley read with less than ${settings?.ocr.review_below ?? 80}% confidence, for you to check before they’re trusted for search and chat.`}
       >
         <Icon name={c?.review ? 'flag' : 'checkc'} />
         <span className="t-name">Needs your review</span>

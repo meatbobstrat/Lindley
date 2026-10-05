@@ -112,7 +112,9 @@ export function TextPanel({
       </div>
       {state}
       <div
-        key={`${page.id}-${page.readings}-${page.state}`}
+        // Made afresh for a new reading, or once checked (the unsure marks go), but not when
+        // the state changes meanwhile (an AI starts on it): what's being typed would be lost
+        key={`${page.id}-${page.readings}-${page.state === 'checked'}`}
         className="tx"
         ref={textRef}
         contentEditable={!readonly}

@@ -12,6 +12,7 @@ an undoable decision: reopening is how to take it back.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -23,6 +24,8 @@ from lindley.config import REVIEW_BELOW
 from lindley.db.progress import pages_to_review
 from lindley.export.pdf import PdfInfo, PdfPage, build_pdf
 from lindley.export.textlayer import page_text
+
+log = logging.getLogger(__name__)
 
 EXPORTS = "Exports"
 MAX_NAME = 120
@@ -96,8 +99,14 @@ def export_document(
     folder.mkdir(parents=True, exist_ok=True)
     dest = _destination(conn, folder, doc_id, doc["name"])
     tmp = dest.with_name(dest.name + ".tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, dest)
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, dest)
+    except PermissionError as e:  # on Windows, open in a PDF viewer
+        tmp.unlink(missing_ok=True)
+        raise ValueError(
+            f"{dest.name} is open in another program. Close it there, and export again."
+        ) from e
 
     page_ids = [r["id"] for r in rows]
     with conn:
@@ -126,7 +135,10 @@ def export_document(
         )
     for old in before:
         if old != dest and old.parent == folder and not _held_by_another(conn, old, doc_id):
-            old.unlink(missing_ok=True)
+            try:
+                old.unlink(missing_ok=True)
+            except OSError as e:  # open in a viewer, say: it's exported all the same
+                log.warning("Couldn't remove the earlier PDF %s: %s", old, e)
 
     at = conn.execute("SELECT exported_at FROM exports WHERE id = ?", (export_id,)).fetchone()[0]
     return Exported(

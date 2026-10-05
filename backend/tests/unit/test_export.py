@@ -148,6 +148,20 @@ def test_a_document_still_being_read_or_without_pages_isnt_exported(conn, settin
     )
 
 
+def test_a_pdf_open_in_a_viewer_is_said_so(conn, settings, tmp_path, monkeypatch):
+    doc = document(conn)
+    page(conn, tmp_path, doc, 1, "Dear Sister")
+
+    def locked(*a):
+        raise PermissionError(13, "The process cannot access the file")
+
+    monkeypatch.setattr("lindley.export.document.os.replace", locked)
+    with pytest.raises(ValueError, match="open in another program"):
+        export_document(conn, settings.library_dir, doc)
+    assert not list(settings.library_dir.rglob("*.tmp"))
+    assert conn.execute("SELECT status FROM documents").fetchone()[0] == "progress"
+
+
 def test_a_missing_scan_stops_the_export(conn, settings, tmp_path):
     doc = document(conn)
     pid = page(conn, tmp_path, doc, 1, "Dear Sister")

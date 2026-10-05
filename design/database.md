@@ -441,7 +441,7 @@ The same bar applies to an AI's reading, whose confidence is the share of words 
 | Confidence | Made or hinted | One folder | A folder each | Mixed |
 |---|---|---|---|---|
 | 90–100 | documents made | none | 601, all exact | 317, all exact |
-| 75–89 | documents made | 21, 5 pure | 14, all pure, none whole | 24, 14 pure |
+| 75–89 | documents made | 21, 5 pure | 14, all pure, none whole | 24, 13 pure |
 | 60–74 | "Do these go together?" | 115, 85–93% pure in scan order, 0% shuffled | none | 99, 86–92% pure in scan order |
 | 45–59 | "Do these go together?" | 405, 77–81% pure in scan order, 54% exact at best | 52, all pure, none whole | 164, 77–81% pure in scan order |
 

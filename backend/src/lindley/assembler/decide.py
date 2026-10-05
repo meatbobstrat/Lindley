@@ -56,9 +56,9 @@ def _move(conn: sqlite3.Connection, batch: int, action: str, pid: int, sql: str,
 def accept(conn: sqlite3.Connection, suggestion_id: int, batch: int | None = None) -> Accepted:
     """Make the change a hint proposes: in `batch` if given (several accepted as one change to
     undo), else a batch of its own."""
-    s = _open(conn, suggestion_id)
-    pages = _pages(s)
-    with conn:
+    with history.deciding(conn):
+        s = _open(conn, suggestion_id)
+        pages = _pages(s)
         _in_inbox(conn, pages)
         batch = batch or history.new_batch(conn)
         doc = s["document_id"]
@@ -137,10 +137,10 @@ def _add(conn: sqlite3.Connection, batch: int, s: sqlite3.Row, pages: list[int])
 def dismiss(conn: sqlite3.Connection, suggestion_id: int) -> None:
     """Never make this suggestion again. For pages hinted at one document together, that's the
     hint for each of them."""
-    s = _open(conn, suggestion_id)
-    pages = _pages(s) if s["kind"] == "add_to_document" else [s["page_id"]]
-    marks = ",".join("?" * len(pages))
-    with conn:
+    with history.deciding(conn):
+        s = _open(conn, suggestion_id)
+        pages = _pages(s) if s["kind"] == "add_to_document" else [s["page_id"]]
+        marks = ",".join("?" * len(pages))
         conn.execute(
             "UPDATE suggestions SET status = 'dismissed', resolved_at = datetime('now')"
             f" WHERE status = 'open' AND kind = ? AND document_id IS ? AND page_id IN ({marks})",

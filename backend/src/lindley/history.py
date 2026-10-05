@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 PLACE = ("document_id", "position", "set_aside_at")
@@ -36,6 +38,31 @@ class Undone:
     batch: int
     actions: list[str] = field(default_factory=list)  # in the order they were undone
     pages: list[int] = field(default_factory=list)  # pages put back where they were
+
+
+@contextmanager
+def deciding(conn: sqlite3.Connection) -> Iterator[None]:
+    """A decision, all or nothing, holding the database from its start: what it reads first
+    (the next batch number, where a page is) can't be changed by another meanwhile, as it can
+    when the transaction only starts at the first write. Within a decision already being made,
+    it's part of that one, which commits; if it fails, only its own part is put back."""
+    if conn.in_transaction:
+        conn.execute("SAVEPOINT deciding")
+        try:
+            yield
+        except BaseException:
+            conn.execute("ROLLBACK TO deciding")
+            conn.execute("RELEASE deciding")
+            raise
+        conn.execute("RELEASE deciding")
+        return
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+    except BaseException:
+        conn.rollback()
+        raise
+    conn.commit()
 
 
 def new_batch(conn: sqlite3.Connection) -> int:
@@ -97,22 +124,22 @@ def latest(conn: sqlite3.Connection) -> int | None:
 
 def undo(conn: sqlite3.Connection, batch: int | None = None) -> Undone:
     """Undo one batch (the latest, if none is given), all or nothing."""
-    if batch is None:
-        batch = latest(conn)
-        if batch is None:
-            raise UndoError("There's nothing to undo")
-    rows = conn.execute(
-        "SELECT * FROM history WHERE batch = ? ORDER BY id DESC", (batch,)
-    ).fetchall()
-    if not rows or any(r["action"] == "undo" for r in rows):
-        raise UndoError(f"There's no change {batch} to undo")
-    if conn.execute(
-        "SELECT 1 FROM history WHERE action = 'undo' AND target_id = ?", (batch,)
-    ).fetchone():
-        raise UndoError("That change has already been undone")
-    done = Undone(batch)
     try:
-        with conn:  # all or nothing: an UndoError part-way rolls everything back
+        with deciding(conn):  # all or nothing: an UndoError part-way rolls everything back
+            if batch is None:
+                batch = latest(conn)
+                if batch is None:
+                    raise UndoError("There's nothing to undo")
+            rows = conn.execute(
+                "SELECT * FROM history WHERE batch = ? ORDER BY id DESC", (batch,)
+            ).fetchall()
+            if not rows or any(r["action"] == "undo" for r in rows):
+                raise UndoError(f"There's no change {batch} to undo")
+            if conn.execute(
+                "SELECT 1 FROM history WHERE action = 'undo' AND target_id = ?", (batch,)
+            ).fetchone():
+                raise UndoError("That change has already been undone")
+            done = Undone(batch)
             for r in rows:
                 before = json.loads(r["before"]) if r["before"] else None
                 after = json.loads(r["after"]) if r["after"] else None

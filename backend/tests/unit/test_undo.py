@@ -152,3 +152,46 @@ def test_undo_brings_back_hints_whose_ids_were_taken_since(conn):
     history.undo(conn, gone.batch)
     kinds = sorted(r[0] for r in conn.execute("SELECT kind FROM suggestions"))
     assert kinds == ["add_to_document", "set_aside"]
+
+
+def test_decisions_made_at_once_each_get_their_own_batch(tmp_path):
+    import threading
+
+    db = tmp_path / "lindley.db"
+    init_db(db)
+    setup = connect(db)
+    pid = page(setup, doc(setup), 0)
+    setup.commit()
+    setup.close()
+    batches, errors = [], []
+
+    def turn():
+        c = connect(db, any_thread=True)
+        try:
+            for _ in range(10):
+                batches.append(organise.rotate(c, [pid], 90).batch)
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+        finally:
+            c.close()
+
+    threads = [threading.Thread(target=turn) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors and len(set(batches)) == 40  # none shares an undo with another
+    check = connect(db)
+    assert check.execute("SELECT user_rotation FROM pages").fetchone()[0] == 40 * 90 % 360
+    check.close()
+
+
+def test_a_hint_that_fails_among_several_leaves_nothing_half_done(conn):
+    a = doc(conn)
+    x = page(conn, a, 0)
+    with history.deciding(conn):
+        conn.execute("UPDATE pages SET position = 5 WHERE id = ?", (x,))
+        with pytest.raises(ValueError), history.deciding(conn):
+            conn.execute("UPDATE pages SET position = 9 WHERE id = ?", (x,))
+            raise ValueError("this one can't be made")
+    assert places(conn, x) == [(a, 5, None)]

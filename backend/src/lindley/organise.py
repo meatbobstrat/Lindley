@@ -148,7 +148,7 @@ def move_pages(
     conn: sqlite3.Connection, page_ids: list[int], to: Where, document_id: int | None = None
 ) -> Change:
     """Move pages, in this order, to the end of a document, back to the Inbox, or Set aside."""
-    with conn:
+    with history.deciding(conn):
         if to == "document":
             if document_id is None:
                 raise ValueError("Choose a document to move the pages to")
@@ -172,7 +172,7 @@ def move_pages(
 
 def reorder(conn: sqlite3.Connection, doc_id: int, page_ids: list[int]) -> Change:
     """Put a document's pages in this order. `page_ids` must be all of its pages."""
-    with conn:
+    with history.deciding(conn):
         _open_document(conn, doc_id)
         now = [
             r[0]
@@ -194,7 +194,7 @@ def rotate(conn: sqlite3.Connection, page_ids: list[int], degrees: int) -> Chang
     beside it, and applied when the page is shown, read or exported."""
     if degrees % 90:
         raise ValueError("Pages turn in quarter turns")
-    with conn:
+    with history.deciding(conn):
         _from(conn, page_ids)
         change = Change(history.new_batch(conn))
         for pid in page_ids:
@@ -220,7 +220,7 @@ def flip(conn: sqlite3.Connection, page_ids: list[int]) -> Change:
     """Turn pages round left to right: a mirror image (the back of a carbon copy) the right way
     round, or one Lindley took for a mirror image back. As with a turn, the scan itself is never
     changed, and its text isn't read again."""
-    with conn:
+    with history.deciding(conn):
         _from(conn, page_ids)
         change = Change(history.new_batch(conn))
         for pid in page_ids:
@@ -252,7 +252,7 @@ def new_document(
     """Start a document with these pages, in this order. `suggested`: the name is Lindley's,
     kept as it was, so it's still shown as a suggestion."""
     name = name.strip() or "Untitled document"
-    with conn:
+    with history.deciding(conn):
         if folder_id is not None and not _folder(conn, folder_id):
             raise LookupError(f"There's no folder {folder_id}")
         left = _from(conn, page_ids)
@@ -280,7 +280,7 @@ def new_document(
 def update_document(conn: sqlite3.Connection, doc_id: int, changes: dict) -> Change:
     """Rename a document, give its type or date, or file it in a folder (None: out of any).
     A name or date a person gives is theirs: Lindley only suggests changes to it after that."""
-    with conn:
+    with history.deciding(conn):
         doc = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
         if doc is None:
             raise LookupError(f"There's no document {doc_id}")
@@ -324,7 +324,7 @@ def _folder(conn: sqlite3.Connection, folder_id: int) -> sqlite3.Row | None:
 
 def new_folder(conn: sqlite3.Connection, name: str, parent_id: int | None = None) -> Change:
     name = name.strip() or "New folder"
-    with conn:
+    with history.deciding(conn):
         if parent_id is not None and not _folder(conn, parent_id):
             raise LookupError(f"There's no folder {parent_id}")
         change = Change(history.new_batch(conn))
@@ -344,7 +344,7 @@ def rename_folder(conn: sqlite3.Connection, folder_id: int, name: str) -> Change
     name = name.strip()
     if not name:
         raise ValueError("A folder needs a name")
-    with conn:
+    with history.deciding(conn):
         f = _folder(conn, folder_id)
         if f is None:
             raise LookupError(f"There's no folder {folder_id}")
@@ -369,7 +369,7 @@ def check_text(conn: sqlite3.Connection, page_id: int, text: str | None = None) 
     """A person checked a page's text: as it is (`text` None, or unchanged), or corrected.
     A correction is a new reading of its own, and the one in use from then on; the earlier
     readings are kept."""
-    with conn:
+    with history.deciding(conn):
         if not conn.execute("SELECT 1 FROM pages WHERE id = ?", (page_id,)).fetchone():
             raise LookupError(f"There's no page {page_id}")
         cur = conn.execute(

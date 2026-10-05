@@ -264,10 +264,10 @@ def _order(c: Copy, copies: list[Copy]) -> int:
 
 def keep(conn: sqlite3.Connection, set_id: int, page_id: int) -> Decision:
     """Keep one copy; set the others aside."""
-    s = get_set(conn, set_id)
-    if s is None:
-        raise LookupError(f"No open duplicate set {set_id}")
-    with conn:
+    with history.deciding(conn):
+        s = get_set(conn, set_id)
+        if s is None:
+            raise LookupError(f"No open duplicate set {set_id}")
         return _keep(conn, s, page_id, history.new_batch(conn))
 
 
@@ -326,16 +326,16 @@ def keep_document(conn: sqlite3.Connection, keep_doc: int, other_doc: int) -> De
     """Keep one document of a pair scanned twice: in every set of copies of one page that lie
     only in these two documents (document_pairs), the copy in `keep_doc` is kept. Pages only
     the other document has stay where they are. It's one decision, made and undone as one."""
-    pair = next(
-        (
-            dp
-            for dp in document_pairs(open_sets(conn), conn)
-            if set(dp.documents) == {keep_doc, other_doc}
-        ),
-        None,
-    )
-    set_ids = pair.set_ids if pair else []
-    with conn:
+    with history.deciding(conn):
+        pair = next(
+            (
+                dp
+                for dp in document_pairs(open_sets(conn), conn)
+                if set(dp.documents) == {keep_doc, other_doc}
+            ),
+            None,
+        )
+        set_ids = pair.set_ids if pair else []
         decision = Decision(history.new_batch(conn), [], 0)
         for set_id in set_ids:
             s = get_set(conn, set_id)
@@ -349,10 +349,10 @@ def keep_document(conn: sqlite3.Connection, keep_doc: int, other_doc: int) -> De
 
 def not_duplicates(conn: sqlite3.Connection, set_id: int) -> Decision:
     """The pages only look alike: keep them all, and never raise them again."""
-    s = get_set(conn, set_id)
-    if s is None:
-        raise LookupError(f"No open duplicate set {set_id}")
-    with conn:
+    with history.deciding(conn):
+        s = get_set(conn, set_id)
+        if s is None:
+            raise LookupError(f"No open duplicate set {set_id}")
         batch = history.new_batch(conn)
         _decide(conn, batch, "not_duplicates", set_id, s.pair_ids, "not_duplicate", None)
     return Decision(batch)

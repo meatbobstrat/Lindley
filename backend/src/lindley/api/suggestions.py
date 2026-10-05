@@ -18,6 +18,7 @@ import json
 
 from fastapi import APIRouter, HTTPException, Request
 
+from lindley import history
 from lindley.api.deps import Conn
 from lindley.assembler import decide
 from lindley.assembler.apply import HINT_KINDS
@@ -66,14 +67,15 @@ def accept_offers(request: Request, conn: Conn) -> dict:
     if not offered:
         raise HTTPException(404, "No groups the AI checked are waiting")
     batch, documents, pages = None, [], []
-    for sid in offered:
-        try:
-            a = decide.accept(conn, sid, batch)
-        except (LookupError, ValueError):
-            continue
-        batch = a.batch
-        documents.append(a.document_id)
-        pages += a.pages
+    with history.deciding(conn):  # one change, all of it saved together
+        for sid in offered:
+            try:
+                a = decide.accept(conn, sid, batch)
+            except (LookupError, ValueError):
+                continue
+            batch = a.batch
+            documents.append(a.document_id)
+            pages += a.pages
     return {"documents": documents, "pages": pages, "undo": batch}
 
 

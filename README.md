@@ -389,6 +389,8 @@ and you can ask it about them. All of it from a one-click install.
 - [x] Throttling each AI: calls a minute and at once
 - [x] The app tried end to end on real scans, and what broke fixed (AI work in the background, no
   hidden retries, cut-off answers and doubtful AI readings caught)
+- [x] Benches for local AI models, with hand-made PDFs matched back to their scans as the answer
+  key; typed pages lying upside down now turned, including ones read before
 
 ### For the MVP
 
@@ -405,4 +407,11 @@ and you can ask it about them. All of it from a one-click install.
   can't go out of date
 - [ ] AI spending: a monthly limit, and the cost of each call
 - [ ] Suggest groups of pages Lindley isn't sure of (typescripts, notes) for a person to confirm
-- [ ] Local AI models for intake, tuned on real scans
+- [ ] Local AI models for intake, tuned on real scans. Small models were measured on real scans
+  (design/database.md, "Local models"): none makes intake quicker, and Tesseract stays for typed
+  pages. Next:
+  - a local model asked whether one page carries straight on from another (`lm_continues`):
+    with the rules it scored 0.94 where they alone scored 0.82, at about 7 seconds a pair on a
+    laptop
+  - Gemma 4 E4B for handwriting Tesseract can't read (about half a minute a page)
+  - EmbeddingGemma for what pages are about, if it helps build documents

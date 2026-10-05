@@ -1,8 +1,8 @@
 """How well, and how fast, vision models read the pages Tesseract finds hard: small local ones,
 and a cloud AI such as Claude, which can also stand in for the right answer.
 
-python scripts/bench_reading.py --db lindley.db --models glm-ocr,gemma4:e2b,gemma4:e4b
-python scripts/bench_reading.py --db lindley.db --pages 17,45 --models glm-ocr --cpu
+python scripts/bench_reading.py --db lindley.db --models gemma4:e2b,gemma4:e4b
+python scripts/bench_reading.py --db lindley.db --pages 17,45 --models gemma4:e4b --cpu
 python scripts/bench_reading.py --db lindley.db --reference gemma4:12b --out readings/
 python scripts/bench_reading.py --db lindley.db --reference anthropic --models gemma4:e4b --out r/
 python scripts/bench_reading.py --db lindley.db --connections anthropic --effort low --models ""
@@ -135,7 +135,7 @@ def connection(settings_path: Path | None, name: str, effort: str | None, used: 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", type=Path, required=True)
-    ap.add_argument("--models", default="glm-ocr,gemma4:e2b,gemma4:e4b", help="Ollama models")
+    ap.add_argument("--models", default="gemma4:e2b,gemma4:e4b", help="Ollama models")
     ap.add_argument("--connections", default="", help="AI connections in settings.json")
     ap.add_argument("--settings", type=Path, help="settings.json (else Lindley's own)")
     ap.add_argument("--effort", help="for connections that take it: low, medium, high...")

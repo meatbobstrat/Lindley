@@ -1,7 +1,7 @@
 """Can a small local model tell whether one page carries straight on from another?
 
-python scripts/bench_continues.py --real lindley.db --models qwen3.5:0.8b,gemma4:e2b
-python scripts/bench_continues.py --real lindley.db --models qwen3.5:0.8b --cpu --lines 3
+python scripts/bench_continues.py --real lindley.db --models qwen3.5:4b,gemma4:e2b
+python scripts/bench_continues.py --real lindley.db --models qwen3.5:4b --cpu --lines 3
 
 An experiment for a possible piece of evidence (see design/database.md, the assembler): the
 rules' `runs_on` only sees that page A stops mid-sentence and page B starts mid-sentence, which
@@ -131,7 +131,7 @@ def pairs(pages: list[Page], truth: dict, negatives: int, seed: int) -> list[tup
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--real", type=Path, required=True)
-    ap.add_argument("--models", default="qwen3.5:0.8b")
+    ap.add_argument("--models", default="qwen3.5:4b")
     ap.add_argument("--lines", type=int, default=2, help="lines shown from each page")
     ap.add_argument("--negatives", type=int, default=80, help="most pairs of each kind")
     ap.add_argument("--cpu", action="store_true", help="keep the model off the graphics card")

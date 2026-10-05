@@ -1,7 +1,7 @@
 """Which way of comparing what pages are about best finds a page's own document?
 
 python scripts/bench_meaning.py --real lindley.db
-python scripts/bench_meaning.py --real lindley.db --models qwen3-embedding:0.6b,embeddinggemma
+python scripts/bench_meaning.py --real lindley.db --models embeddinggemma
 
 For each page of a real answer key (lindley.assembler.bench.real_answers), the page most like it
 among the others is found, and the report says how often that page is from its own document:
@@ -50,7 +50,7 @@ def judge(label: str, n: int, doc: list[str], alike: Callable[[int, int], float]
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--real", type=Path, required=True)
-    ap.add_argument("--models", default="nomic-embed-text,embeddinggemma,qwen3-embedding:0.6b")
+    ap.add_argument("--models", default="nomic-embed-text,embeddinggemma")
     ap.add_argument("--url", default="http://localhost:11434/v1")
     a = ap.parse_args()
 

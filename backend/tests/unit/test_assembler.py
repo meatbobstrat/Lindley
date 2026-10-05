@@ -219,6 +219,16 @@ def test_a_valid_ai_reply_settles_an_uncertain_break(conn):
     assert [r[0] for r in conn.execute("SELECT id FROM pages ORDER BY position")] == [b, a]
 
 
+def test_a_group_the_ai_names_nothing_gets_the_rules_name(conn):
+    a, b = load(conn, pages(AMBIGUOUS))
+    reply = {"pages": [a, b], "name": "", "confidence": 88, "reasons": ["Farm"]}
+    ai = Scripted(json.dumps({"documents": [reply], "unplaced": []}))
+    # One call only: none is left to ask for a better name
+    assert assemble(conn, AI_ON, chat=ai, max_ai_calls=1).documents_created == 1
+    name = conn.execute("SELECT name FROM documents").fetchone()[0]
+    assert name.startswith("Pages starting “The corn is in")
+
+
 def test_a_group_the_ai_is_less_sure_of_is_suggested_and_marked_as_its(conn):
     a, b = load(conn, pages(AMBIGUOUS))
     reply = {"pages": [a, b], "name": "Farm notes", "confidence": 65, "reasons": ["Farm"]}

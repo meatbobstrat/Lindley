@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from lindley.assembler.answers import Answers
 from lindley.assembler.model import Group, Page
 from lindley.assembler.place import Candidate
+from lindley.assembler.segment import describe
 from lindley.providers.base import ChatMessage, ChatProvider
 
 SYSTEM = """You sort scanned pages from a family or local-history archive into documents.
@@ -141,7 +142,9 @@ def refine(
         seen |= set(ids)
         conf = d.get("confidence")
         conf = int(conf) if isinstance(conf, int | float) and 0 <= conf <= 100 else 50
-        name = str(d.get("name") or "").strip()[:120]
+        name, guess = str(d.get("name") or "").strip()[:120], False
+        if not name:  # the rules' name for now: the AI may be asked for a better one
+            _, name, guess, _ = describe([by_id[i] for i in ids])
         date = (
             d.get("date")
             if isinstance(d.get("date"), str)
@@ -154,7 +157,7 @@ def refine(
             _clean_reasons(d.get("reasons")),
             str(d.get("type") or "") or None,
             name,
-            not name,
+            guess,
             date,
             True,
             by_ai=True,

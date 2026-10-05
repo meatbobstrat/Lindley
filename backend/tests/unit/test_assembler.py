@@ -790,6 +790,20 @@ def test_the_ai_is_shown_only_the_likeliest_documents_and_its_choice_is_added(co
     assert json.loads(after)["reasons"] == ["It reads on"]
 
 
+def test_the_ai_is_never_waited_for_while_the_database_is_held(conn):
+    doc, late = _letter_and_a_later_page(conn)
+    held = []
+
+    def reply(req):
+        held.append(conn.in_transaction)
+        return json.dumps({"document": doc, "confidence": 90, "reasons": ["It reads on"]})
+
+    report = assemble(conn, AI_ON, chat=Scripted(reply), weights=UNSURE)
+    assert held == [False]
+    assert (report.ai_calls, report.ai_reused, report.ai_placed) == (1, 0, 1)
+    assert conn.execute("SELECT document_id FROM pages WHERE id = ?", (late,)).fetchone()[0] == doc
+
+
 def test_a_document_the_ai_wasnt_shown_is_turned_down(conn):
     _, late = _letter_and_a_later_page(conn)
     reply = json.dumps({"document": 999, "confidence": 90, "reasons": []})

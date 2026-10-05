@@ -15,7 +15,7 @@ from pathlib import PurePath
 
 from lindley import history
 from lindley.assembler import ai, apply, evidence, relearn
-from lindley.assembler.answers import Answers
+from lindley.assembler.answers import Answers, AskFirst
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page, weigh_terms
 from lindley.assembler.place import Candidate, DocEnds, candidates
@@ -271,7 +271,20 @@ def assemble(
     answers (lindley.assembler.relearn), else with the shipped ones."""
     with _ONE_AT_A_TIME:
         evidence.use_weights(weights if weights is not None else relearn.learned(conn))
-        return _assemble(conn, cfg or AssemblerSettings(), chat, max_ai_calls, asked)
+        if conn.in_transaction:  # what the caller left uncommitted is kept, as it always was
+            conn.commit()
+        answers = Answers(conn)
+        # Questions for the AI met while the decisions are saved are asked once they're put
+        # back, and the Inbox sorted again with the answers (Answers). Those answers may raise
+        # new questions, once or twice: the last time round, those wait for a later run.
+        for final in (False, False, True):
+            try:
+                return _assemble(
+                    conn, cfg or AssemblerSettings(), chat, max_ai_calls, asked, answers, final
+                )
+            except AskFirst:
+                answers.ask_waiting()
+        raise AssertionError("the last time round always returns")
 
 
 def _assemble(
@@ -280,8 +293,9 @@ def _assemble(
     chat: ChatProvider | None,
     max_ai_calls: int | None,
     asked: set[int] | None,
+    answers: Answers,
+    final: bool,
 ) -> RunReport:
-    answers = Answers(conn)
     waited = (datetime.now(UTC) - timedelta(days=cfg.ask_ai_after_days)).strftime(
         "%Y-%m-%d %H:%M:%S"
     )
@@ -469,6 +483,10 @@ def _assemble(
         apply.mark_matched(conn, {p.scan_id for p in pages})
         apply.save_needs_ai(conn, unasked, placing)
         report.ai_waiting = len(unasked) + len(placing)
+        if answers.waiting:
+            if not final:
+                raise AskFirst  # put it all back, ask, and decide again
+            answers.drop_waiting()
     report.inbox_left = report.considered - report.pages_grouped - report.pages_added
     report.ai_calls, report.ai_reused = answers.calls, answers.reused
     return report

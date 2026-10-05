@@ -175,8 +175,10 @@ def suggest(
 
 def suggest_group(conn: sqlite3.Connection, g: Group, extra: dict | None = None) -> bool:
     """Ask a person whether these pages go together, as one document in this order. `extra`:
-    more to keep with it, such as where else they may belong."""
-    payload = {"pages": g.ids, "name": g.name, "type": g.kind, "date": g.date} | (extra or {})
+    more to keep with it, such as where else they may belong. `checked_by_ai`: the AI grouped
+    them (api.suggestions offers those it was sure enough of for one-click accept)."""
+    payload = {"pages": g.ids, "name": g.name, "type": g.kind, "date": g.date}
+    payload |= {"checked_by_ai": g.by_ai} | (extra or {})
     return suggest(conn, "group_pages", g.pages[0].id, None, g.confidence, g.reasons, payload)
 
 

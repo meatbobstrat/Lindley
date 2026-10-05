@@ -122,7 +122,9 @@ export interface Suggestion {
   document_name: string | null
   confidence: number
   reasons: string[]
-  payload: { pages?: number[]; name?: string; type?: string; date?: string; at?: string; candidates?: Candidate[] }
+  payload: { pages?: number[]; name?: string; type?: string; date?: string; at?: string; candidates?: Candidate[]; checked_by_ai?: boolean }
+  /** A group the AI checked, sure enough to be offered for one-click accept (assembler.offer_at) */
+  offer: boolean
 }
 
 export interface ReviewGroup {
@@ -369,6 +371,7 @@ export const api = {
   newFolder: (name: string, parent_id: number | null) => send<Change>('POST', '/folders', { name, parent_id }),
   renameFolder: (id: number, name: string) => send<Change>('PATCH', `/folders/${id}`, { name }),
   acceptSuggestion: (id: number) => send<{ document_id: number | null; pages: number[]; undo: number }>('POST', `/suggestions/${id}/accept`),
+  acceptOffers: () => send<{ documents: number[]; pages: number[]; undo: number }>('POST', '/suggestions/accept-offers'),
   dismissSuggestion: (id: number) => send<{ ok: boolean }>('POST', `/suggestions/${id}/dismiss`),
   readWithAi: (page_ids?: number[]) => send<Sent>('POST', '/needs-ai/read', { page_ids: page_ids ?? null }),
   sortWithAi: (itemId?: number) => send<Sent>('POST', itemId === undefined ? '/needs-ai/sort' : `/needs-ai/${itemId}/sort`),

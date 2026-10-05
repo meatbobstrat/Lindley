@@ -114,6 +114,10 @@ class AssemblerSettings(BaseModel):
     group_at: int = Field(default=75, ge=0, le=100)
     # At or above this, a page stays in the Inbox with an "Add to ...?" hint.
     hint_at: int = Field(default=45, ge=0, le=100)
+    # Groups the AI checked, at or above this but below group_at, are offered for one-click
+    # accept, ahead of the rules' hints. The AI is cautious: in October 2026 every group Claude
+    # gave 60-72% that could be checked was right (design/database.md, "Confidence bars").
+    offer_at: int = Field(default=60, ge=0, le=100)
     # Breaks between pages scored inside this band are checked with the chat AI, when the chat
     # provider may be used (its `allow`, or a person's OK).
     ai_band: tuple[int, int] = (35, 75)

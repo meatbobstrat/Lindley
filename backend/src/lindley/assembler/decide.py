@@ -53,12 +53,14 @@ def _move(conn: sqlite3.Connection, batch: int, action: str, pid: int, sql: str,
     history.log(conn, batch, action, "page", pid, before, history.place(conn, pid))
 
 
-def accept(conn: sqlite3.Connection, suggestion_id: int) -> Accepted:
+def accept(conn: sqlite3.Connection, suggestion_id: int, batch: int | None = None) -> Accepted:
+    """Make the change a hint proposes: in `batch` if given (several accepted as one change to
+    undo), else a batch of its own."""
     s = _open(conn, suggestion_id)
     pages = _pages(s)
     with conn:
         _in_inbox(conn, pages)
-        batch = history.new_batch(conn)
+        batch = batch or history.new_batch(conn)
         doc = s["document_id"]
         if s["kind"] == "group_pages":
             doc = _make_document(conn, batch, s, pages)

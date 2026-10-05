@@ -73,7 +73,10 @@ export function InboxView() {
   const n = ids.length
   const all = sugs.data?.suggestions ?? []
   const adds = pages.filter((p) => hintOf.get(p.id)?.kind === 'add_to_document').length
-  const groups = all.filter((s) => s.kind === 'group_pages' && (s.payload.pages ?? []).every((id) => inInbox.has(id)))
+  const here = all.filter((s) => s.kind === 'group_pages' && (s.payload.pages ?? []).every((id) => inInbox.has(id)))
+  // Groups the AI checked come first, offered for one-click accept; then the rules' own
+  const offers = here.filter((s) => s.offer)
+  const groups = [...offers, ...here.filter((s) => !s.offer)]
   const asides = pages.filter((p) => hintOf.get(p.id)?.kind === 'set_aside')
   const toRead = (waiting.data?.read.pages ?? []).filter((r) => r.document_id == null).map((r) => r.page_id)
   const toSort = sorting ? (waiting.data?.sort.items ?? []) : []
@@ -128,6 +131,22 @@ export function InboxView() {
             has the other likely places.
           </Banner>
         )}
+        {offers.length > 1 && (
+          <Banner
+            kind="ai"
+            actions={
+              <button
+                className="btn"
+                onClick={() => run(api.acceptOffers(), (r) => `Made ${plural(r.documents.length, 'document')} from ${plural(r.pages.length, 'scan')}.`)}
+                data-tip="Make each group the AI checked a document, as it suggests. One Undo takes them all back."
+              >
+                Accept all {offers.length}
+              </button>
+            }
+          >
+            <b>The AI checked {plural(offers.length, 'group')} of scans that go together.</b> It’s less sure than Lindley needs to sort them on its own, but its reasons are below.
+          </Banner>
+        )}
         {groups.slice(0, 2).map((g) => (
           <Banner
             key={g.id}
@@ -139,7 +158,7 @@ export function InboxView() {
                   data-tip="Make these scans one document, under Lindley’s name for it. You can rename it after."
                   onClick={() => run(api.acceptSuggestion(g.id), `Grouped ${plural(g.payload.pages?.length ?? 0, 'scan')} into ${quoted(shortName(g.payload.name ?? 'a document'))}.`)}
                 >
-                  Group them
+                  {g.offer ? 'Accept' : 'Group them'}
                 </button>
                 <button className="btn ghost" onClick={() => showOnly(g.payload.pages ?? [])} data-tip="Select these scans and show them first">
                   Show them
@@ -154,7 +173,7 @@ export function InboxView() {
               </>
             }
           >
-            <b>Do these {plural(g.payload.pages?.length ?? 0, 'scan')} go together?</b> Lindley thinks they’re one document, <i>{g.payload.name}</i>, {g.confidence}% sure.{' '}
+            <b>Do these {plural(g.payload.pages?.length ?? 0, 'scan')} go together?</b> {g.offer ? 'The AI checked them: it' : 'Lindley'} thinks they’re one document, <i>{g.payload.name}</i>, {g.confidence}% sure.{' '}
             {g.reasons.join('. ')}.
           </Banner>
         ))}

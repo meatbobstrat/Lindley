@@ -203,6 +203,16 @@ def test_a_valid_ai_reply_settles_an_uncertain_break(conn):
     assert [r[0] for r in conn.execute("SELECT id FROM pages ORDER BY position")] == [b, a]
 
 
+def test_a_group_the_ai_is_less_sure_of_is_suggested_and_marked_as_its(conn):
+    a, b = load(conn, pages(AMBIGUOUS))
+    reply = {"pages": [a, b], "name": "Farm notes", "confidence": 65, "reasons": ["Farm"]}
+    ai = Scripted(json.dumps({"documents": [reply], "unplaced": []}))
+    report = assemble(conn, AI_ON, chat=ai)
+    assert report.documents_created == 0 and report.inbox_left == 2
+    [s] = open_suggestions(conn, "group_pages")
+    assert s["confidence"] == 65 and json.loads(s["payload"])["checked_by_ai"] is True
+
+
 def test_without_ai_the_same_pages_wait_in_the_inbox(conn):
     load(conn, pages(AMBIGUOUS))
     report = assemble(conn)

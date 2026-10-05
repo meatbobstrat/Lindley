@@ -8,30 +8,41 @@ A hint's payload may hold `candidates`: where its pages most likely belong, best
 three; lindley.assembler.place). Each is an open document (`document`, its id) or other pages
 in the Inbox (`pages`), with its name, whether the pages go at its start or end, a confidence
 0-100 and the reasons, so a person can choose without looking through every document.
+
+`offer`: a group the AI checked, at or above assembler.offer_at, offered for one-click accept.
 """
 
 from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from lindley.api.deps import Conn
 from lindley.assembler import decide
 from lindley.assembler.apply import HINT_KINDS
+from lindley.config import Settings
 
 router = APIRouter(prefix="/suggestions", tags=["suggestions"])
 
 
 @router.get("")
-def list_suggestions(conn: Conn) -> dict:
+def list_suggestions(request: Request, conn: Conn) -> dict:
+    settings: Settings = request.app.state.settings
     rows = conn.execute(
         "SELECT s.*, d.name AS document_name FROM suggestions s"
         " LEFT JOIN documents d ON d.id = s.document_id"
         f" WHERE s.status = 'open' AND s.kind IN {HINT_KINDS} ORDER BY s.confidence DESC, s.id"
     ).fetchall()
-    return {
-        "suggestions": [
+    out = []
+    for r in rows:
+        payload = json.loads(r["payload"] or "{}")
+        offer = (
+            r["kind"] == "group_pages"
+            and bool(payload.get("checked_by_ai"))
+            and r["confidence"] >= settings.assembler.offer_at
+        )
+        out.append(
             {
                 "id": r["id"],
                 "kind": r["kind"],
@@ -40,11 +51,30 @@ def list_suggestions(conn: Conn) -> dict:
                 "document_name": r["document_name"],
                 "confidence": r["confidence"],
                 "reasons": json.loads(r["reasons"] or "[]"),
-                "payload": json.loads(r["payload"] or "{}"),
+                "payload": payload,
+                "offer": offer,
             }
-            for r in rows
-        ]
-    }
+        )
+    return {"suggestions": out}
+
+
+@router.post("/accept-offers")
+def accept_offers(request: Request, conn: Conn) -> dict:
+    """Accept every group offered for one-click accept, as one change to undo. One whose pages
+    were placed since is left out."""
+    offered = [s["id"] for s in list_suggestions(request, conn)["suggestions"] if s["offer"]]
+    if not offered:
+        raise HTTPException(404, "No groups the AI checked are waiting")
+    batch, documents, pages = None, [], []
+    for sid in offered:
+        try:
+            a = decide.accept(conn, sid, batch)
+        except (LookupError, ValueError):
+            continue
+        batch = a.batch
+        documents.append(a.document_id)
+        pages += a.pages
+    return {"documents": documents, "pages": pages, "undo": batch}
 
 
 @router.post("/{suggestion_id}/accept")

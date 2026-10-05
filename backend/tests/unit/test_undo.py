@@ -1,6 +1,6 @@
 import pytest
 
-from lindley import history
+from lindley import history, organise
 from lindley.db.database import connect, init_db
 from lindley.duplicates.resolve import keep, keep_document, not_duplicates, open_sets
 
@@ -109,3 +109,46 @@ def test_undo_refuses_if_a_page_moved_since_and_changes_nothing(conn):
         history.undo(conn, decision.batch)
     assert pair_states(conn) == [("resolved", a)]  # nothing was half undone
     assert history.latest(conn) == decision.batch  # still there to undo once it's put back
+
+
+def test_undo_leaves_a_completed_document_alone(conn):
+    d = doc(conn)
+    first = page(conn, d, 0)
+    loose = page(conn)
+    moved = organise.move_pages(conn, [loose], "document", d)
+    conn.execute("UPDATE documents SET status = 'complete'")
+    conn.commit()
+    with pytest.raises(history.UndoError, match="completed. Reopen it"):
+        history.undo(conn, moved.batch)
+    assert places(conn, first, loose) == [(d, 0, None), (d, 1, None)]
+
+
+def test_a_copy_in_a_completed_document_is_kept_only_where_it_is(conn):
+    d = doc(conn, status="complete")
+    filed = page(conn, d, 0)
+    rescan = page(conn, conf=95)
+    dup(conn, filed, rescan)
+    with pytest.raises(ValueError, match="completed. Reopen it"):
+        keep(conn, open_sets(conn)[0].id, rescan)  # it would take the filed copy's place
+    keep(conn, open_sets(conn)[0].id, filed)  # the re-scan is set aside; the document is as it was
+    assert places(conn, filed)[0] == (d, 0, None) and places(conn, rescan)[0][2] is not None
+
+
+def test_undo_brings_back_hints_whose_ids_were_taken_since(conn):
+    a = doc(conn)
+    x = page(conn, a, 0)
+    conn.execute(
+        "INSERT INTO suggestions (id, kind, page_id, document_id, confidence)"
+        " VALUES (7, 'add_to_document', ?, ?, 60)",
+        (x, a),
+    )
+    conn.commit()
+    gone = organise.move_pages(conn, [x], "aside")  # the document goes, and its hint with it
+    conn.execute(
+        "INSERT INTO suggestions (id, kind, page_id, confidence) VALUES (7, 'set_aside', ?, 50)",
+        (x,),
+    )
+    conn.commit()
+    history.undo(conn, gone.batch)
+    kinds = sorted(r[0] for r in conn.execute("SELECT kind FROM suggestions"))
+    assert kinds == ["add_to_document", "set_aside"]

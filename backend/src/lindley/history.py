@@ -111,22 +111,41 @@ def undo(conn: sqlite3.Connection, batch: int | None = None) -> Undone:
     ).fetchone():
         raise UndoError("That change has already been undone")
     done = Undone(batch)
-    with conn:  # all or nothing: an UndoError part-way rolls everything back
-        for r in rows:
-            before = json.loads(r["before"]) if r["before"] else None
-            after = json.loads(r["after"]) if r["after"] else None
-            _UNDO[r["target_type"]](conn, r["target_id"], before, after)
-            done.actions.append(r["action"])
-            if r["target_type"] == "page" and r["target_id"] not in done.pages:
-                done.pages.append(r["target_id"])
-        log(conn, new_batch(conn), "undo", "history_batch", batch, None, {"rows": len(rows)})
+    try:
+        with conn:  # all or nothing: an UndoError part-way rolls everything back
+            for r in rows:
+                before = json.loads(r["before"]) if r["before"] else None
+                after = json.loads(r["after"]) if r["after"] else None
+                _UNDO[r["target_type"]](conn, r["target_id"], before, after)
+                done.actions.append(r["action"])
+                if r["target_type"] == "page" and r["target_id"] not in done.pages:
+                    done.pages.append(r["target_id"])
+            log(conn, new_batch(conn), "undo", "history_batch", batch, None, {"rows": len(rows)})
+    except sqlite3.IntegrityError as e:  # something it would put back is taken by now
+        raise UndoError("Things have changed since, so this can't be undone") from e
     return done
+
+
+def _refuse_if_complete(conn: sqlite3.Connection, doc_ids: object) -> None:
+    """A completed document is changed only once it's reopened, by undo too."""
+    for doc_id in {d for d in doc_ids if d is not None}:
+        r = conn.execute(
+            "SELECT name FROM documents WHERE id = ? AND status = 'complete'", (doc_id,)
+        ).fetchone()
+        if r:
+            raise UndoError(f"“{r[0]}” is completed. Reopen it to undo this.")
+
+
+def _document_of(conn: sqlite3.Connection, page_id: int) -> int | None:
+    r = conn.execute("SELECT document_id FROM pages WHERE id = ?", (page_id,)).fetchone()
+    return r[0] if r else None
 
 
 def _undo_page(conn: sqlite3.Connection, page_id: int, before: dict, after: dict) -> None:
     now = place(conn, page_id)
     if now != after:
         raise UndoError(f"Page {page_id} has moved since, so this can't be undone")
+    _refuse_if_complete(conn, (before["document_id"], after["document_id"]))
     conn.execute(
         "UPDATE pages SET document_id = ?, position = ?, set_aside_at = ?,"
         " updated_at = datetime('now') WHERE id = ?",
@@ -149,8 +168,8 @@ def _undo_document(conn: sqlite3.Connection, doc_id: int, before: dict, _after: 
     if conn.execute("SELECT 1 FROM documents WHERE id = ?", (doc_id,)).fetchone():
         raise UndoError(f"Document {doc_id} exists again, so this can't be undone")
     _insert(conn, "documents", before["document"])
-    for s in before.get("suggestions", []):
-        _insert(conn, "suggestions", s)
+    for s in before.get("suggestions", []):  # hints: a new id, as theirs may be taken by now
+        _insert(conn, "suggestions", {k: v for k, v in s.items() if k != "id"})
 
 
 def _undo_new_document(conn: sqlite3.Connection, doc_id: int, _before: None, _after: dict) -> None:
@@ -167,6 +186,7 @@ def _undo_rotation(conn: sqlite3.Connection, page_id: int, before: dict, after: 
     now = conn.execute("SELECT user_rotation FROM pages WHERE id = ?", (page_id,)).fetchone()
     if now is None or now[0] != after["user_rotation"]:
         raise UndoError(f"Page {page_id} has been turned again since, so this can't be undone")
+    _refuse_if_complete(conn, (_document_of(conn, page_id),))
     conn.execute(
         "UPDATE pages SET user_rotation = ?, updated_at = datetime('now') WHERE id = ?",
         (before["user_rotation"], page_id),
@@ -177,6 +197,7 @@ def _undo_mirror(conn: sqlite3.Connection, page_id: int, before: dict, after: di
     now = conn.execute("SELECT user_mirror FROM pages WHERE id = ?", (page_id,)).fetchone()
     if now is None or now[0] != after["user_mirror"]:
         raise UndoError(f"Page {page_id} has been flipped again since, so this can't be undone")
+    _refuse_if_complete(conn, (_document_of(conn, page_id),))
     conn.execute(
         "UPDATE pages SET user_mirror = ?, updated_at = datetime('now') WHERE id = ?",
         (before["user_mirror"], page_id),
@@ -209,6 +230,8 @@ def _undo_document_fields(conn: sqlite3.Connection, doc_id: int, before: dict, a
     ).fetchone()
     if row is None or dict(zip(after, row, strict=True)) != after:
         raise UndoError(f"Document {doc_id} has changed since, so this can't be undone")
+    if {k for k in after if before.get(k) != after[k]} - {"folder_id"}:  # filing it is fine
+        _refuse_if_complete(conn, (doc_id,))
     sets = ", ".join(f"{k} = ?" for k in before)
     conn.execute(
         f"UPDATE documents SET {sets}, updated_at = datetime('now') WHERE id = ?",

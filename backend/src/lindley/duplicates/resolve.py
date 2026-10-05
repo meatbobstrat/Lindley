@@ -278,6 +278,12 @@ def _keep(conn: sqlite3.Connection, s: DuplicateSet, page_id: int, batch: int) -
     if kept is None:
         raise ValueError(f"Page {page_id} isn't one of the copies")
     others = [c for c in s.copies if c.page_id != page_id]
+    for c in others:  # each leaves its document (set aside, or replaced by the kept copy)
+        done = conn.execute(
+            "SELECT name FROM documents WHERE id = ? AND status = 'complete'", (c.document_id,)
+        ).fetchone()
+        if done:
+            raise ValueError(f"{quoted(done[0])} is completed. Reopen it to change it.")
     # The kept scan takes the best place: its own document position, or another copy's.
     home = (
         kept

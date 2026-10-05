@@ -11,6 +11,7 @@ Targets undo knows how to put back:
 - document: a document removed because it had no pages left (and its open suggestions)
 - new_document: a document made by the decision, removed again once its pages have gone back
 - page_rotation: the turn a person gave a page
+- page_mirror: whether a person turned a page round left to right (a mirror image)
 - page_text: which reading of a page is in use, and whether a person checked it
 - document_fields: a document's name, type, date and folder
 - new_folder: a folder made by the decision, removed again while it's still empty
@@ -162,6 +163,16 @@ def _undo_rotation(conn: sqlite3.Connection, page_id: int, before: dict, after: 
     )
 
 
+def _undo_mirror(conn: sqlite3.Connection, page_id: int, before: dict, after: dict) -> None:
+    now = conn.execute("SELECT user_mirror FROM pages WHERE id = ?", (page_id,)).fetchone()
+    if now is None or now[0] != after["user_mirror"]:
+        raise UndoError(f"Page {page_id} has been flipped again since, so this can't be undone")
+    conn.execute(
+        "UPDATE pages SET user_mirror = ?, updated_at = datetime('now') WHERE id = ?",
+        (before["user_mirror"], page_id),
+    )
+
+
 def _undo_text(conn: sqlite3.Connection, page_id: int, before: dict, after: dict) -> None:
     now = conn.execute(
         "SELECT id, confirmed_at FROM transcriptions WHERE page_id = ? AND is_current = 1",
@@ -227,6 +238,7 @@ _UNDO = {
     "document": _undo_document,
     "new_document": _undo_new_document,
     "page_rotation": _undo_rotation,
+    "page_mirror": _undo_mirror,
     "page_text": _undo_text,
     "document_fields": _undo_document_fields,
     "new_folder": _undo_new_folder,

@@ -150,6 +150,7 @@ def compare_images(a: bytes, b: bytes) -> Match | None:
 
 _PAGES = """
 SELECT p.id, p.image_path, p.blank_score, p.detected_rotation, p.user_rotation,
+       p.detected_mirror != p.user_mirror AS mirrored,
        t.id AS tid, t.text, c.transcription_id AS checked, c.image_sig
 FROM pages p
 JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1
@@ -177,7 +178,7 @@ def find_duplicates(conn: sqlite3.Connection) -> DuplicateReport:
         if len(letters(r["text"])) < MIN_LETTERS and r["image_path"]:
             rotation = ((r["detected_rotation"] or 0) + (r["user_rotation"] or 0)) % 360
             try:
-                sig = image_signature(Path(r["image_path"]), rotation)
+                sig = image_signature(Path(r["image_path"]), rotation, bool(r["mirrored"]))
             except OSError as e:  # the image has gone: compare what text there is
                 log.warning("Page %d's image couldn't be opened: %s", i, e)
         if sig is not None:

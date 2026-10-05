@@ -247,7 +247,9 @@ never changed, and with `move_files` they're removed only once their copy is che
 Before a page is read, Lindley checks the image. Blank pages are noted and aren't sent to the
 vision model. Tesseract finds which way up a page is as it reads it; an upside-down page's words
 are turned back with it, and a sideways page is read again from a turned copy (this needs
-`osd.traineddata`, which the UB-Mannheim installer includes). Each page is also
+`osd.traineddata`, which the UB-Mannheim installer includes). A page that still reads poorly
+is tried turned round left to right, in case it's a mirror image such as the back of a carbon
+copy, and a person can flip any page. Each page is also
 marked handwritten, printed or mixed. The script's summary counts blank pages, turned pages and
 each kind of writing.
 
@@ -391,6 +393,8 @@ and you can ask it about them. All of it from a one-click install.
   hidden retries, cut-off answers and doubtful AI readings caught)
 - [x] Benches for local AI models, with hand-made PDFs matched back to their scans as the answer
   key; typed pages lying upside down now turned, including ones read before
+- [x] Mirror images (the back of a carbon copy) found and turned round, including ones read
+  before; a person can flip a page too
 - [x] Claude (Opus 5.5) tried on real scans: it read 48 hard pages at about 3¢ a page, and sorted
   pages into 9 documents, leaving the groups it was less sure of as suggestions (design/database.md, "Claude on real scans")
 

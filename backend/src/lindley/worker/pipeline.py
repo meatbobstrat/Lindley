@@ -16,7 +16,7 @@ import time
 import uuid
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -478,19 +478,85 @@ class Pipeline:
         """
         rows = conn.execute(
             "SELECT s.id AS step, s.scan_id, p.id AS page_id, p.image_path, p.dpi,"
-            " p.blank_score, p.detected_rotation, p.user_rotation, c.source, c.confidence,"
+            " p.blank_score, p.detected_rotation, p.user_rotation, p.detected_mirror,"
+            " p.user_mirror, c.source, c.confidence,"
             f" coalesce(c.reviewed, 0) AS checked, {_COMPLETED} AS completed"
             " FROM intake_steps s JOIN pages p ON p.id = s.page_id"
             " LEFT JOIN v_current_text c ON c.page_id = p.id"
             " WHERE s.step = 'ocr' AND s.status = 'queued' ORDER BY s.id"
         ).fetchall()
         ocr = self.settings.ocr
-        checked = turned = 0
+        checked, turned = self._run_checks(
+            conn,
+            rows,
+            Step.OCR,
+            lambda r: _leave_the_way_up(r, ocr),
+            self._turn_if_upside_down,
+            "checking whether it's upside down",
+            stop,
+        )
+        if turned:
+            log.info("Turned %d page(s) read upside down before", turned)
+        return checked, turned
+
+    def check_mirrored(
+        self, conn: sqlite3.Connection, stop: threading.Event | None = None
+    ) -> tuple[int, int]:
+        """Pages Tesseract read before Lindley tried a poorly read page mirrored
+        (_try_mirroring), queued once by the database upgrade to schema 12: each that Tesseract
+        still read poorly is read turned round left to right, and marked a mirror image if that
+        reads clearly better. Its image is then turned round to show and export, even if an AI
+        or a person has read it since; the new reading is used only in place of Tesseract's
+        own. A page a person turned or completed is left alone.
+
+        Returns (pages checked, mirror images found).
+        """
+        if not hasattr(self.tesseract, "mirrored_reading"):
+            return 0, 0
+        rows = conn.execute(
+            "SELECT s.id AS step, s.scan_id, p.id AS page_id, p.image_path, p.dpi,"
+            " p.blank_score, p.detected_rotation, p.user_rotation, p.detected_mirror,"
+            " p.user_mirror, c.source, coalesce(c.reviewed, 0) AS checked,"
+            f" {_COMPLETED} AS completed, (SELECT t.confidence FROM transcriptions t"
+            " WHERE t.page_id = p.id AND t.source = 'tesseract' ORDER BY t.id DESC LIMIT 1)"
+            " AS confidence FROM intake_steps s JOIN pages p ON p.id = s.page_id"
+            " LEFT JOIN v_current_text c ON c.page_id = p.id"
+            " WHERE s.step = 'image' AND s.status = 'queued' ORDER BY s.id"
+        ).fetchall()
+        ocr = self.settings.ocr
+        checked, found = self._run_checks(
+            conn,
+            rows,
+            Step.IMAGE,
+            lambda r: _leave_unmirrored(r, ocr),
+            self._mirror_if_better,
+            "checking for a mirror image",
+            stop,
+        )
+        if found:
+            log.info("Found %d mirror image(s) among pages read before", found)
+        return checked, found
+
+    def _run_checks(
+        self,
+        conn: sqlite3.Connection,
+        rows: list[sqlite3.Row],
+        step: Step,
+        leave: Callable[[sqlite3.Row], str | None],
+        check: Callable[[sqlite3.Connection, sqlite3.Row], bool],
+        what: str,
+        stop: threading.Event | None,
+    ) -> tuple[int, int]:
+        """Queued one-off checks of pages read before (check_upside_down, check_mirrored): each
+        row's queued step is skipped, with why `leave` says, or done by `check`, True if it
+        changed the page. Each is done once; one cut off when Lindley closed isn't done again.
+        Returns (pages checked, pages changed)."""
+        checked = changed = 0
+        version = getattr(self.tesseract, "version", self.tesseract.name)
         for r in rows:
             if stop and stop.is_set():
                 break
-            why = _leave_the_way_up(r, ocr)
-            if why:
+            if why := leave(r):
                 with conn:
                     conn.execute(
                         "UPDATE intake_steps SET status = 'skipped', error = ?,"
@@ -498,27 +564,25 @@ class Pipeline:
                         (why, r["step"]),
                     )
                 continue
-            version = getattr(self.tesseract, "version", self.tesseract.name)
             try:
                 with run_step(
                     conn,
                     r["scan_id"],
-                    Step.OCR,
+                    step,
                     page_id=r["page_id"],
                     engine_version=version,
                     queued=r["step"],
                 ):
-                    turned += self._turn_if_upside_down(conn, r)
+                    changed += check(conn, r)
             except StepTaken:
                 continue
             except Exception:
-                log.exception("Page %d: checking whether it's upside down failed", r["page_id"])
+                log.exception("Page %d: %s failed", r["page_id"], what)
                 continue
             checked += 1
-        if turned:
-            log.info("Turned %d page(s) read upside down before", turned)
+        if changed:
             follow_settings(conn, self.settings)  # some may read well enough now
-        return checked, turned
+        return checked, changed
 
     def _turn_if_upside_down(self, conn: sqlite3.Connection, r: sqlite3.Row) -> bool:
         """check_upside_down for one page: True if it was turned over."""
@@ -530,31 +594,67 @@ class Pipeline:
             reading = self.tesseract.recognize(upright)[0]
         if (reading.confidence or 0) < (r["confidence"] or 0) + TURN_MARGIN:
             return False
-        version = getattr(self.tesseract, "version", self.tesseract.name)
-        script = pageimage.classify_script(reading.words, r["blank_score"])
         with conn:
+            self._add_tesseract_reading(conn, r["page_id"], reading, r["blank_score"])
             conn.execute(
-                "UPDATE transcriptions SET is_current = 0 WHERE page_id = ? AND is_current = 1",
+                "UPDATE pages SET detected_rotation = 180, updated_at = datetime('now')"
+                " WHERE id = ?",
                 (r["page_id"],),
             )
+        return True
+
+    def _mirror_if_better(self, conn: sqlite3.Connection, r: sqlite3.Row) -> bool:
+        """check_mirrored for one page: True if it's a mirror image."""
+        image = Path(r["image_path"])
+        found = self._read_mirrored(
+            r["page_id"], image, r["detected_rotation"], r["dpi"], r["confidence"]
+        )
+        if found is None:
+            return False
+        to, reading = found
+        with conn:
+            use = r["source"] == "tesseract" and not r["checked"]
+            self._add_tesseract_reading(conn, r["page_id"], reading, r["blank_score"], use)
             conn.execute(
-                "INSERT INTO transcriptions (page_id, source, engine_model, text, confidence,"
-                " unsure_spans, words, is_current) VALUES (?, 'tesseract', ?, ?, ?, ?, ?, 1)",
-                (
-                    r["page_id"],
-                    version,
-                    reading.text,
-                    reading.confidence,
-                    json.dumps(reading.unsure_spans()),
-                    json.dumps(reading.words) if reading.words else None,
-                ),
-            )
-            conn.execute(
-                "UPDATE pages SET detected_rotation = 180, script = ?,"
+                "UPDATE pages SET detected_mirror = 1, detected_rotation = ?,"
                 " updated_at = datetime('now') WHERE id = ?",
-                (script, r["page_id"]),
+                (to, r["page_id"]),
             )
         return True
+
+    def _add_tesseract_reading(
+        self,
+        conn: sqlite3.Connection,
+        page_id: int,
+        reading: PageResult,
+        blank_score: float | None,
+        current: bool = True,
+    ) -> None:
+        """A better Tesseract reading of a page read before, turned another way: the reading in
+        use if `current`, else kept beside it. In the caller's transaction."""
+        version = getattr(self.tesseract, "version", self.tesseract.name)
+        if current:
+            conn.execute(
+                "UPDATE transcriptions SET is_current = 0 WHERE page_id = ? AND is_current = 1",
+                (page_id,),
+            )
+            conn.execute(
+                "UPDATE pages SET script = ? WHERE id = ?",
+                (pageimage.classify_script(reading.words, blank_score), page_id),
+            )
+        conn.execute(
+            "INSERT INTO transcriptions (page_id, source, engine_model, text, confidence,"
+            " unsure_spans, words, is_current) VALUES (?, 'tesseract', ?, ?, ?, ?, ?, ?)",
+            (
+                page_id,
+                version,
+                reading.text,
+                reading.confidence,
+                json.dumps(reading.unsure_spans()),
+                json.dumps(reading.words) if reading.words else None,
+                int(current),
+            ),
+        )
 
     def read_waiting(
         self,
@@ -579,7 +679,8 @@ class Pipeline:
         statuses = ("queued", "failed") if retry_failed else ("queued",)
         rows = conn.execute(
             "SELECT v.id, v.status, v.scan_id, v.page_id, p.image_path, p.dpi,"
-            f" p.detected_rotation, p.user_rotation FROM ({_LAST_VISION}) v"
+            " p.detected_rotation, p.user_rotation, p.detected_mirror, p.user_mirror"
+            f" FROM ({_LAST_VISION}) v"
             " JOIN pages p ON p.id = v.page_id"
             f" WHERE v.status IN ({', '.join('?' * len(statuses))}) AND {_UNCHECKED}"
             " ORDER BY v.scan_id, p.page_index",
@@ -615,7 +716,9 @@ class Pipeline:
                 ):
                     image = Path(r["image_path"])
                     with (
-                        self._upright(r["page_id"], image, rotation, r["dpi"]) as upright,
+                        self._upright(
+                            r["page_id"], image, rotation, r["dpi"], mirrored(r)
+                        ) as upright,
                         metered(self.vision) as used,
                     ):
                         try:
@@ -704,17 +807,18 @@ class Pipeline:
             ):
                 self._check_image(conn, page_id, image, page["dpi"])
             page = self._page(conn, page_id)
-        rotation = (page["detected_rotation"] + page["user_rotation"]) % 360
+        rotation, flip = (page["detected_rotation"] + page["user_rotation"]) % 360, mirrored(page)
         first = None
         if self.settings.ocr.engine != "vision":
-            rotation, first = self._read_any_way_up(conn, scan_id, page_id, image, page)
-        with self._upright(page_id, image, rotation, page["dpi"]) as upright:
+            rotation, flip, first = self._read_any_way_up(conn, scan_id, page_id, image, page)
+        with self._upright(page_id, image, rotation, page["dpi"], flip) as upright:
             self._read_upright(conn, scan_id, page_id, upright, page["blank_score"], first)
 
     def _read_any_way_up(
         self, conn: sqlite3.Connection, scan_id: int, page_id: int, image: Path, page: sqlite3.Row
-    ) -> tuple[int, PageResult]:
-        """Tesseract's reading, and the rotation that puts the page upright.
+    ) -> tuple[int, bool, PageResult]:
+        """Tesseract's reading, the rotation that puts the page upright, and whether it's a
+        mirror image.
 
         Tesseract reads the page whichever way up it is and says which way that was, in one
         run; a page on its side is read again, turned upright. It only turns a page when it's
@@ -724,33 +828,47 @@ class Pipeline:
         upside down on the scanner, the check has said "upright" even when it was sure (on 344
         real scans, 4 typed pages read at 19-27 as they were and 56-79 turned). A turn a person
         set is trusted, and the page read that way.
+
+        A page that still reads poorly may be a mirror image (_try_mirroring), as the back of a
+        carbon copy is. A flip a person set is trusted too.
         """
         rotation = (page["detected_rotation"] + page["user_rotation"]) % 360
+        flip = mirrored(page)
         dpi = page["dpi"]
         oriented = getattr(self.tesseract, "oriented_reading", None)
-        if oriented is None or page["user_rotation"]:
-            return rotation, self._tesseract_reading(conn, scan_id, page_id, image, rotation, dpi)
+        if oriented is None or page["user_rotation"] or page["user_mirror"]:
+            reading = self._tesseract_reading(conn, scan_id, page_id, image, rotation, dpi, flip)
+            return rotation, flip, reading
         version = getattr(self.tesseract, "version", self.tesseract.name)
         with (
             run_step(conn, scan_id, Step.OCR, page_id=page_id, engine_version=version),
-            self._upright(page_id, image, rotation, dpi) as upright,
+            self._upright(page_id, image, rotation, dpi, flip) as upright,
         ):
             turn, reading = oriented(upright)
         if turn:
             self._detected(conn, page_id, (page["detected_rotation"] + turn) % 360)
             rotation = (rotation + turn) % 360
             if reading is None:  # on its side
-                reading = self._tesseract_reading(conn, scan_id, page_id, image, rotation, dpi)
-            return rotation, reading
+                reading = self._tesseract_reading(
+                    conn, scan_id, page_id, image, rotation, dpi, flip
+                )
+            return rotation, flip, reading
         if (
             page["blank_score"] >= pageimage.BLANK_AT
             or (reading.confidence or 0) >= self.settings.ocr.confidence_threshold
         ):
-            return rotation, reading
-        found = self._orientation(page_id, image, rotation, dpi)
-        if not found:  # it can't tell: too little text
-            return rotation, reading
-        return self._try_turning(conn, scan_id, page_id, image, page, reading, found[0] or 180)
+            return rotation, flip, reading
+        if found := self._orientation(page_id, image, rotation, dpi, flip):
+            rotation, reading = self._try_turning(
+                conn, scan_id, page_id, image, page, reading, found[0] or 180
+            )
+        if (
+            flip
+            or (reading.confidence or 0) >= self.settings.ocr.confidence_threshold
+            or not hasattr(self.tesseract, "mirrored_reading")
+        ):
+            return rotation, flip, reading
+        return self._try_mirroring(conn, scan_id, page_id, image, rotation, reading)
 
     def _try_turning(
         self,
@@ -767,11 +885,80 @@ class Pipeline:
         Tesseract reading."""
         rotation = (page["detected_rotation"] + page["user_rotation"]) % 360
         turned_to = (rotation + guess) % 360
-        turned = self._tesseract_reading(conn, scan_id, page_id, image, turned_to, page["dpi"])
+        turned = self._tesseract_reading(
+            conn, scan_id, page_id, image, turned_to, page["dpi"], mirrored(page)
+        )
         if (turned.confidence or 0) < (as_is.confidence or 0) + TURN_MARGIN:
             return rotation, as_is
         self._detected(conn, page_id, (page["detected_rotation"] + guess) % 360)
         return turned_to, turned
+
+    def _try_mirroring(
+        self,
+        conn: sqlite3.Connection,
+        scan_id: int,
+        page_id: int,
+        image: Path,
+        rotation: int,
+        as_is: PageResult,
+    ) -> tuple[int, bool, PageResult]:
+        """The page still reads poorly: it may be a mirror image, the back of a carbon copy or
+        a scan made through the paper. Read it turned round left to right, and if that doesn't
+        read well, upside down too (turned round top to bottom), and keep the better only if it
+        reads clearly better than as it is. Returns the rotation, whether it's mirrored, and the
+        reading to use. No person has turned it: their turn is trusted (_read_any_way_up)."""
+        version = getattr(self.tesseract, "version", self.tesseract.name)
+        found = self._read_mirrored(
+            page_id,
+            image,
+            rotation,
+            self._page(conn, page_id)["dpi"],
+            as_is.confidence,
+            lambda: run_step(conn, scan_id, Step.OCR, page_id=page_id, engine_version=version),
+        )
+        if found is None:
+            return rotation, False, as_is
+        with conn:
+            conn.execute(
+                "UPDATE pages SET detected_mirror = 1, detected_rotation = ?,"
+                " updated_at = datetime('now') WHERE id = ?",
+                (found[0], page_id),
+            )
+        return found[0], True, found[1]
+
+    def _read_mirrored(
+        self,
+        page_id: int,
+        image: Path,
+        rotation: int,
+        dpi: int | None,
+        was: float | None,
+        step: Callable[[], AbstractContextManager] = nullcontext,
+    ) -> tuple[int, PageResult] | None:
+        """Read the page turned round left to right (the engine's mirrored_reading) as it's
+        turned now, `rotation`, and if that doesn't read well, upside down from it too. Returns
+        the better, if it reads clearly better than `was` (the confidence as it is) and well
+        (ocr.confidence_threshold): the rotation that puts the turned-round page upright, and
+        its reading. Else None. Each reading is one `step`.
+
+        On 409 real scans, the two mirror images read at 37-42 as they were and 85-88 turned
+        round; pages the right way round read at 25-35 turned round. Reading well matters too:
+        a page of handwriting Tesseract can't read either way read at 21, and 51 turned round."""
+        best: tuple[int, PageResult] | None = None
+        for turn in (0, 180):
+            to = (rotation + turn) % 360
+            with step(), self._upright(page_id, image, to, dpi) as upright:
+                r = self.tesseract.mirrored_reading(upright)
+            # The engine turns round the page already turned `to`: the same as turning it round
+            # first (as pages are shown, see image.upright_page), then turning it back `to`.
+            if best is None or (r.confidence or 0) > (best[1].confidence or 0):
+                best = ((-to) % 360, r)
+            if (r.confidence or 0) >= self.settings.ocr.confidence_threshold:
+                break
+        need = max((was or 0) + TURN_MARGIN, self.settings.ocr.confidence_threshold)
+        if best is None or (best[1].confidence or 0) < need:
+            return None
+        return best
 
     def _detected(self, conn: sqlite3.Connection, page_id: int, rotation: int) -> None:
         with conn:
@@ -781,13 +968,13 @@ class Pipeline:
             )
 
     def _orientation(
-        self, page_id: int, image: Path, rotation: int, dpi: int | None
+        self, page_id: int, image: Path, rotation: int, dpi: int | None, flip: bool = False
     ) -> tuple[int, float] | None:
         """Tesseract's orientation check, on the page turned `rotation`, if it has one."""
         orientation = getattr(self.tesseract, "orientation", None)
         if orientation is None:
             return None
-        with self._upright(page_id, image, rotation, dpi) as upright:
+        with self._upright(page_id, image, rotation, dpi, flip) as upright:
             return orientation(upright)
 
     def _tesseract_reading(
@@ -798,11 +985,12 @@ class Pipeline:
         image: Path,
         rotation: int,
         dpi: int | None,
+        flip: bool = False,
     ) -> PageResult:
         version = getattr(self.tesseract, "version", self.tesseract.name)
         with (
             run_step(conn, scan_id, Step.OCR, page_id=page_id, engine_version=version),
-            self._upright(page_id, image, rotation, dpi) as upright,
+            self._upright(page_id, image, rotation, dpi, flip) as upright,
         ):
             return self.tesseract.recognize(upright)[0]
 
@@ -811,17 +999,21 @@ class Pipeline:
 
     def _page(self, conn: sqlite3.Connection, page_id: int) -> sqlite3.Row:
         return conn.execute(
-            "SELECT dpi, blank_score, detected_rotation, user_rotation FROM pages WHERE id = ?",
+            "SELECT dpi, blank_score, detected_rotation, user_rotation, detected_mirror,"
+            " user_mirror FROM pages WHERE id = ?",
             (page_id,),
         ).fetchone()
 
-    def _upright(self, page_id: int, image: Path, rotation: int, dpi: int | None):
-        """The page to read: the image itself, or a turned copy that's removed afterwards."""
-        if not pageimage.needs_turning(image, rotation):
+    def _upright(
+        self, page_id: int, image: Path, rotation: int, dpi: int | None, flip: bool = False
+    ):
+        """The page to read: the image itself, or a turned copy that's removed afterwards.
+        `flip`: it's a mirror image, turned round left to right before the rotation."""
+        if not pageimage.needs_turning(image, rotation, flip):
             return nullcontext(image)
         # Named for this call: the watcher and a person's request may turn the same page.
         work = self.settings.processing_dir / f"page-{page_id}-{uuid.uuid4().hex[:8]}.png"
-        return _removed_after(pageimage.upright_copy(image, work, rotation, dpi))
+        return _removed_after(pageimage.upright_copy(image, work, rotation, dpi, flip))
 
     def _check_image(
         self, conn: sqlite3.Connection, page_id: int, image: Path, dpi: int | None
@@ -957,13 +1149,39 @@ def _leave_the_way_up(r: sqlite3.Row, ocr) -> str | None:
         return "A person checked the text, or it isn't Tesseract's"
     if r["completed"]:
         return "Its document is completed"
-    if r["detected_rotation"] or r["user_rotation"]:
+    if r["detected_rotation"] or r["user_rotation"] or r["detected_mirror"] or r["user_mirror"]:
         return "It has been turned"
     if (r["confidence"] or 0) >= ocr.confidence_threshold:
         return "It reads well enough"
     if (r["blank_score"] or 0) >= pageimage.BLANK_AT:
         return "The page looks blank"
     return None
+
+
+def _leave_unmirrored(r: sqlite3.Row, ocr) -> str | None:
+    """Why check_mirrored leaves a page as it is, or None to check it. `confidence` is its
+    latest Tesseract reading's."""
+    if ocr.engine == "vision":
+        return "Reading is set to the vision model"
+    if r["user_rotation"] or r["user_mirror"]:
+        return "A person turned it"
+    if r["detected_mirror"]:
+        return "It's turned round already"
+    if r["completed"]:
+        return "Its document is completed"
+    if r["confidence"] is None:
+        return "Tesseract hasn't read it"
+    if r["confidence"] >= ocr.confidence_threshold:
+        return "It reads well enough"
+    if (r["blank_score"] or 0) >= pageimage.BLANK_AT:
+        return "The page looks blank"
+    return None
+
+
+def mirrored(page: sqlite3.Row) -> bool:
+    """Whether the page is a mirror image, as Lindley found it or a person set it: one of the
+    two flips it, both flip it back."""
+    return bool(page["detected_mirror"]) != bool(page["user_mirror"])
 
 
 def _last_vision_status(conn: sqlite3.Connection, page_id: int) -> str | None:

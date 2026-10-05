@@ -173,6 +173,23 @@ def test_turning_pages(client, settings, tmp_path):
     assert client.get(f"/api/pages/{a}").json()["turned"] == 0
 
 
+def test_flipping_a_mirror_image(client, settings, tmp_path):
+    conn = db(client, settings)
+    a = add_page(conn, tmp_path, "one")
+    body = client.post("/api/pages/flip", json={"page_ids": [a]}).json()
+    p = client.get(f"/api/pages/{a}").json()
+    assert p["mirrored"] and not p["mirror_found"] and p["image"].endswith("v=0m")
+    assert client.get(p["image"]).status_code == 200
+    undo(client, body)
+    assert not client.get(f"/api/pages/{a}").json()["mirrored"]
+    # Flipping one Lindley found turns it back
+    conn.execute("UPDATE pages SET detected_mirror = 1 WHERE id = ?", (a,))
+    conn.commit()
+    client.post("/api/pages/flip", json={"page_ids": [a]})
+    p = client.get(f"/api/pages/{a}").json()
+    assert not p["mirrored"] and p["mirror_found"]
+
+
 def test_starting_a_document_and_naming_it(client, settings, tmp_path):
     conn = db(client, settings)
     a, b = add_page(conn, tmp_path, "one"), add_page(conn, tmp_path, "two")

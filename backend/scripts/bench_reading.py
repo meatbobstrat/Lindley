@@ -73,7 +73,8 @@ def choose(
     poorly, even when a person checked some."""
     sql = (
         "SELECT p.id, p.image_path, p.dpi, p.script, (p.detected_rotation + p.user_rotation)"
-        " % 360 AS rotation, c.text, c.confidence, c.reviewed FROM pages p"
+        " % 360 AS rotation, p.detected_mirror != p.user_mirror AS mirrored, c.text,"
+        " c.confidence, c.reviewed FROM pages p"
         " JOIN v_current_text c ON c.page_id = p.id"
     )
     checked = db.execute(sql + " WHERE c.reviewed ORDER BY p.id").fetchall()
@@ -179,8 +180,10 @@ def main() -> None:
         images = {}
         for r in rows:
             path = Path(r["image_path"])
-            if r["rotation"]:
-                path = upright_copy(path, Path(tmp) / f"{r['id']}.png", r["rotation"], r["dpi"])
+            if r["rotation"] or r["mirrored"]:
+                path = upright_copy(
+                    path, Path(tmp) / f"{r['id']}.png", r["rotation"], r["dpi"], bool(r["mirrored"])
+                )
             images[r["id"]] = image_bytes(path, a.max_side)
         for model in models + conns:
             name, local = label[model], model in models

@@ -7,7 +7,7 @@ from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 # Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}, or a function
 # given the connection.
@@ -31,6 +31,7 @@ MIGRATIONS: dict[int, str | Callable[[sqlite3.Connection], None]] = {
           AND p.detected_rotation = 0 AND p.user_rotation = 0;
     """,
     11: lambda conn: _ai_call_usage(conn),
+    12: lambda conn: _mirrors(conn),
 }
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.
@@ -69,6 +70,26 @@ def _ai_call_usage(conn: sqlite3.Connection) -> None:
     ):
         if column.split()[0] not in has:
             conn.execute(f"ALTER TABLE ai_calls ADD COLUMN {column}")
+
+
+def _mirrors(conn: sqlite3.Connection) -> None:
+    """v12: pages can be mirror images. Pages Tesseract read before Lindley tried a poorly read
+    page mirrored are each queued once, for the watcher to check (Pipeline.check_mirrored)."""
+    if "pages" not in _tables(conn):
+        return
+    has = {r[1] for r in conn.execute("PRAGMA table_info(pages)")}
+    for column in ("detected_mirror", "user_mirror"):
+        if column not in has:
+            conn.execute(
+                f"ALTER TABLE pages ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
+                f" CHECK ({column} IN (0, 1))"
+            )
+    conn.execute(
+        "INSERT INTO intake_steps (scan_id, page_id, step, status, error)"
+        " SELECT p.scan_id, p.id, 'image', 'queued', 'To be checked for a mirror image'"
+        " FROM pages p WHERE p.id IN (SELECT t.page_id FROM transcriptions t"
+        " WHERE t.source = 'tesseract' AND coalesce(t.confidence, 0) < 100)"
+    )
 
 
 def _drop_placeholder(conn: sqlite3.Connection) -> None:

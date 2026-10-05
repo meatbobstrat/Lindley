@@ -20,12 +20,13 @@ import sqlite3
 from lindley.db.progress import document_progress
 from lindley.duplicates import resolve
 from lindley.worker import image as pageimage
-from lindley.worker.pipeline import _LAST_VISION
+from lindley.worker.pipeline import _LAST_VISION, mirrored
 
 _PAGES = f"""
 SELECT p.id, p.scan_id, p.page_index, s.original_name AS file, s.origin, s.imported_at,
        s.scanned_at, s.status AS scan_status, s.error AS scan_error, p.width_px, p.height_px,
        p.dpi, p.color_mode, p.script, p.blank_score, p.detected_rotation, p.user_rotation,
+       p.detected_mirror, p.user_mirror,
        p.document_id, p.position, p.set_aside_at, c.page_id IS NOT NULL AS has_text, c.source,
        c.confidence, coalesce(c.reviewed, 0) AS reviewed, v.status AS vision_status,
        v.error AS vision_error, d.status AS document_status
@@ -79,8 +80,10 @@ def page_json(r: sqlite3.Row, review_below: float) -> dict:
         "size": [r["width_px"], r["height_px"]] if r["width_px"] else None,
         "color_mode": r["color_mode"],
         "turned": r["user_rotation"],  # by a person, on top of what Lindley detected
+        "mirrored": mirrored(r),  # a mirror image, turned round to be read and shown
+        "mirror_found": bool(r["detected_mirror"]),  # Lindley found it was one
         # The image, upright; `v` changes with every turn so a cached one isn't shown
-        "image": f"/api/pages/{r['id']}/image?v={rotation}",
+        "image": f"/api/pages/{r['id']}/image?v={rotation}{'m' if mirrored(r) else ''}",
     }
 
 

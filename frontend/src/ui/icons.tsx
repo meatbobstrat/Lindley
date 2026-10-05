@@ -9,6 +9,7 @@ const PATHS = {
   aside: 'M3 5h18v4H3zM5 9v10h14V9M10 13h4',
   rotL: 'M4 5v5h5M4.6 10a8 8 0 1 1 1.6 6.5',
   rotR: 'M20 5v5h-5M19.4 10a8 8 0 1 0-1.6 6.5',
+  flip: 'M12 3v18M9 7L3 17h6zM15 7l6 10h-6z',
   up: 'M12 19V5M6 11l6-6 6 6',
   down: 'M12 5v14M6 13l6 6 6-6',
   move: 'M3 7h7l2 2h9v10H3zM11 14h6M14 11l3 3-3 3',

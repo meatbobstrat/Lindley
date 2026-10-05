@@ -166,8 +166,8 @@ class FolderWatcher:
         """Read scans whose reading never finished: cut off when Lindley closed, or failed
         (Tesseract wasn't installed, say). Lindley's own copy is read, so this works in move
         mode too, where the original has gone. Then pages read before Lindley tried poorly read
-        pages upside down are checked (Pipeline.check_upside_down). Returns the scans picked
-        up."""
+        pages upside down are checked (Pipeline.check_upside_down), and those read before it
+        tried mirror images (Pipeline.check_mirrored). Returns the scans picked up."""
         conn = self._db()
         scans = unfinished_scans(conn)
         read = self.pipeline.process_scans(conn, scans, stop=self._stop)
@@ -177,6 +177,8 @@ class FolderWatcher:
         if read:
             self._unassembled = True
         if self.pipeline.check_upside_down(conn, stop=self._stop)[1]:
+            self._unassembled = True
+        if self.pipeline.check_mirrored(conn, stop=self._stop)[1]:
             self._unassembled = True
         return scans
 

@@ -126,6 +126,18 @@ export function ScanView() {
             Lindley read it with {p.confidence}% confidence, so a few words may be wrong. Check it yourself, or ask the AI to read it.
           </Banner>
         )}
+        {p.mirror_found && p.mirrored && (
+          <Banner
+            kind="ai"
+            actions={
+              <button className="btn ghost" onClick={() => acts.flip([id])} data-tip="Show it as it was scanned, if Lindley was wrong">
+                Flip it back
+              </button>
+            }
+          >
+            <b>This scan is a mirror image</b>, perhaps the back of a carbon copy, so Lindley turned it round to read it. The scan itself isn’t changed.
+          </Banner>
+        )}
         {aside && p.duplicate_of && (
           <Banner kind="ok" icon="dup">
             This is a copy you set aside. You kept <span className="mono">{p.duplicate_of.file}</span> instead.
@@ -165,6 +177,7 @@ export function ScanView() {
         <Sep />
         <DBtn icon="rotL" label="Turn left" iconOnly tip="Turn a quarter turn left. The scan itself isn’t changed." onClick={() => acts.rotate([id], -90)} />
         <DBtn icon="rotR" label="Turn right" iconOnly tip="Turn a quarter turn right. The scan itself isn’t changed." onClick={() => acts.rotate([id], 90)} />
+        <DBtn icon="flip" label="Flip left to right" iconOnly tip="For a mirror image, such as the back of a carbon copy. The scan itself isn’t changed." onClick={() => acts.flip([id])} />
         <DBtn icon="newdoc" label="New document…" tip="Start a new document with this scan" onClick={() => acts.newDocument([id])} />
         <DBtn icon="move" label="Add to document…" tip="Add this scan to a document in progress" onClick={(e) => acts.moveMenu([id], e.currentTarget)} />
         {aside ? (

@@ -5,6 +5,8 @@ import type { DocSummary } from '../api/client'
 
 export interface Actions {
   rotate: (ids: number[], deg: 90 | -90) => void
+  /** Turn pages round left to right: a mirror image the right way round, or back. */
+  flip: (ids: number[]) => void
   toInbox: (ids: number[]) => void
   setAside: (ids: number[]) => void
   moveTo: (ids: number[], doc: DocSummary | { id: number; name: string }) => void

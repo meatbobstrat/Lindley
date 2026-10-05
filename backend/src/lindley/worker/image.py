@@ -55,25 +55,31 @@ def exif_orientation(img: Image.Image) -> int:
     return img.getexif().get(EXIF_ORIENTATION, 1)
 
 
-def needs_turning(path: Path, rotation: int) -> bool:
-    """Whether reading the page needs a turned copy: a rotation, or an EXIF orientation."""
-    if rotation % 360:
+def needs_turning(path: Path, rotation: int, mirrored: bool = False) -> bool:
+    """Whether reading the page needs a turned copy: a rotation, a mirror image, or an EXIF
+    orientation."""
+    if rotation % 360 or mirrored:
         return True
     with Image.open(path) as img:
         return exif_orientation(img) != 1
 
 
-def upright_page(path: Path, rotation: int) -> Image.Image:
-    """The page turned upright: EXIF orientation, then `rotation` degrees clockwise."""
+def upright_page(path: Path, rotation: int, mirrored: bool = False) -> Image.Image:
+    """The page turned upright: EXIF orientation, turned round left to right if it's a mirror
+    image, then `rotation` degrees clockwise."""
     img = open_upright(path)
+    if mirrored:
+        img = ImageOps.mirror(img)
     if rotation % 360:
         img = img.rotate(-rotation, expand=True)
     return img
 
 
-def upright_copy(src: Path, dest: Path, rotation: int, dpi: int | None = None) -> Path:
-    """Save the page turned upright (EXIF orientation, then `rotation` degrees clockwise)."""
-    img = upright_page(src, rotation)
+def upright_copy(
+    src: Path, dest: Path, rotation: int, dpi: int | None = None, mirrored: bool = False
+) -> Path:
+    """Save the page turned upright (as upright_page)."""
+    img = upright_page(src, rotation, mirrored)
     dest.parent.mkdir(parents=True, exist_ok=True)
     img.save(dest, **({"dpi": (dpi, dpi)} if dpi else {}))
     return dest
@@ -116,16 +122,14 @@ def dhash(img: Image.Image) -> str:
 SIG_SIZE = 32  # image_signature: a SIG_SIZE x SIG_SIZE grey picture of the page's contents
 
 
-def image_signature(path: Path, rotation: int = 0) -> bytes:
+def image_signature(path: Path, rotation: int = 0, mirrored: bool = False) -> bytes:
     """A tiny picture of what's on the page, much the same however it was scanned.
 
     Brightness and contrast are evened out and the page is cropped to its ink, so dpi, colour,
     exposure and how much margin the scanner caught matter little. For pages with too little
     text to compare by their words.
     """
-    img = open_upright(path)
-    if rotation % 360:
-        img = img.rotate(-rotation, expand=True)
+    img = upright_page(path, rotation, mirrored)
     img.thumbnail((WORK_SIZE // 2, WORK_SIZE // 2))
     gray = ImageOps.autocontrast(img.convert("L"), cutoff=2)
     ink = gray.filter(ImageFilter.RankFilter(3, 2)).point(lambda v: 255 if v < 128 else 0)

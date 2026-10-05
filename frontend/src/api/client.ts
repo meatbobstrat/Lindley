@@ -35,6 +35,10 @@ export interface Page {
   size: [number, number] | null
   color_mode: string | null
   turned: number
+  /** A mirror image (the back of a carbon copy), turned round to be read and shown */
+  mirrored: boolean
+  /** Lindley found it was a mirror image */
+  mirror_found: boolean
   image: string
   duplicate_of?: { id: number; file: string | null } | null
 }
@@ -359,6 +363,7 @@ export const api = {
   movePages: (page_ids: number[], to: Where, document_id?: number) =>
     send<Change>('POST', '/pages/move', { page_ids, to, document_id }),
   rotate: (page_ids: number[], degrees: 90 | -90 | 180) => send<Change>('POST', '/pages/rotate', { page_ids, degrees }),
+  flip: (page_ids: number[]) => send<Change>('POST', '/pages/flip', { page_ids }),
   checkText: (id: number, text?: string) => send<Change>('PUT', `/pages/${id}/text`, text === undefined ? {} : { text }),
   newDocument: (page_ids: number[], name: string, folder_id: number | null, suggested = false) =>
     send<Change>('POST', '/documents', { page_ids, name, folder_id, suggested }),

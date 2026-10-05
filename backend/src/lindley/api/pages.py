@@ -18,6 +18,7 @@ from lindley import browse, organise
 from lindley.api.deps import Conn
 from lindley.api.library import change_json, errors, review_below
 from lindley.worker.image import upright_page
+from lindley.worker.pipeline import mirrored
 
 router = APIRouter(prefix="/pages", tags=["pages"])
 
@@ -31,6 +32,10 @@ class Move(BaseModel):
 class Rotate(BaseModel):
     page_ids: list[int] = Field(min_length=1)
     degrees: Literal[90, -90, 180]
+
+
+class Pages(BaseModel):
+    page_ids: list[int] = Field(min_length=1)
 
 
 class Text(BaseModel):
@@ -50,6 +55,16 @@ def move(body: Move, conn: Conn) -> dict:
 def rotate(body: Rotate, conn: Conn) -> dict:
     try:
         c = organise.rotate(conn, body.page_ids, body.degrees)
+    except (LookupError, ValueError) as e:
+        raise errors(e) from e
+    return change_json(c)
+
+
+@router.post("/flip")
+def flip(body: Pages, conn: Conn) -> dict:
+    """Turn pages round left to right: mirror images the right way round."""
+    try:
+        c = organise.flip(conn, body.page_ids)
     except (LookupError, ValueError) as e:
         raise errors(e) from e
     return change_json(c)
@@ -80,11 +95,14 @@ def page_image(
     max_side: Annotated[int, Query(ge=64, le=4000)] = 1600,
 ) -> Response:
     row = conn.execute(
-        "SELECT image_path, detected_rotation, user_rotation FROM pages WHERE id = ?", (page_id,)
+        "SELECT image_path, detected_rotation, user_rotation, detected_mirror, user_mirror"
+        " FROM pages WHERE id = ?",
+        (page_id,),
     ).fetchone()
     if row is None or not row["image_path"] or not Path(row["image_path"]).is_file():
         raise HTTPException(404, "That page has no image")
-    img = upright_page(Path(row["image_path"]), row["detected_rotation"] + row["user_rotation"])
+    rotation = row["detected_rotation"] + row["user_rotation"]
+    img = upright_page(Path(row["image_path"]), rotation, mirrored(row))
     img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=85)

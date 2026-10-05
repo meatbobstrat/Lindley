@@ -9,7 +9,9 @@ from lindley.worker.image import (
     analyse,
     classify_script,
     hamming,
+    needs_turning,
     open_upright,
+    upright_page,
 )
 
 
@@ -97,6 +99,16 @@ def test_exif_orientation_is_applied(tmp_path):
     exif[0x0112] = 6  # rotated 90° clockwise to view
     path = save(img, tmp_path, "phone.jpg", exif=exif)
     assert open_upright(path).size == (140, 100)
+
+
+def test_a_mirror_image_is_turned_round_before_it_is_turned(tmp_path):
+    img = Image.new("RGB", (100, 140), "white")
+    ImageDraw.Draw(img).rectangle([0, 0, 9, 9], fill="black")  # ink at the top left
+    path = save(img, tmp_path, "carbon.png")
+    assert upright_page(path, 0, mirrored=True).getpixel((95, 5)) == (0, 0, 0)  # top right
+    turned = upright_page(path, 90, mirrored=True)  # then a quarter turn clockwise
+    assert turned.size == (140, 100) and turned.getpixel((135, 95)) == (0, 0, 0)  # bottom right
+    assert needs_turning(path, 0, mirrored=True) and not needs_turning(path, 0)
 
 
 def test_sixteen_bit_grey_is_not_washed_out(tmp_path):

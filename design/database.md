@@ -104,6 +104,22 @@ on real scans.
   processing folder, which is deleted afterwards. **Word boxes are therefore in upright
   coordinates.** `width_px` and `height_px` are the image as a viewer shows it (EXIF applied),
   before either rotation.
+- `detected_mirror` and `user_mirror` (schema 12): the page is a **mirror image**, the back of
+  a carbon copy or a page scanned through the paper, when one of them is set but not both. It's
+  turned round left to right before `detected_rotation + user_rotation`
+  (`image.upright_page`), wherever the page is read, shown, exported or compared. A page that
+  still reads poorly after the turns above is read turned round (`Pipeline._try_mirroring`,
+  Tesseract's `mirrored_reading`), and if that doesn't read well, upside down too. The mirror
+  is kept only if that reads at least 10 points better *and* well (`ocr.confidence_threshold`).
+  On the dev library's 409 scans, the two mirror images read at 37–42 as they were and 85–88
+  turned round, matching Claude's readings at 95–96%. One was upside down as well. Pages the
+  right way round read at 25–35 turned round. A page of handwriting Tesseract can't read either
+  way went from 21 to 51, clearly better but not well, and that's why reading well is required
+  too. Pages read before are queued once by the upgrade to schema 12 and checked when the
+  watcher starts (`Pipeline.check_mirrored`): 49 pages in about 5 minutes. A mirror image
+  found there is turned round to show and export even if an AI or a person read it since. Its
+  new reading is used only in place of Tesseract's own. A person can flip any page left to
+  right (`user_mirror`, undoable), which is trusted, as a turn is.
 - `script` is set after reading, from Tesseract's confidence line by line. Lines under 50% look
   handwritten and lines at 75% or more look printed; typewriting on old paper often falls in
   between.
@@ -387,7 +403,7 @@ So printed and typed pages stay with Tesseract: it's nearly as good, in seconds.
 | gemma4:e4b | 0.15 | Close to Claude on nine pages (0.04–0.22). It read a mirror-image page letter by letter, backwards (0.80) |
 | glm-ocr | 2.79 | It repeated itself on six pages, and Ollama 0.35 stopped it ("token repeat limit"); the other four were cut off at 2048 tokens |
 
-Page 282 is scanned as a mirror image, probably the back of a carbon copy. Claude read it as if it were the right way round, but Tesseract and the local models can't. Lindley checks pages for rotation, not mirroring.
+Page 282 is scanned as a mirror image, probably the back of a carbon copy. Claude read it as if it were the right way round, but Tesseract and the local models can't. Lindley now finds mirror images and turns them round: this page and one more, page 162, which was upside down as well (see `detected_mirror` above).
 
 ### Claude on real scans
 
@@ -410,7 +426,7 @@ What it showed needs doing:
 - **Progress while sorting.** The status bar stayed at "0 of 143" for five minutes.
 - Done: **a person can send any page under review to the reading AI** (Ask the AI, in Review and on the scan), not only pages Tesseract read below 70%. Lindley still sends only those on its own.
 - Done: **groups the AI checked at 60–74% are offered for one-click accept** (`assembler.offer_at`), first in the Inbox, with "Accept all" as one change to undo. 75% stays the bar for Lindley to make them itself (see "Confidence bars").
-- **Mirror-image scans.** Lindley could find them and turn them round, the way it turns upside-down pages.
+- Done: **mirror-image scans** are found and turned round (`detected_mirror`), and a person can flip a page.
 
 ### Confidence bars
 

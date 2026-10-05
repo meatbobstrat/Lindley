@@ -1,4 +1,4 @@
--- Lindley schema, version 9 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
+-- Lindley schema, version 12 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
 -- Applied idempotently at startup by lindley.db.database.init_db.
 -- Design notes: design/database.md.
 --
@@ -50,6 +50,10 @@ CREATE TABLE IF NOT EXISTS pages (
     blank_score       REAL,                         -- 0 = full page of writing, 1 = blank
     detected_rotation INTEGER NOT NULL DEFAULT 0 CHECK (detected_rotation IN (0, 90, 180, 270)),
     user_rotation     INTEGER NOT NULL DEFAULT 0 CHECK (user_rotation IN (0, 90, 180, 270)),
+    -- A mirror image (the back of a carbon copy, a scan made through the paper): turned round
+    -- left to right before the rotation. Mirrored when one of the two is set, not both.
+    detected_mirror   INTEGER NOT NULL DEFAULT 0 CHECK (detected_mirror IN (0, 1)),
+    user_mirror       INTEGER NOT NULL DEFAULT 0 CHECK (user_mirror IN (0, 1)),
     script            TEXT CHECK (script IN ('handwritten', 'printed', 'typed', 'mixed', 'none')),
     language          TEXT,                         -- ISO 639 code, e.g. eng
     document_id       INTEGER REFERENCES documents(id),

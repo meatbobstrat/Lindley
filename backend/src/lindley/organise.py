@@ -206,6 +206,32 @@ def rotate(conn: sqlite3.Connection, page_ids: list[int], degrees: int) -> Chang
     return change
 
 
+def flip(conn: sqlite3.Connection, page_ids: list[int]) -> Change:
+    """Turn pages round left to right: a mirror image (the back of a carbon copy) the right way
+    round, or one Lindley took for a mirror image back. As with a turn, the scan itself is never
+    changed, and its text isn't read again."""
+    with conn:
+        _from(conn, page_ids)
+        change = Change(history.new_batch(conn))
+        for pid in page_ids:
+            was = conn.execute("SELECT user_mirror FROM pages WHERE id = ?", (pid,)).fetchone()[0]
+            now = 1 - was
+            conn.execute(
+                "UPDATE pages SET user_mirror = ?, updated_at = datetime('now') WHERE id = ?",
+                (now, pid),
+            )
+            history.log(
+                conn,
+                change.batch,
+                "flip",
+                "page_mirror",
+                pid,
+                {"user_mirror": was},
+                {"user_mirror": now},
+            )
+    return change
+
+
 def new_document(
     conn: sqlite3.Connection,
     page_ids: list[int],

@@ -511,6 +511,108 @@ def test_a_page_read_upside_down_before_is_turned_over(conn, settings, scan):
     assert pipe.check_upside_down(conn) == (0, 0)  # checked once
 
 
+class MirrorOcr(StubOcr):
+    """A StubOcr that can also read a page turned round left to right, as Tesseract does
+    (mirrored_reading): it hands out `mirrored` readings in order for those."""
+
+    def __init__(self, *readings, mirrored=(), **kw) -> None:
+        super().__init__(*readings, **kw)
+        self.mirrored = list(mirrored)
+
+    def mirrored_reading(self, image_path):
+        text, conf = self.mirrored.pop(0)
+        return PageResult(1, text, conf, self.name, [])
+
+
+def test_a_mirror_image_is_read_turned_round(conn, settings, scan):
+    sid = scan()
+    ocr = MirrorOcr(("ee ; me ,9t0", 42.0), mirrored=[("It was a shipper of arsenic ore", 86.0)])
+    assert Pipeline(settings, ocr).process_scan(conn, sid) == "read"
+    page = page_row(conn, sid)
+    assert (page["detected_mirror"], page["detected_rotation"]) == (1, 0)
+    assert current_text(conn, sid) == "It was a shipper of arsenic ore"
+    shown = browse.page(conn, page["id"], settings.ocr.review_below)
+    assert shown["mirrored"] and shown["image"].endswith("v=0m")
+
+
+def test_a_mirror_image_upside_down_is_turned_round_and_over(conn, settings, scan):
+    sid = scan()
+    ocr = MirrorOcr(
+        ("uogrtng U9TM", 33.0), mirrored=[("e@8ansi", 30.0), ("It was a shipper", 80.0)]
+    )
+    Pipeline(settings, ocr).process_scan(conn, sid)
+    page = page_row(conn, sid)
+    assert (page["detected_mirror"], page["detected_rotation"]) == (1, 180)
+    assert current_text(conn, sid) == "It was a shipper"
+
+
+def test_a_page_read_poorly_the_right_way_round_stays_as_it_was(conn, settings, scan):
+    sid = scan()
+    ocr = MirrorOcr(("He had been a mule", 52.0), mirrored=[("e@8ansi", 30.0), ("HOLS", 27.0)])
+    Pipeline(settings, ocr).process_scan(conn, sid)
+    assert page_row(conn, sid)["detected_mirror"] == 0
+    assert current_text(conn, sid) == "He had been a mule"
+    assert ocr.mirrored == []  # tried both ways
+
+
+def test_handwriting_that_reads_no_better_turned_round_isnt_a_mirror_image(conn, settings, scan):
+    """Page 116 of the dev library: Tesseract can't read it either way, 21 as it is and 51
+    turned round. Clearly better, but not well: it's left as it is."""
+    sid = scan()
+    ocr = MirrorOcr(("a See ihe W ae", 21.0), mirrored=[("eftoatog to bef", 51.0), ("~ ;", 12.0)])
+    Pipeline(settings, ocr).process_scan(conn, sid)
+    assert page_row(conn, sid)["detected_mirror"] == 0
+    assert current_text(conn, sid) == "a See ihe W ae"
+
+
+def test_a_page_that_reads_well_isnt_tried_mirrored(conn, settings, scan):
+    sid = scan()
+    ocr = MirrorOcr(("Dear Sister, we are all well", 88.0))  # nothing mirrored to hand out
+    assert Pipeline(settings, ocr).process_scan(conn, sid) == "read"
+    assert page_row(conn, sid)["detected_mirror"] == 0
+
+
+def read_before_mirrors_were_tried(conn, settings, scan, reading, checked=False):
+    """A page read the way it was scanned, then queued by the upgrade to schema 12."""
+    from lindley.db.database import MIGRATIONS
+
+    sid = scan()
+    Pipeline(settings, StubOcr(reading)).process_scan(conn, sid)  # StubOcr can't read mirrored
+    if checked:
+        conn.execute(
+            "UPDATE transcriptions SET confirmed_at = datetime('now') WHERE page_id = ?",
+            (page_row(conn, sid)["id"],),
+        )
+    MIGRATIONS[12](conn)
+    conn.commit()
+    return sid
+
+
+def test_a_mirror_image_read_before_is_turned_round(conn, settings, scan):
+    sid = read_before_mirrors_were_tried(conn, settings, scan, ("ee ; me ,9t0", 42.0))
+    pipe = Pipeline(settings, MirrorOcr(mirrored=[("It was a shipper of arsenic ore", 86.0)]))
+    assert pipe.check_mirrored(conn) == (1, 1)
+    assert page_row(conn, sid)["detected_mirror"] == 1
+    assert current_text(conn, sid) == "It was a shipper of arsenic ore"
+    assert steps(conn, sid, "image")[-1] == ("done", None)
+    assert pipe.check_mirrored(conn) == (0, 0)  # checked once
+
+
+def test_a_mirror_image_a_person_read_keeps_their_text_but_is_turned_round(conn, settings, scan):
+    sid = read_before_mirrors_were_tried(conn, settings, scan, ("ee ; me", 42.0), checked=True)
+    pipe = Pipeline(settings, MirrorOcr(mirrored=[("It was a shipper of arsenic ore", 86.0)]))
+    assert pipe.check_mirrored(conn) == (1, 1)
+    assert page_row(conn, sid)["detected_mirror"] == 1  # shown and exported the right way round
+    assert current_text(conn, sid) == "ee ; me"
+    assert [(r["source"], r["is_current"]) for r in readings(conn, sid)][-1] == ("tesseract", 0)
+
+
+def test_a_page_that_reads_well_isnt_checked_for_a_mirror_image(conn, settings, scan):
+    sid = read_before_mirrors_were_tried(conn, settings, scan, ("Dear Sister", 88.0))
+    assert Pipeline(settings, MirrorOcr()).check_mirrored(conn) == (0, 0)
+    assert steps(conn, sid, "image")[-1] == ("skipped", "It reads well enough")
+
+
 def test_a_page_read_poorly_the_right_way_up_stays_as_it_was(conn, settings, scan):
     sid = read_before_upside_down_was_tried(conn, settings, scan, ("He had been a mule", 61.0))
     pipe = Pipeline(settings, StubOcr(("fiostoa0 Sf", 26.0), osd=(0, 4.3)))

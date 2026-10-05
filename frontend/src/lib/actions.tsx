@@ -69,6 +69,9 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
       rotate: (ids, deg) => {
         if (ids.length) run(api.rotate(ids, deg), `Turned ${plural(ids.length, 'page')} ${deg < 0 ? 'left' : 'right'}.`)
       },
+      flip: (ids) => {
+        if (ids.length) run(api.flip(ids), `Turned ${plural(ids.length, 'page')} round left to right.`)
+      },
       toInbox: (ids) => {
         if (ids.length)
           run(api.movePages(ids, 'inbox'), (r) => `Returned ${plural(ids.length, 'page')} to the Inbox. Lindley will sort ${ids.length === 1 ? 'it' : 'them'} again.${removedNote(r.removed)}`)
@@ -199,6 +202,7 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
           items.push(
             { label: 'Turn left', icon: 'rotL', tip: 'A quarter turn to the left. The scan itself isn’t changed.', onSelect: () => a.rotate(ids, -90) },
             { label: 'Turn right', icon: 'rotR', tip: 'A quarter turn to the right. The scan itself isn’t changed.', onSelect: () => a.rotate(ids, 90) },
+            { label: 'Flip left to right', icon: 'flip', tip: 'For a mirror image, such as the back of a carbon copy. The scan itself isn’t changed.', onSelect: () => a.flip(ids) },
           )
           if (where === 'document' && opts.docId && opts.order) {
             const { docId, order } = opts

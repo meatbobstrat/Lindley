@@ -23,6 +23,8 @@ from collections import Counter
 from functools import cache
 from pathlib import Path
 
+from PIL import Image, ImageOps
+
 from lindley.config import OcrSettings
 from lindley.worker.ocr.base import PageResult
 
@@ -144,6 +146,17 @@ class TesseractEngine:
             if len(again[1]) > len(words):
                 text, words, conf = again
         return [PageResult(1, text, conf, self.name, words)]
+
+    def mirrored_reading(self, image_path: Path) -> PageResult:
+        """Read the page turned round left to right, as a mirror image must be: the back of a
+        carbon copy, or a page scanned through the paper. The words' boxes are those of the
+        turned-round page."""
+        with tempfile.TemporaryDirectory(prefix="lindley-ocr-", ignore_cleanup_errors=True) as d:
+            turned = Path(d) / "mirrored.png"
+            with Image.open(image_path) as img:
+                dpi = {"dpi": img.info["dpi"]} if "dpi" in img.info else {}
+                ImageOps.mirror(ImageOps.exif_transpose(img)).save(turned, **dpi)
+            return self.recognize(turned)[0]
 
     def oriented_reading(self, image_path: Path) -> tuple[int, PageResult | None]:
         """Read the page whichever way up it is, in one run. Returns the turn, degrees

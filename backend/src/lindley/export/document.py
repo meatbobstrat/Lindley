@@ -57,6 +57,7 @@ def export_document(
         raise LookupError(f"There's no document {doc_id}")
     rows = conn.execute(
         "SELECT p.id, p.image_path, p.detected_rotation, p.user_rotation, p.dpi, p.color_mode,"
+        " p.detected_mirror != p.user_mirror AS mirrored,"
         " p.width_px, p.height_px, s.status AS scan_status"
         " FROM pages p JOIN scans s ON s.id = p.scan_id"
         " WHERE p.document_id = ? ORDER BY p.position",
@@ -79,7 +80,14 @@ def export_document(
         if text.words and not text.placed:
             unplaced.append(r["id"])
         pages.append(
-            PdfPage(Path(r["image_path"]), rotation, r["dpi"], r["color_mode"], text.words)
+            PdfPage(
+                Path(r["image_path"]),
+                rotation,
+                r["dpi"],
+                r["color_mode"],
+                text.words,
+                bool(r["mirrored"]),
+            )
         )
     subject = ", ".join(v for v in (doc["doc_type"], doc["doc_date"]) if v) or None
     data = build_pdf(pages, PdfInfo(doc["name"], subject))

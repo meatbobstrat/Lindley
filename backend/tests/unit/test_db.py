@@ -358,12 +358,40 @@ def test_v9_database_queues_pages_read_before_upside_down_was_tried(tmp_path):
     init_db(db)
     c = connect(db)
     queued = c.execute(
-        "SELECT page_id, step, status FROM intake_steps WHERE status = 'queued'"
+        "SELECT page_id, step, status FROM intake_steps WHERE status = 'queued' AND step = 'ocr'"
     ).fetchall()
     assert [tuple(r) for r in queued] == [(poor, "ocr", "queued")]
     assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     init_db(db)  # an upgraded database isn't queued again
-    assert c.execute("SELECT count(*) FROM intake_steps").fetchone()[0] == 1
+    assert c.execute("SELECT count(*) FROM intake_steps WHERE step = 'ocr'").fetchone()[0] == 1
+    c.close()
+
+
+def test_v11_database_gains_mirrors_and_queues_pages_tesseract_read(tmp_path):
+    db = tmp_path / "v11.db"
+    init_db(db)
+    c = sqlite3.connect(db)
+    c.execute("PRAGMA user_version = 11")
+    for i, (source, conf) in enumerate((("tesseract", 42.0), ("tesseract", 100.0), ("user", None))):
+        sid = c.execute(
+            "INSERT INTO scans (sha256, original_name, source_path, origin, import_mode, status)"
+            " VALUES (?, 'a.jpg', 'D:/a.jpg', 'watched', 'copy', 'read')",
+            (f"h{i}",),
+        ).lastrowid
+        pid = c.execute("INSERT INTO pages (scan_id) VALUES (?)", (sid,)).lastrowid
+        c.execute(
+            "INSERT INTO transcriptions (page_id, source, text, confidence, is_current)"
+            " VALUES (?, ?, 'x', ?, 1)",
+            (pid, source, conf),
+        )
+    c.commit()
+    c.close()
+    init_db(db)
+    c = connect(db)
+    queued = c.execute("SELECT page_id, step, error FROM intake_steps").fetchall()
+    assert [tuple(r) for r in queued] == [(1, "image", "To be checked for a mirror image")]
+    row = c.execute("SELECT detected_mirror, user_mirror FROM pages WHERE id = 1").fetchone()
+    assert tuple(row) == (0, 0)
     c.close()
 
 

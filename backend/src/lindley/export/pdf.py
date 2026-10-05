@@ -40,6 +40,7 @@ class PdfPage:
     dpi: int | None
     color_mode: str | None  # rgb, gray, bilevel
     words: list[Word]  # boxes in pixels of the upright image
+    mirrored: bool = False  # a mirror image, turned round left to right before the rotation
 
 
 @dataclass
@@ -79,11 +80,12 @@ def _dpi(dpi: int | None, long_px: int) -> float:
 
 def _image(page: PdfPage) -> tuple[bytes | Image.Image, tuple[int, int]]:
     """What to embed, and its size. A JPEG that needs no turning goes in as it is."""
-    if page.image_path.suffix.lower() in (".jpg", ".jpeg") and not page.rotation % 360:
+    as_is = not page.rotation % 360 and not page.mirrored
+    if page.image_path.suffix.lower() in (".jpg", ".jpeg") and as_is:
         with Image.open(page.image_path) as img:
             if exif_orientation(img) == 1 and img.mode in ("RGB", "L"):
                 return page.image_path.read_bytes(), img.size
-    img = upright_page(page.image_path, page.rotation)
+    img = upright_page(page.image_path, page.rotation, page.mirrored)
     if page.color_mode == "bilevel":
         return img.convert("1"), img.size  # one bit a pixel, Flate-compressed
     if page.color_mode == "gray":

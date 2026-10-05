@@ -23,7 +23,13 @@
     for a page pair, scored with `weights.py`), `layout.py`, `terms.py`, `segment.py`, `learn.py`
     (fitting the weights). Benches: `scripts/bench_assembler.py` (made-up, or `--real DB` with
     assembled PDFs as the answer key; `--sweep`: groups by confidence, to check the bars) and
-    `scripts/fit_assembler.py`. `search/`: stub for now
+    `scripts/fit_assembler.py`. `search/fts.py`: FTS5 search (`search_pages`, every word;
+    `search_any`, any word)
+  - `ask/`: Ask Lindley. `status.py` (whether it can answer: ready, broken, offer, none; the one
+    place that decides), `retrieve.py` (search words from the AI, then the pages), `prompt.py`,
+    `conversation.py` (tables `chats`, `chat_messages`), `answer.py` (one answer, as events).
+    API in `api/chat.py`: `POST /api/chat` streams server-sent events (`fastapi.sse`), the
+    answer worked out on a thread of its own (`metered` notes usage per thread)
   - `providers/allowance.py`: when an AI may be called on its own (`allow`, `daily_limit`);
     every call is recorded in `ai_calls`, with its tokens (`throttle.metered`) and estimated
     cost (`providers/prices.py`, list prices by model id: update it when prices change)

@@ -37,7 +37,7 @@ questions about your documents isn't built yet.
 | Duplicates (pages and documents scanned more than once) | Detection, decisions, API and the app's screen built |
 | Searchable PDF export | Built: one PDF per document, from Lindley's own readings, with people's corrections; try it with `scripts/export.py` |
 | Search | Built: every page's text as it reads now, with the words found marked |
-| Ask Lindley (AI chat) | Not started. The pane is in the app; until then it finds words and what's waiting for review, without an AI |
+| Ask Lindley (AI chat) | Built: questions about your documents, answered by the chat AI from the pages Lindley finds, citing each page; kept as conversations. With no AI for it, the pane finds words and what's waiting for review |
 | Real UI (React) | Built from the mockup: every view, on the real API, with a tooltip for every control |
 
 ## How it works
@@ -123,7 +123,9 @@ watched folders ─► watcher ─► intake ───────────�
     many at once. That keeps Lindley under a cloud AI's rate limits, and a slow computer usable.
   - Pages that need the vision model wait for you, with their Tesseract reading in use meanwhile.
     So do pages the AI could help sort.
-  - Questions you type in Ask Lindley are always sent: asking is your OK.
+  - Questions you type in Ask Lindley are always sent: asking is your OK. Each question is two
+    calls: one to name the words to search the pages for, and the answer, sent with the pages
+    found (about 6,000 characters of them for an AI on your own computers, 40,000 for a cloud AI).
   - Every call is recorded: which AI, what for, and whether you OKed it.
   - Pages are reduced before they're sent (2000 px on the longer side, as JPEG).
   - A call that failed is never repeated on its own. The one exception: when the AI says it's
@@ -314,6 +316,7 @@ file in these places, in order:
 | `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this (20 to 95; 70), a page needs the vision model. `review_below`: a page whose reading falls below this (50 to 99; 80) waits for a person's review. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000). `workers`: scans read at once; Tesseract uses one core a page, so a few side by side finish sooner (`null`: one fewer than the computer's cores, at most 3) |
 | `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" or "Do these go together?" hint (45). `offer_at`: a group the AI checked, at or above this but below `group_at`, is offered for one-click accept (60). `ai_band`: which uncertain breaks may be sent to the AI. `ask_ai_after_days`: when the sorting AI may run on its own, how long pages wait for a person first (0: at once) |
 | `ai.providers` | Named AI connections. `type` is a connector (`local`, `anthropic`, `openai`, `google`, `openai_compat`), with `base_url` and `model` where needed. `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some). `daily_limit` and `monthly_limit` cap the calls it makes on its own. `per_minute` and `at_once` throttle every call |
+| `ask` | Ask Lindley: `local_chars` and `cloud_chars`, how much page text goes with a question to an AI on your own computers (6000) or a cloud AI (40000); `history_turns`, how many earlier questions and answers go with it (6) |
 | `ai.jobs` | Which connection does each job: `vision` (reading hard pages), `assemble` (sorting pages into documents), `chat` (Ask Lindley) and `embed` (finding related pages), each with an optional `model` of its own. Out of the box there are none |
 
 **API keys never go in `settings.json`.** They're kept in Windows Credential Manager (the
@@ -409,7 +412,10 @@ and you can ask it about them. All of it from a one-click install.
 
 ### For the MVP
 
-- [ ] Ask Lindley (chat with your documents)
+- [x] Ask Lindley (chat with your documents): the AI names the words to search for, Lindley
+  finds the pages (the one open first), and the answer cites them; it streams, can be stopped, and
+  is kept. Available when the chat job has an AI that can be used; an AI set up but not chosen is
+  offered in one click
 - [ ] Record each sorting call as it's made, not when the whole job ends, so a job cut short
   still shows what it spent
 - [x] See where a letter starts without "Dear …", from its date line and who it's to: the rules

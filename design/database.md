@@ -28,6 +28,7 @@ erDiagram
     suggestions }o--o| documents : "about"
     documents ||--o{ exports : "exported as"
     scans ||--o{ intake_steps : "processed by"
+    chats ||--|{ chat_messages : "holds"
 ```
 
 | Table | One row per | Why it exists |
@@ -49,6 +50,7 @@ erDiagram
 | `duplicate_checks`, `text_sketch` | page | Which reading each page was checked for duplicates with, and the page's text sketch for finding candidates. |
 | `ai_calls` | call to an AI | Which connection, what for (reading a page, sorting pages), whether Lindley made it on its own or a person OKed it, whether it worked, and, when the AI says, the model, tokens sent and written, and an estimated cost (`providers/prices.py`, list prices; the bill is the real figure). Keeps the daily and monthly limits (calls that worked), notices an AI whose calls keep failing, and shows what was sent where. |
 | `ai_answers` | question to an AI | The AI's reply about some pages, known by what it was shown, so the same question is never paid for twice. |
+| `chats`, `chat_messages` | conversation, and question or answer | Ask Lindley's conversations, kept until a person deletes one. An answer keeps the pages sent with its question (`sources`, as `[n]` in its text), whether it finished, was stopped or failed, and which AI wrote it. |
 | `needs_ai` | question waiting for an AI | Pages the rules couldn't sort and the AI hasn't been asked about, with the rules' own guess at the documents in them. Refreshed each time the assembler runs. |
 
 Settings stay in `settings.json`. API keys stay in Windows Credential Manager and never go in the database.
@@ -418,7 +420,7 @@ What a local AI could do on a laptop with no graphics card, if Lindley came with
 | Sorting (`assemble`) | gemma4:e4b 16 documents, 2 wrong; gemma4:12b 24, 1 wrong; qwen3.5:4b 16, none wrong | Gemma 4 E4B (about 3 GB). With 32 GB of memory, Gemma 4 26B-A4B: a mixture of experts, 3.8B of its 25B weights used for each token, about 7 tokens a second on an i5-8500. Not benched | Minutes a job: the prompts are long, and reading a prompt is the slow part on a CPU. Stays at "ask first" |
 | Reading handwriting (`vision`) | gemma4:e4b 23–114 s a page on the CPU (53 on average), CER 0.15 against Claude | Gemma 4 E4B with its image projector (mmproj) stays the pick. LightOnOCR-2-1B (378 MB, 83.2 on OlmOCR-Bench) is for print: handwriting isn't one of its targets, and Tesseract has print. Qwen3.5 2B and 4B also see images: not benched | 1–2 minutes a page on a recent laptop, several on an old one: llama.cpp's image encoder is slow on a CPU, and has had slowdowns in llama-server |
 | What pages are about (`embed`) | embeddinggemma 125 of 147, nomic-embed-text 114, potion-base-8M 85 | EmbeddingGemma 300M (`llama-server --embeddings`, `/v1/embeddings`) | Quick on any processor. It should be the local default in place of nomic-embed-text |
-| Ask Lindley (`chat`, not built) | — | Qwen3.5 4B or Gemma 4 E4B; Gemma 4 26B-A4B with 32 GB | 10–20 tokens a second for a 3–4B model on a recent laptop, 3–7 for a 7B |
+| Ask Lindley (`chat`) | Not benched locally. With Claude Haiku 4.5 on the dev library: 20 pages sent, about 13,000 tokens and 1.4¢ a question, and the answers cited the right pages | Qwen3.5 4B or Gemma 4 E4B; Gemma 4 26B-A4B with 32 GB | 10–20 tokens a second for a 3–4B model on a recent laptop, 3–7 for a 7B |
 
 **What sets the speed.** Writing an answer is limited by how fast memory is, not by the processor: DDR5 is about twice DDR4. AVX-512 speeds up reading the prompt (2.8–10 times) but not writing. A laptop with an i7 and DDR4 writes about 20 tokens a second with a 3B model, 8 with a 7B, 4 with a 13B; a Ryzen 7 desktop with DDR5 about 35, 14 and 7. A 3B model needs about 4 GB of memory with the system, a 7B about 8. llama.cpp's Vulkan build uses built-in graphics too (Intel Iris Xe, AMD Radeon 780M), about twice the CPU alone, so it's the build to ship.
 
@@ -592,4 +594,11 @@ The Details tab reads directly from this data:
 
 ## Ask Lindley's view of the data
 
-The AI gets read-only access through views, currently `v_page_location` and `v_current_text`, plus tools built on them. It never writes. Anything it wants to change becomes a suggestion for a person to decide.
+The AI never touches the database. No connector gives it tools yet, so Lindley does the looking (`lindley.ask`):
+
+1. The question is saved, and committed, before any call (`ask/conversation.py`).
+2. The AI is asked for the words to search for (a short call, with a local model's thinking off). Its words come first, then the question's own; a reply that isn't a list costs nothing but the call.
+3. `ask/retrieve.py` gathers the pages through `v_current_text`: the page a person has open and those either side of it, pages of the open document that have the words, pages the last answer cited, the rest of the open document (up to half the budget), then pages anywhere with any of the words (`search_any`, FTS5 ranked). Each page is cut to a quarter of the budget, around the first word found. A page read below `ocr.review_below` and not checked is marked unsure, and the AI is told to say so when its answer rests on one.
+4. The answer streams back while nothing is held; it and the calls (`ai_calls`, purpose `chat`, never automatic) are saved once it's over. A person who presses Stop ends the AI's answer too, and what came is kept.
+
+Anything the AI might want to change would become a suggestion for a person to decide. Tools over the read-only views (`v_page_location`, `v_current_text`) for a cloud AI that handles them well, and related pages by embeddings, are for later.

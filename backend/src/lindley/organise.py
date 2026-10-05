@@ -24,7 +24,7 @@ Where = Literal["document", "inbox", "aside"]
 class Change:
     """What a change did. `batch` is what lindley.history.undo takes to undo it."""
 
-    batch: int
+    batch: int | None  # None: it changed nothing, so there's nothing to undo
     document_id: int | None = None  # the document made, or moved into
     folder_id: int | None = None  # the folder made
     removed: list[int] = field(default_factory=list)  # documents left with no pages
@@ -116,6 +116,16 @@ def _from(conn: sqlite3.Connection, page_ids: list[int]) -> set[int]:
     return docs
 
 
+def _done(conn: sqlite3.Connection, change: Change) -> Change:
+    """A change that changed nothing (pages already where they were asked to go, a name as it
+    was) has nothing to undo: its batch number would be the next change's."""
+    if not conn.execute(
+        "SELECT 1 FROM history WHERE batch = ? LIMIT 1", (change.batch,)
+    ).fetchone():
+        change.batch = None
+    return change
+
+
 def _top(conn: sqlite3.Connection, doc_id: int) -> int:
     return conn.execute(
         "SELECT coalesce(max(position), -1) FROM pages WHERE document_id = ?", (doc_id,)
@@ -157,7 +167,7 @@ def move_pages(
             else:
                 move_page(conn, change.batch, pid, None, None, aside=True, action="set_aside")
         _tidy(conn, change.batch, left, change)
-    return change
+        return _done(conn, change)
 
 
 def reorder(conn: sqlite3.Connection, doc_id: int, page_ids: list[int]) -> Change:
@@ -176,7 +186,7 @@ def reorder(conn: sqlite3.Connection, doc_id: int, page_ids: list[int]) -> Chang
         for i, pid in enumerate(page_ids):
             if history.place(conn, pid)["position"] != i:
                 move_page(conn, change.batch, pid, doc_id, i, aside=False, action="reorder")
-    return change
+        return _done(conn, change)
 
 
 def rotate(conn: sqlite3.Connection, page_ids: list[int], degrees: int) -> Change:
@@ -286,14 +296,15 @@ def update_document(conn: sqlite3.Connection, doc_id: int, changes: dict) -> Cha
             new["name_source"] = "user"
         if "doc_date" in new:
             new["doc_date"] = (new["doc_date"] or "").strip() or None
-            new["date_source"] = "user" if new["doc_date"] else None
+            if new["doc_date"] != doc["doc_date"]:  # the same date is still Lindley's, if it was
+                new["date_source"] = "user" if new["doc_date"] else None
         if "doc_type" in new:
             new["doc_type"] = (new["doc_type"] or "").strip() or None
         before = {k: doc[k] for k in DOCUMENT_FIELDS}
         after = before | {k: v for k, v in new.items() if k in DOCUMENT_FIELDS}
-        change = Change(history.new_batch(conn), doc_id)
         if after == before:
-            return change
+            return Change(None, doc_id)
+        change = Change(history.new_batch(conn), doc_id)
         _set_document(conn, doc_id, after)
         history.log(conn, change.batch, "update_document", "document_fields", doc_id, before, after)
     return change
@@ -337,6 +348,8 @@ def rename_folder(conn: sqlite3.Connection, folder_id: int, name: str) -> Change
         f = _folder(conn, folder_id)
         if f is None:
             raise LookupError(f"There's no folder {folder_id}")
+        if f["name"] == name:
+            return Change(None, folder_id=folder_id)
         change = Change(history.new_batch(conn), folder_id=folder_id)
         if f["name"] != name:
             conn.execute("UPDATE folders SET name = ? WHERE id = ?", (name, folder_id))

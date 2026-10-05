@@ -390,7 +390,11 @@ function DetailsDialog({ d, close }: { d: Extract<Dialog, { kind: 'details' }>; 
   const save = () => {
     if (bad) return
     close()
-    run(api.updateDocument(d.doc.id, { doc_type: type, doc_date: date }), 'Saved the type and date.')
+    // Only what was changed: a date sent as it was would count as yours, not Lindley's
+    const changed: { doc_type?: string; doc_date?: string } = {}
+    if (type.trim() !== (d.doc.doc_type ?? '')) changed.doc_type = type
+    if (date.trim() !== (d.doc.doc_date ?? '')) changed.doc_date = date
+    if (Object.keys(changed).length) run(api.updateDocument(d.doc.id, changed), 'Saved the type and date.')
   }
   return (
     <Modal title="Type and date" onClose={close}>

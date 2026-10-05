@@ -216,6 +216,36 @@ def test_starting_a_document_and_naming_it(client, settings, tmp_path):
     assert {p["id"] for p in client.get("/api/inbox").json()["pages"]} == {a, b}
 
 
+def test_a_change_that_changes_nothing_has_nothing_to_undo(client, settings, tmp_path):
+    conn = db(client, settings)
+    d = document(conn)
+    a = add_page(conn, tmp_path, "one", d, 0)
+    folder = client.post("/api/folders", json={"name": "Deeds"}).json()["folder_id"]
+    client.patch(f"/api/documents/{d}", json={"name": "Letter from Will"})  # now the person's
+    same = [
+        client.post("/api/pages/move", json={"page_ids": [a], "to": "document", "document_id": d}),
+        client.put(f"/api/documents/{d}/order", json={"page_ids": [a]}),
+        client.patch(f"/api/documents/{d}", json={"name": "Letter from Will"}),
+        client.patch(f"/api/folders/{folder}", json={"name": "Deeds"}),
+    ]
+    assert [r.json()["undo"] for r in same] == [None] * 4
+    # So the next change's undo is its own
+    moved = client.post("/api/pages/move", json={"page_ids": [a], "to": "aside"}).json()
+    undo(client, moved)
+    assert client.get("/api/folders").json()["folders"][0]["name"] == "Deeds"
+
+
+def test_giving_the_type_alone_leaves_lindleys_date_as_lindleys(client, settings, tmp_path):
+    conn = db(client, settings)
+    d = document(conn)
+    conn.execute("UPDATE documents SET doc_date = '1892', date_source = 'lindley'")
+    conn.commit()
+    client.patch(f"/api/documents/{d}", json={"doc_type": "Letter", "doc_date": "1892"})
+    assert conn.execute("SELECT date_source FROM documents").fetchone()[0] == "lindley"
+    client.patch(f"/api/documents/{d}", json={"doc_date": "1892-03"})
+    assert conn.execute("SELECT date_source FROM documents").fetchone()[0] == "user"
+
+
 def test_folders(client, settings, tmp_path):
     db(client, settings)
     made = client.post("/api/folders", json={"name": "Land records"}).json()

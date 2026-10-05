@@ -206,6 +206,9 @@ To run both dev servers:
 
 This starts the backend on http://127.0.0.1:8765 and the UI on http://localhost:5173.
 To run only the backend: `python -m lindley [--settings PATH] [--host HOST] [--port PORT]`.
+Lindley has no login, so it answers only to `127.0.0.1` and `localhost`, and only its own pages
+may change anything; other web pages can't reach it. Started with `--host` on a network
+address, it answers to any name: only do that on a network you trust.
 The backend watches the `watch_folders` in your settings. Scans dropped there are imported and
 read once they've finished copying. About 20 seconds after the last one arrives, the assembler
 sorts the new pages.

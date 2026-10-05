@@ -34,7 +34,9 @@
     API in `api/documents.py`; `scripts/export.py` exports from the command line
   - `browse.py`: what the UI shows (pages with a `state`, documents, folders, review queue,
     counts); `organise.py`: a person's changes (move, reorder, rotate, flip, new document, rename,
-    folders, checking text), each one undoable batch in `history`. API in `api/library.py`,
+    folders, checking text), each one undoable batch in `history`, made in
+    `history.deciding(conn)` (BEGIN IMMEDIATE; a change of nothing returns no batch). API in
+    `api/library.py`,
     `api/documents.py`, `api/pages.py`, `api/folders.py`; search in `search/fts.py`;
     Add scans… uploads in `api/scans.py` (read by the watcher, `read_later`)
   - `scripts/intake.py` reads real scans end to end; tests stub Tesseract (not installed in CI)
@@ -56,6 +58,10 @@
 - Tests use `FakeProvider` and temp dirs. They never touch real providers or the network:
   connector tests run on `httpx2.MockTransport` (Anthropic, OpenAI) or `httpx.MockTransport`
   (Google).
+- Never call an AI while a write transaction is open: a call can take minutes and holds
+  SQLite's lock. The assembler's `Answers` defers questions met then (`AskFirst`).
+- The API answers only to its own names and pages (`app.py`: TrustedHost, `FromLindleyOnly`):
+  tests use `TestClient(app, base_url="http://127.0.0.1")`.
 - Local AI and ML must run on an ordinary laptop: no GPU, no heavy ML packages.
 - Make one commit per logical step, after tests and lint pass, and push to `origin main`.
 - Do web searches when neccessary to confirm you are using up to date best practices when planning and coding.

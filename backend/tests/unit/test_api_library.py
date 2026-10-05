@@ -293,6 +293,19 @@ def test_checking_and_correcting_text(client, settings, tmp_path):
     assert client.get(f"/api/pages/{a}").json()["state"] == "review"
 
 
+def test_a_page_waiting_for_the_ai_that_a_person_types_is_read(client, settings, tmp_path):
+    conn = db(client, settings)
+    pid = add_page(conn, tmp_path, "unused")
+    # Read by the AI alone (ocr.engine "vision"): nothing yet, and the scan waits for it
+    conn.execute("DELETE FROM transcriptions")
+    conn.execute("UPDATE scans SET status = 'queued'")
+    conn.commit()
+    assert client.get(f"/api/pages/{pid}").json()["state"] == "reading"
+    client.put(f"/api/pages/{pid}/text", json={"text": "Dear Sister"})
+    assert client.get(f"/api/pages/{pid}").json()["state"] == "checked"
+    assert conn.execute("SELECT status FROM scans").fetchone()[0] == "read"
+
+
 def test_search_finds_words_on_the_reading_in_use(client, settings, tmp_path):
     conn = db(client, settings)
     d = document(conn)

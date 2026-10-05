@@ -407,4 +407,13 @@ def check_text(conn: sqlite3.Connection, page_id: int, text: str | None = None) 
         ).fetchone()[0]
         after = {"current": new_id, "confirmed_at": confirmed}
         history.log(conn, change.batch, action, "page_text", page_id, before, after)
+        # A scan waiting only for the AI to read its pages (ocr.engine "vision") is read once
+        # each has text: a person's will do
+        conn.execute(
+            "UPDATE scans SET status = 'read' WHERE status = 'queued'"
+            " AND id = (SELECT scan_id FROM pages WHERE id = ?) AND NOT EXISTS ("
+            " SELECT 1 FROM pages p WHERE p.scan_id = scans.id AND NOT EXISTS ("
+            "  SELECT 1 FROM transcriptions t WHERE t.page_id = p.id AND t.is_current = 1))",
+            (page_id,),
+        )
     return change

@@ -263,6 +263,18 @@ def test_a_sideways_page_is_read_again_from_an_upright_copy(conn, settings, scan
         assert img.size == (400, 560)
     assert steps(conn, sid, "ocr") == [("done", None), ("done", None)]
     assert ocr.checked == 0
+    assert read_turned(conn, sid) == (90, 0)  # its words' boxes are on the page turned upright
+
+
+def read_turned(conn, sid):
+    """How the page was turned when its reading in use was made: (rotation, round)."""
+    return tuple(
+        conn.execute(
+            "SELECT t.read_rotation, t.read_mirror FROM transcriptions t"
+            " JOIN pages p ON p.id = t.page_id WHERE p.scan_id = ? AND t.is_current = 1",
+            (sid,),
+        ).fetchone()
+    )
 
 
 def test_an_upside_down_page_is_read_once(conn, settings, scan):
@@ -272,6 +284,7 @@ def test_an_upside_down_page_is_read_once(conn, settings, scan):
     assert page_row(conn, sid)["detected_rotation"] == 180
     assert len(ocr.seen) == 1 and steps(conn, sid, "ocr") == [("done", None)]
     assert current_text(conn, sid) == "Dear Sister, we are well."
+    assert read_turned(conn, sid) == (180, 0)
 
 
 def test_a_page_that_reads_well_has_no_separate_orientation_check(conn, settings, scan):
@@ -507,6 +520,7 @@ def test_a_page_read_upside_down_before_is_turned_over(conn, settings, scan):
         ("tesseract", 1),
     ]
     assert json.loads(readings(conn, sid)[1]["words"])  # boxes, for the searchable PDF
+    assert read_turned(conn, sid) == (180, 0)
     assert steps(conn, sid, "ocr")[-1] == ("done", None)
     assert pipe.check_upside_down(conn) == (0, 0)  # checked once
 
@@ -544,6 +558,7 @@ def test_a_mirror_image_upside_down_is_turned_round_and_over(conn, settings, sca
     page = page_row(conn, sid)
     assert (page["detected_mirror"], page["detected_rotation"]) == (1, 180)
     assert current_text(conn, sid) == "It was a shipper"
+    assert read_turned(conn, sid) == (180, 1)
 
 
 def test_a_page_read_poorly_the_right_way_round_stays_as_it_was(conn, settings, scan):
@@ -594,6 +609,7 @@ def test_a_mirror_image_read_before_is_turned_round(conn, settings, scan):
     assert pipe.check_mirrored(conn) == (1, 1)
     assert page_row(conn, sid)["detected_mirror"] == 1
     assert current_text(conn, sid) == "It was a shipper of arsenic ore"
+    assert read_turned(conn, sid) == (0, 1)
     assert steps(conn, sid, "image")[-1] == ("done", None)
     assert pipe.check_mirrored(conn) == (0, 0)  # checked once
 

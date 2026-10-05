@@ -79,7 +79,7 @@ def export_document(
         size = (r["width_px"] or 0, r["height_px"] or 0)
         if rotation in (90, 270):
             size = size[::-1]
-        text = page_text(conn, r["id"], size)
+        text = page_text(conn, r["id"], size, (rotation, bool(r["mirrored"])))
         if text.words and not text.placed:
             unplaced.append(r["id"])
         pages.append(

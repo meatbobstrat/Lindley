@@ -7,7 +7,7 @@ from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 # Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}, or a function
 # given the connection.
@@ -32,6 +32,7 @@ MIGRATIONS: dict[int, str | Callable[[sqlite3.Connection], None]] = {
     """,
     11: lambda conn: _ai_call_usage(conn),
     12: lambda conn: _mirrors(conn),
+    13: lambda conn: _read_turned(conn),
 }
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.
@@ -90,6 +91,17 @@ def _mirrors(conn: sqlite3.Connection) -> None:
         " FROM pages p WHERE p.id IN (SELECT t.page_id FROM transcriptions t"
         " WHERE t.source = 'tesseract' AND coalesce(t.confidence, 0) < 100)"
     )
+
+
+def _read_turned(conn: sqlite3.Connection) -> None:
+    """v13: how a page was turned when it was read, which its words' boxes are measured on.
+    Readings made before aren't known (NULL): taken to be as the page is turned now."""
+    if "transcriptions" not in _tables(conn):
+        return
+    has = {r[1] for r in conn.execute("PRAGMA table_info(transcriptions)")}
+    for column in ("read_rotation", "read_mirror"):
+        if column not in has:
+            conn.execute(f"ALTER TABLE transcriptions ADD COLUMN {column} INTEGER")
 
 
 def _drop_placeholder(conn: sqlite3.Connection) -> None:

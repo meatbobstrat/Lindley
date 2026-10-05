@@ -3,7 +3,7 @@ import json
 import pytest
 
 from lindley.db.database import connect, init_db
-from lindley.export.textlayer import Word, align, lay_out, page_text
+from lindley.export.textlayer import Word, align, lay_out, page_text, reframe
 
 
 def line(*words, y=100, h=40, x=100, gap=30):
@@ -165,3 +165,45 @@ def test_page_text_of_an_unread_or_empty_page_has_no_words(conn):
     assert page_text(conn, pid, (2400, 3300)).words == []
     reading(conn, pid, "tesseract", "   ")
     assert page_text(conn, pid, (2400, 3300)).words == []
+
+
+FRAMES = [(r, m) for r in (0, 90, 180, 270) for m in (False, True)]
+
+
+@pytest.mark.parametrize("was", FRAMES)
+@pytest.mark.parametrize("now", FRAMES)
+def test_boxes_turn_with_the_page(tmp_path, was, now):
+    """Against the page images themselves: a mark found on the page turned one way is where
+    reframe says, on the page turned any other way."""
+    from PIL import Image, ImageDraw
+
+    from lindley.worker.image import upright_page
+
+    scan = tmp_path / "scan.png"
+    img = Image.new("L", (60, 40), 255)
+    ImageDraw.Draw(img).rectangle((5, 8, 14, 11), fill=0)  # 10 wide, 4 high
+    img.save(scan)
+
+    def mark(frame):
+        page = upright_page(scan, *frame)
+        x0, y0, x1, y1 = page.point(lambda v: 255 - v).getbbox()
+        return (x0, y0, x1 - x0, y1 - y0), page.size
+
+    box, _ = mark(was)
+    expected, size = mark(now)
+    assert reframe(box, size, was, now) == expected
+
+
+def test_a_page_turned_since_it_was_read_has_its_words_turned_too(conn):
+    pid = page(conn)
+    conn.execute(
+        "INSERT INTO transcriptions (page_id, source, text, words, read_rotation, read_mirror,"
+        " is_current) VALUES (?, 'tesseract', 'Dear', ?, 0, 0, 1)",
+        (pid, json.dumps(TESS[:1])),
+    )
+    # Read upright, 2400 x 3300; turned a quarter clockwise since: 3300 x 2400
+    [word] = page_text(conn, pid, (3300, 2400), (90, False)).words
+    assert word.box == (3300 - 100 - 40, 100, 40, 80)
+    # A reading from before Lindley kept how pages were turned is left as it was
+    conn.execute("UPDATE transcriptions SET read_rotation = NULL, read_mirror = NULL")
+    assert page_text(conn, pid, (3300, 2400), (90, False)).words[0].box == (100, 100, 80, 40)

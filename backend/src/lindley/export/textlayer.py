@@ -6,7 +6,8 @@ its box, a word read differently takes the boxes of the words it replaces, and a
 missed goes in the gap beside its neighbours. A page with no boxes at all is still searchable:
 its lines are spaced down the page, not over the writing, and the page counts as unplaced.
 
-Boxes are [x, y, w, h] in pixels of the upright page, as Tesseract reads it.
+Boxes are [x, y, w, h] in pixels of the upright page, as Tesseract reads it. A page turned, or
+turned round, since it was read has its boxes turned with it (reframe).
 """
 
 from __future__ import annotations
@@ -31,24 +32,73 @@ class PageText:
     placed: bool  # False: there were no word boxes, so the words aren't over the writing
 
 
-def page_text(conn: sqlite3.Connection, page_id: int, size: tuple[int, int]) -> PageText:
+def page_text(
+    conn: sqlite3.Connection,
+    page_id: int,
+    size: tuple[int, int],
+    turned: tuple[int, bool] | None = None,
+) -> PageText:
     """The words of a page's current reading, each with a box. `size` is the upright page's
-    (width, height) in pixels, for a reading with no boxes to lay over."""
+    (width, height) in pixels, for a reading with no boxes to lay over. `turned`: how the page
+    is turned now (rotation, turned round), for boxes read with it turned another way."""
     cur = conn.execute(
-        "SELECT text, words FROM transcriptions WHERE page_id = ? AND is_current = 1", (page_id,)
+        "SELECT text, words, read_rotation, read_mirror FROM transcriptions"
+        " WHERE page_id = ? AND is_current = 1",
+        (page_id,),
     ).fetchone()
     if cur is None or not cur["text"].strip():
         return PageText([], True)
     if cur["words"]:
-        return PageText(_boxed(json.loads(cur["words"])), True)
+        return PageText(_turned(_boxed(json.loads(cur["words"])), cur, size, turned), True)
     tess = conn.execute(
-        "SELECT words FROM transcriptions WHERE page_id = ? AND source = 'tesseract'"
-        " AND words IS NOT NULL ORDER BY id DESC LIMIT 1",
+        "SELECT words, read_rotation, read_mirror FROM transcriptions WHERE page_id = ?"
+        " AND source = 'tesseract' AND words IS NOT NULL ORDER BY id DESC LIMIT 1",
         (page_id,),
     ).fetchone()
     if tess and (boxed := _boxed(json.loads(tess["words"]))):
-        return PageText(align(cur["text"], boxed), True)
+        return PageText(align(cur["text"], _turned(boxed, tess, size, turned)), True)
     return PageText(lay_out(cur["text"], size), False)
+
+
+def _turned(
+    words: list[Word], reading: sqlite3.Row, size: tuple[int, int], now: tuple[int, bool] | None
+) -> list[Word]:
+    if now is None or reading["read_rotation"] is None:  # not known: as it's turned now
+        return words
+    was = (reading["read_rotation"], bool(reading["read_mirror"]))
+    return [Word(w.text, reframe(w.box, size, was, now)) for w in words]
+
+
+def reframe(box: Box, size: tuple[int, int], was: tuple[int, bool], now: tuple[int, bool]) -> Box:
+    """A box on the page turned `was` (rotation clockwise, and turned round: as
+    image.upright_page turns it, round first, then the rotation), moved to the page turned
+    `now`, whose upright size is `size`."""
+    if was == now:
+        return box
+    w, h = size
+    scan = (h, w) if now[0] % 180 else (w, h)  # the scan as it is, neither turned nor round
+    at = (scan[1], scan[0]) if was[0] % 180 else scan
+    for _ in range((4 - was[0] // 90) % 4):  # undo `was`: turn it back...
+        box, at = _quarter(box, at)
+    if was[1]:  # ...and round again
+        box = _round(box, at)
+    if now[1]:  # then as `now`: round...
+        box = _round(box, at)
+    for _ in range(now[0] // 90 % 4):  # ...and turned
+        box, at = _quarter(box, at)
+    return box
+
+
+def _quarter(box: Box, size: tuple[float, float]) -> tuple[Box, tuple[float, float]]:
+    """A quarter turn clockwise, with the page (`size`: the page's before)."""
+    x, y, w, h = box
+    return (size[1] - y - h, x, h, w), (size[1], size[0])
+
+
+def _round(box: Box, size: tuple[float, float]) -> Box:
+    """Turned round left to right."""
+    x, y, w, h = box
+    return (size[0] - x - w, y, w, h)
 
 
 def _boxed(words: list[dict]) -> list[Word]:

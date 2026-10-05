@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS transcriptions (
     confidence    REAL,                             -- 0-100; NULL for a person's own text
     unsure_spans  TEXT,                             -- JSON [[start, end], ...] of doubtful words
     words         TEXT,                             -- JSON [{text, conf, bbox}], when available
+    read_rotation INTEGER,                          -- the page as read: turned this far, and
+    read_mirror   INTEGER,                          -- round if 1 (the words' boxes are on it)
     is_current    INTEGER NOT NULL DEFAULT 0 CHECK (is_current IN (0, 1)),
     confirmed_at  TEXT,                             -- a person checked this text is right
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))

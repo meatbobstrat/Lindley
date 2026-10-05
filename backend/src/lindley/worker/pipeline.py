@@ -604,7 +604,7 @@ class Pipeline:
         if (reading.confidence or 0) < (r["confidence"] or 0) + TURN_MARGIN:
             return False
         with conn:
-            self._add_tesseract_reading(conn, r["page_id"], reading, r["blank_score"])
+            self._add_tesseract_reading(conn, r["page_id"], reading, r["blank_score"], (180, False))
             conn.execute(
                 "UPDATE pages SET detected_rotation = 180, updated_at = datetime('now')"
                 " WHERE id = ?",
@@ -623,7 +623,9 @@ class Pipeline:
         to, reading = found
         with conn:
             use = r["source"] == "tesseract" and not r["checked"]
-            self._add_tesseract_reading(conn, r["page_id"], reading, r["blank_score"], use)
+            self._add_tesseract_reading(
+                conn, r["page_id"], reading, r["blank_score"], (to, True), use
+            )
             conn.execute(
                 "UPDATE pages SET detected_mirror = 1, detected_rotation = ?,"
                 " updated_at = datetime('now') WHERE id = ?",
@@ -637,10 +639,12 @@ class Pipeline:
         page_id: int,
         reading: PageResult,
         blank_score: float | None,
+        turned: tuple[int, bool],
         current: bool = True,
     ) -> None:
-        """A better Tesseract reading of a page read before, turned another way: the reading in
-        use if `current`, else kept beside it. In the caller's transaction."""
+        """A better Tesseract reading of a page read before, turned another way (`turned`: its
+        rotation, and whether it's turned round, as image.upright_page takes them): the reading
+        in use if `current`, else kept beside it. In the caller's transaction."""
         version = self.tesseract_version
         if current:
             conn.execute(
@@ -653,7 +657,8 @@ class Pipeline:
             )
         conn.execute(
             "INSERT INTO transcriptions (page_id, source, engine_model, text, confidence,"
-            " unsure_spans, words, is_current) VALUES (?, 'tesseract', ?, ?, ?, ?, ?, ?)",
+            " unsure_spans, words, read_rotation, read_mirror, is_current)"
+            " VALUES (?, 'tesseract', ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 page_id,
                 version,
@@ -661,6 +666,8 @@ class Pipeline:
                 reading.confidence,
                 json.dumps(reading.unsure_spans()),
                 json.dumps(reading.words) if reading.words else None,
+                turned[0] % 360,
+                int(turned[1]),
                 int(current),
             ),
         )
@@ -821,7 +828,9 @@ class Pipeline:
         if self.settings.ocr.engine != "vision":
             rotation, flip, first = self._read_any_way_up(conn, scan_id, page_id, image, page)
         with self._upright(page_id, image, rotation, page["dpi"], flip) as upright:
-            self._read_upright(conn, scan_id, page_id, upright, page["blank_score"], first)
+            self._read_upright(
+                conn, scan_id, page_id, upright, page["blank_score"], (rotation, flip), first
+            )
 
     def _read_any_way_up(
         self, conn: sqlite3.Connection, scan_id: int, page_id: int, image: Path, page: sqlite3.Row
@@ -1050,6 +1059,7 @@ class Pipeline:
         page_id: int,
         image: Path,
         blank_score: float,
+        turned: tuple[int, bool],  # how the page `image` is turned (see _add_tesseract_reading)
         first: PageResult | None = None,  # Tesseract's reading, if already made (_try_turning)
     ) -> None:
         ocr = self.settings.ocr
@@ -1128,7 +1138,8 @@ class Pipeline:
             for i, (source, model, r) in enumerate(readings):
                 conn.execute(
                     "INSERT INTO transcriptions (page_id, source, engine_model, text, confidence,"
-                    " unsure_spans, words, is_current) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    " unsure_spans, words, read_rotation, read_mirror, is_current)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         page_id,
                         source,
@@ -1137,6 +1148,8 @@ class Pipeline:
                         r.confidence,
                         json.dumps(r.unsure_spans()),
                         json.dumps(r.words) if r.words else None,
+                        turned[0] % 360,
+                        int(turned[1]),
                         int(i == best),
                     ),
                 )

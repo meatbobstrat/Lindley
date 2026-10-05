@@ -174,6 +174,7 @@ def test_a_scrap_tesseract_read_out_of_order_goes_back_into_its_line():
         ("Sept. 1901", "1901-09"),
         ("4/3/92", "1892-04-03"),
         ("in the year 1868 or so", "1868"),
+        ("Ely,Nevada,June 24,1940", "1940-06-24"),  # typed with no space after the comma
     ],
 )
 def test_dates(text, iso):
@@ -188,6 +189,37 @@ def test_letter_start_and_end():
     assert c.closing == "Your loving son" and c.signature == "John"
     assert c.kind == "letter" and "Bellbrook" in c.places and "John" in c.people
     assert c.starts_doc and c.ends_doc
+
+
+def test_a_letter_with_no_greeting_starts_at_its_date_line():
+    c = page_clues(
+        "COPY -------For your information\nEly ,Nevada,June 24,1940\nHonorable Grey Mashburn,\n"
+        "Attorney General,\nCarson City,Nevada\nOn the morning of April 26 I was at the bar\n"
+        "Respectfully Yours,"
+    )
+    assert c.dateline == "Ely ,Nevada,June 24,1940"
+    assert c.starts_doc == "starts with the date line “Ely ,Nevada,June 24,1940”"
+    assert c.kind == "letter"
+
+
+def test_a_dated_diary_entry_is_not_a_letter_start():
+    c = page_clues("March 4, 1892\nWent to town with Father and sold the eggs.\nCold and windy.")
+    assert c.dateline is None and not c.starts_doc
+
+
+def test_a_greeting_under_a_letterhead_is_found():
+    head = ["Gray Mashburn STATE OF NEVADA W.T.Mathews", "DEPARTMENT OF ATTORNEY-GENERAL"]
+    head += ["Carson City", "JUNE", "TWENTY SIXTH", "Mr. A.E.Johnson", "Banjo Baker's Club"]
+    c = page_clues(
+        "\n".join([*head, "Ely, Nevada", "Dear Sir:", "I have your letter of the 24th."])
+    )
+    assert c.salutation == "Dear Sir" and c.starts_doc
+
+
+def test_a_greeting_deep_in_a_story_is_not_one():
+    story = ["THE DOG-PUNCHER", "By Lindley C. Branson"] + ["The dogs ran all day long."] * 6
+    c = page_clues("\n".join([*story, "Dear me, what a morning that was for all", "And so on."]))
+    assert c.salutation is None
 
 
 def test_friend_salutation_gives_a_name():

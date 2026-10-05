@@ -225,6 +225,32 @@ def test_proposed_groups_are_judged_against_the_answer_key(conn):
     ]
 
 
+def test_a_letter_with_no_greeting_is_not_run_on_into_the_story_before_it(conn):
+    """A carbon of a letter with a date line and who it's to, but no "Dear ...", scanned
+    after a typescript: as in the dev library, where it was added to the typescript."""
+    story = TruePage(
+        "TELEGRAPH CREEK\nBy Lindley C. Branson\nTelegraph Creek is the name of a camp on the"
+        " Stikine.\nThe wire was to reach Europe by way of Canada and Alaska.",
+        "story",
+        0,
+        "page",
+    )
+    letter = TruePage(
+        "COPY -------For your information\nEly ,Nevada,June 24,1940\nHonorable Grey Mashburn,\n"
+        "Attorney General,\nCarson City,Nevada\nOn the morning of April 26 I was at the bar.\n"
+        "Respectfully Yours,",
+        "letter",
+        0,
+        "letter",
+    )
+    a, b = load(conn, [story, letter])
+    assemble(conn)
+    placed = dict(conn.execute("SELECT id, document_id FROM pages").fetchall())
+    grouped = [json.loads(s["payload"])["pages"] for s in open_suggestions(conn, "group_pages")]
+    assert placed[a] is None or placed[a] != placed[b]
+    assert [a, b] not in grouped and [b, a] not in grouped
+
+
 def test_without_ai_the_same_pages_wait_in_the_inbox(conn):
     load(conn, pages(AMBIGUOUS))
     report = assemble(conn)

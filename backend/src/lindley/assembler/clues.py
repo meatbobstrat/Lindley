@@ -279,8 +279,9 @@ _MON = (
     r"|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?"
 )
 _YR = r"(1[5-9]\d\d)"
-_DATE_MDY = re.compile(rf"\b{_MON}\s+(\d{{1,2}})(?:st|nd|rd|th|d)?,?\s+{_YR}\b", re.I)
-_DATE_DMY = re.compile(rf"\b(\d{{1,2}})(?:st|nd|rd|th|d)?\s+(?:of\s+)?{_MON},?\s+{_YR}\b", re.I)
+_TO_YR = r"(?:,\s*|\s+)"  # typists often left no space after the comma: "June 24,1940"
+_DATE_MDY = re.compile(rf"\b{_MON}\s+(\d{{1,2}})(?:st|nd|rd|th|d)?{_TO_YR}{_YR}\b", re.I)
+_DATE_DMY = re.compile(rf"\b(\d{{1,2}})(?:st|nd|rd|th|d)?\s+(?:of\s+)?{_MON}{_TO_YR}{_YR}\b", re.I)
 _DATE_MY = re.compile(rf"\b{_MON},?\s+{_YR}\b", re.I)
 _DATE_NUM = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})\b")
 _YEAR = re.compile(r"\b(1[6-9]\d\d)\b")
@@ -359,6 +360,12 @@ _HEADINGS = re.compile(
     r"^(know\s+all\s+men|this\s+indenture|receipt|invoice|inventory|last\s+will|certificate|deed\b)",
     re.I,
 )
+# Who a letter is to, under its date line: "Honorable Grey Mashburn,", "Mr. A.E. Johnson"
+_ADDRESSEE = re.compile(
+    r"^(?:hon(?:ou?rable\b|\.)|mrs?\b\.?|miss\b|messrs\b\.?|dr\b\.?|dear\b)", re.I
+)
+DATELINE_LEN = 60  # a date line is short: a place and a date, no more
+SALUTE_DEEP = 15  # a greeting may sit this far down, under a letterhead
 # "By Lindley C. Branson": an article, a story or a chapter starts here
 _BYLINE = re.compile(r"^[Bb]y\s+(?:[A-Z][a-z]*\.?\s*){1,4}$")
 # "Paid", "Paid. Thank you.", "Paid in full, T. Hale": a short line of its own, not "and paid no
@@ -398,6 +405,7 @@ class PageClues:
     marker: tuple[int, int | None] | None = None  # (page number, total)
     marker_sure: bool = False  # read cleanly: no OCR slips, good confidence
     salutation: str | None = None
+    dateline: str | None = None  # "Ely, Nevada, June 24, 1940", over who the letter is to
     letterhead: str | None = None
     heading: str | None = None
     closing: str | None = None
@@ -423,6 +431,8 @@ class PageClues:
             return f"starts with “{self.salutation}”"
         if self.heading:
             return f"starts with the heading “{self.heading}”"
+        if self.dateline:
+            return f"starts with the date line “{self.dateline}”"
         if self.letterhead:
             return f"has the letterhead “{self.letterhead}”"
         if self.marker and self.marker[0] == 1:
@@ -457,6 +467,7 @@ class PageClues:
             )
         for kind, val in (
             ("salutation", self.salutation),
+            ("dateline", self.dateline),
             ("letterhead", self.letterhead),
             ("heading", self.heading),
             ("closing", self.closing),
@@ -494,6 +505,21 @@ def _names_after_salutation(line: str) -> set[str]:
     }
 
 
+def _dateline(top: list[str]) -> str | None:
+    """A letter's date line, among the page's top lines: a short line with a full date, with
+    who it's to (or the greeting) just below. A diary's dated entry has no one under its date."""
+    for i, ln in enumerate(top):
+        if len(ln) > DATELINE_LEN or not any(conf >= 90 for _, _, conf in find_dates(ln)):
+            continue
+        for b in top[i + 1 : i + 4]:
+            short_name = len(b) <= 40 and not b.rstrip().endswith((".", "!", "?"))
+            if (_ADDRESSEE.match(b) and short_name) or (
+                _SALUTE.match(b) and b.rstrip().endswith((",", ":"))
+            ):
+                return ln.strip()
+    return None
+
+
 def file_series(file_name: str) -> tuple[str, int | None]:
     """(series, number in it) from a scan's file name: scan_0042 is 42 of "scan_".
 
@@ -526,6 +552,9 @@ def page_clues(
         c.marker, c.marker_sure = (found.number, found.total), found.sure
         taken = {id(w) for w in found.words}
         lines = [ln for ln in lines if not (ln.words and all(id(w) in taken for w in ln.words))]
+    # Tesseract may doubt every word of a typed date line and so call it noise: it's looked
+    # for among the lines before noise is trimmed (specks are never a date)
+    top = [ln.text for ln in lines[: NOISE_LINES + 4]]
     lines = trim_noise(lines)
     body = [ln.text for ln in lines]
     for i in (0, -1):
@@ -538,11 +567,14 @@ def page_clues(
         return c
 
     c.first_line, c.last_line = body[0][:200], body[-1][:200]
-    for ln in body[:5]:
-        if _SALUTE.match(ln) and (ln.rstrip().endswith((",", ":")) or len(ln) <= 25):
+    for i, ln in enumerate(body[:SALUTE_DEEP]):
+        # Further down, under a letterhead, only a short line ending as a greeting does
+        ends = ln.rstrip().endswith((",", ":"))
+        if _SALUTE.match(ln) and ((ends or len(ln) <= 25) if i < 5 else (ends and len(ln) <= 30)):
             c.salutation = ln.rstrip(",:").strip()
             c.people |= _names_after_salutation(ln)
             break
+    c.dateline = _dateline(top)
     for ln in body[:3]:
         if _BYLINE.match(ln.replace(".", ". ").strip()) and not c.heading:
             c.heading = ln.rstrip(".,:")
@@ -590,7 +622,7 @@ def page_clues(
         c.kind = "deed"
     elif _WEEKDAY.match(body[0]):
         c.kind = "diary"
-    elif c.salutation or c.closing:
+    elif c.salutation or c.closing or c.dateline:
         c.kind = "letter"
     elif len(stripped) < 80 and not c.marker and not c.starts_mid and not c.ends_mid:
         c.kind = "notes"

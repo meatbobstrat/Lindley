@@ -436,7 +436,7 @@ So `review_below` is now 80, the lowest bar where the median error is at most 0.
 
 The same bar applies to an AI's reading, whose confidence is the share of words it didn't mark unsure (`marked_confidence`). At 80, a reading with up to one word in five marked passes review, but the marked words stay marked in its text. Of Claude's 48 readings, only the two shortest (86 and 89%) pass now and didn't at 90.
 
-**The bars against the answer key** (`bench_assembler.py --real lindley.db --sweep`, rules only, no AI). The dev library's 23 sorted folders (147 pages) are fed in again, 10 times in each order and filing habit, and every group Lindley proposed is judged: pure (one document's pages) and exact (all of them).
+**The bars against the answer key** (`bench_assembler.py --real lindley.db --sweep`, rules only, no AI). The dev library's 23 sorted folders (147 pages) are fed in again, 10 times in each order and filing habit, and every group Lindley proposed is judged: pure (one document's pages) and exact (all of them). Before the date-line fix below:
 
 | Confidence | Made or hinted | One folder | A folder each | Mixed |
 |---|---|---|---|---|
@@ -447,7 +447,20 @@ The same bar applies to an AI's reading, whose confidence is the share of words 
 
 What Lindley is 90% sure of on its own is a whole folder that looks like one document's, and those were always right. Below that, the rules made wrong documents: with every scan in one folder, 16 of the 21 documents made at 75–89% mixed pages of two documents. Shuffled scans, fed in no order, defeat the rules' hints altogether.
 
-But a higher bar isn't the cure. Nearly every wrong document is one mistake: the Attorney General's letter of June 1940 (a carbon marked "COPY") is rightly taken for a letter, at 85%, but the rules don't see where it ends, so the typescript pages scanned after it run on into it. On the made-up batches (letters, receipts, deeds, diaries), every one of the rules' 152 documents at 75–89% was right, so a bar of 90 would only turn good documents into hints. `group_at` stays 75. What needs fixing is how a letter's end is found.
+But a higher bar wasn't the cure. On the made-up batches (letters, receipts, deeds, diaries), every one of the rules' 152 documents at 75–89% was right, so a bar of 90 would only have turned good documents into hints. `group_at` stays 75. Nearly every wrong document was one mistake. A.E. Johnson's letter to the Attorney General, of June 1940, opens with no "Dear …":
+
+```
+COPY -------For your information
+Ely ,Nevada,June 24,1940
+Honorable Srey Mashburn,
+```
+
+The rules didn't see it start, so it was added to the end of whatever typescript was scanned before it. Its "Respectfully Yours" then made the whole run a "Letter", and the typescript's title its letterhead. Three things were missing from `assembler.clues`, and are there now:
+- **A date line starts a letter** (`dateline`): a short line with a full date near the top, with who it's to (Honorable, Mr., Mrs., Miss, Dr., Dear…) or a greeting just below. A diary's dated entry has no one under its date, so it isn't one. It's looked for before noise is trimmed, since Tesseract may doubt every word of a typed date line: it read "Ely, Nevada, July" right, at 0–35% confidence.
+- **Typed dates with no space after the comma**, "June 24,1940", are found.
+- **A greeting under a letterhead**: "Dear Sir:" is looked for in the first 15 lines, not 5, if it's short and ends with a comma or colon. Mashburn's reply has it 12 lines down.
+
+In the whole dev library, only those letters' four scans get a date line. On the sweep, the rules' wrong documents went from 27 to 1 (of 1,109 made), and made-up batches came out the same as before. The folder holds three letters (Johnson's, the Attorney General's two-page reply, and Johnson's answer), which Lindley now keeps apart, as Claude did. The answer key counts the folder as one document, so a folder each now rebuilds 95% of its documents exactly at 90% or more, not 100%.
 
 ## Duplicates
 

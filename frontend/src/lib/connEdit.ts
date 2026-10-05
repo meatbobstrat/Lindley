@@ -31,6 +31,7 @@ export interface Edit {
   perMin: number
   atOnce: number
   api_key_env: string | null
+  timeout_s: number | null // not shown: kept as settings.json has it
 }
 
 export function newEdit(c: Connector | undefined): Edit {
@@ -55,6 +56,7 @@ export function newEdit(c: Connector | undefined): Edit {
     perMin: 30,
     atOnce: 2,
     api_key_env: null,
+    timeout_s: null,
   }
 }
 
@@ -80,6 +82,7 @@ export function editOf(id: string, cfg: ProviderConfig, keyHint: string | null):
     perMin: cfg.per_minute ?? 30,
     atOnce: cfg.at_once ?? 2,
     api_key_env: cfg.api_key_env ?? null,
+    timeout_s: cfg.timeout_s ?? null,
   }
 }
 
@@ -98,6 +101,7 @@ export function cfgOf(e: Edit, c: Connector | undefined): ProviderConfig {
     monthly_limit: auto && e.monthlyOn ? whole(e.monthly, 1, 1000000, 1000) : null,
     per_minute: e.perMinOn ? whole(e.perMin, 1, 1000, 30) : null,
     at_once: whole(e.atOnce, 1, 32, 2),
+    timeout_s: e.timeout_s,
   }
 }
 

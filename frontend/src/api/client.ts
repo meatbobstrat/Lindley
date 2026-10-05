@@ -234,7 +234,7 @@ export interface ProviderConfig {
   monthly_limit: number | null
   per_minute: number | null
   at_once: number
-  timeout_s?: number
+  timeout_s?: number | null
 }
 
 export interface Settings {

@@ -28,7 +28,7 @@ from lindley.providers import allowance
 from lindley.providers.base import ProviderError
 from lindley.providers.registry import connectors, get_provider
 from lindley.providers.throttle import metered
-from lindley.worker.pipeline import Pipeline
+from lindley.worker.pipeline import Pipeline, queue_vision
 
 log = logging.getLogger(__name__)
 
@@ -168,6 +168,7 @@ class AiWork:
             return "No AI is set up to read hard pages any more, so nothing was sent.", False
         label = connection_label(settings, "vision")
         log.info("Reading %s with %s, as a person asked", _plural(len(job.pages), "page"), label)
+        queue_vision(conn, job.pages)  # pages under review that didn't wait for it
         with activity.doing("read", len(job.pages), asked=True, connection=label) as step:
             run = pipeline.read_waiting(conn, job.pages, retry_failed=True, progress=step)
         if run.read:

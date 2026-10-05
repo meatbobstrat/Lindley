@@ -110,6 +110,22 @@ export function ScanView() {
             <b>This scan needs an AI to look at it.</b> Tesseract read it with only {p.confidence}% confidence, so its text is only a rough guess.
           </Banner>
         )}
+        {p.state === 'review' && ai('vision') && (
+          <Banner
+            kind="ai"
+            actions={
+              <button
+                className="btn ghost"
+                onClick={() => acts.readWithAi([id])}
+                data-tip={`Send it to ${who(ai('vision'))} to read again, instead of checking every word yourself. Sending is your OK.`}
+              >
+                <Mark /> Ask the AI to read it
+              </button>
+            }
+          >
+            Lindley read it with {p.confidence}% confidence, so a few words may be wrong. Check it yourself, or ask the AI to read it.
+          </Banner>
+        )}
         {aside && p.duplicate_of && (
           <Banner kind="ok" icon="dup">
             This is a copy you set aside. You kept <span className="mono">{p.duplicate_of.file}</span> instead.

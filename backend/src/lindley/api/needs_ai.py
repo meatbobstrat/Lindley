@@ -2,7 +2,8 @@
 
 Two kinds, like the two kinds of Duplicates:
 - read: pages Tesseract read with less than ocr.confidence_threshold, waiting for the vision
-  model (or whose vision call failed);
+  model (or whose vision call failed). A person may send a page under review too (read with
+  less than ocr.review_below), though it doesn't wait here;
 - sort: pages the rules couldn't sort into documents, one item per question the sorting AI
   would be asked, with the rules' own guess at the documents in it. A proposal marked
   "question": "place" asks which of a few likely documents (its "candidates") the pages
@@ -23,6 +24,7 @@ import sqlite3
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from lindley import browse
 from lindley.api.deps import Conn
 from lindley.config import Settings
 from lindley.providers import allowance
@@ -120,20 +122,31 @@ class ReadRequest(BaseModel):
     page_ids: list[int] | None = None  # None: every page waiting
 
 
+def _under_review(conn: sqlite3.Connection, ids: set[int], settings: Settings) -> list[int]:
+    """Of these pages, those waiting for a person's review (browse.state)."""
+    if not ids:
+        return []
+    marks = ",".join("?" * len(ids))
+    rows = browse.pages(conn, f"p.id IN ({marks})", tuple(ids), settings.ocr.review_below, "p.id")
+    return [p["id"] for p in rows if p["state"] == "review"]
+
+
 def _sent(new: list[int], already: list[int], label: str | None) -> dict:
     return {"queued": len(new), "already": len(already), "connection": label}
 
 
 @router.post("/read")
 def read(body: ReadRequest, request: Request, conn: Conn) -> dict:
-    """Send pages to the vision model, failed ones included: a person asked. The pages are
-    queued and read in the background."""
+    """Send pages to the vision model, failed ones included: a person asked. With page_ids,
+    pages under review may be sent too. The pages are queued and read in the background."""
     settings: Settings = request.app.state.settings
     if Pipeline.from_settings(settings).vision is None:
         raise HTTPException(400, "No AI is set up to read hard pages. Choose one in Settings.")
     waiting = [r["page_id"] for r in vision_queue(conn, running=True)]
     if body.page_ids is not None:
-        waiting = [p for p in waiting if p in set(body.page_ids)]
+        asked = set(body.page_ids)
+        waiting = [p for p in waiting if p in asked]
+        waiting += _under_review(conn, asked - set(waiting), settings)
     if not waiting:
         raise HTTPException(404, "Nothing here is waiting for the AI to read it")
     new, already = _work(request).read(waiting)

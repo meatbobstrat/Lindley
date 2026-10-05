@@ -112,6 +112,24 @@ def vision_queue(conn: sqlite3.Connection, running: bool = False) -> list[sqlite
     ).fetchall()
 
 
+def queue_vision(conn: sqlite3.Connection, page_ids: list[int]) -> int:
+    """Queue these pages for the vision model, as a person asked: pages that read well enough
+    not to wait for it, but that a person wants read again (pages under review). One already
+    waiting, failed or being read is left as it is. Returns how many were queued."""
+    marks = ",".join("?" * len(page_ids))
+    with conn:
+        return conn.executemany(
+            "INSERT INTO intake_steps (scan_id, page_id, step, status, error)"
+            " VALUES (?, ?, 'vision', 'queued', 'A person asked')",
+            conn.execute(
+                f"SELECT p.scan_id, p.id FROM pages p LEFT JOIN ({_LAST_VISION}) v"
+                f" ON v.page_id = p.id WHERE p.id IN ({marks})"
+                " AND (v.id IS NULL OR v.status IN ('done', 'skipped'))",
+                page_ids,
+            ).fetchall(),
+        ).rowcount
+
+
 def vision_failures(conn: sqlite3.Connection) -> tuple[int, str | None]:
     """Pages whose last vision call failed (they wait for a person to retry), and an error."""
     sql = (

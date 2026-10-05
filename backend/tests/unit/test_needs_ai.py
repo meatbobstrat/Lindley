@@ -77,6 +77,44 @@ def test_hard_pages_are_listed_and_a_person_can_send_them(client, settings, conn
     assert client.post("/api/needs-ai/read", json={}).status_code == 404  # nothing waits now
 
 
+def test_a_person_can_send_a_page_under_review_though_it_reads_well_enough(
+    client, settings, conn, scan
+):
+    """Read at 75: above ocr.confidence_threshold, so it doesn't wait for the AI, but below
+    ocr.review_below. A page read better, or checked by a person, can't be sent."""
+    fair, good, checked = scan("fair.png"), scan("good.png"), scan("checked.png")
+    pipe = Pipeline(
+        settings,
+        StubOcr(("Dear Sistor", 75.0), ("Dear Sister", 85.0), ("Dear Sistor", 75.0)),
+        FakeProvider(),
+    )
+    for sid in (fair, good, checked):
+        pipe.process_scan(conn, sid)
+    page = {
+        sid: conn.execute("SELECT id FROM pages WHERE scan_id = ?", (sid,)).fetchone()[0]
+        for sid in (fair, good, checked)
+    }
+    with conn:
+        conn.execute(
+            "UPDATE transcriptions SET confirmed_at = datetime('now') WHERE page_id = ?",
+            (page[checked],),
+        )
+    assert waiting_for_vision(conn) == 0
+    for sid in (good, checked):
+        sent = client.post("/api/needs-ai/read", json={"page_ids": [page[sid]]})
+        assert sent.status_code == 404
+    sent = client.post("/api/needs-ai/read", json={"page_ids": [page[fair]]}).json()
+    assert sent["queued"] == 1
+    assert client.app.state.ai_work.wait_idle()
+    source = conn.execute(
+        "SELECT source FROM v_current_text WHERE page_id = ?", (page[fair],)
+    ).fetchone()[0]
+    assert source == "vision"
+    assert [tuple(c) for c in conn.execute("SELECT purpose, automatic FROM ai_calls")] == [
+        ("vision", 0)
+    ]
+
+
 def test_pages_on_their_way_to_the_ai_are_marked_and_not_sent_twice(client, settings, conn, scan):
     queue_hard_pages(conn, settings, scan, n=2)
     gate, inside = threading.Event(), threading.Event()

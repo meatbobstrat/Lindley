@@ -408,7 +408,7 @@ Most of the memoir stayed in the Inbox. Claude grouped it sensibly, but at 55–
 What it showed needs doing:
 - **Sorting calls are recorded when the whole job ends.** A job cut short would leave calls already paid for unrecorded.
 - **Progress while sorting.** The status bar stayed at "0 of 143" for five minutes.
-- **Reading with the AI is only offered for pages Tesseract read below 70%.** Pages at 70–89% still need review, and can't be sent.
+- Done: **a person can send any page under review to the reading AI** (Ask the AI, in Review and on the scan), not only pages Tesseract read below 70%. Lindley still sends only those on its own.
 - **Is 75% the right bar for groups the AI checked?** Its 60–74% groups, with its reasons, may be worth a one-click accept.
 - **Mirror-image scans.** Lindley could find them and turn them round, the way it turns upside-down pages.
 

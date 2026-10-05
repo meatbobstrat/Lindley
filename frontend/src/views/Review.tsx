@@ -8,6 +8,8 @@ import { useApi } from '../api/store'
 import { textOf, typing } from '../lib/view'
 import { Crumb, Done, ErrorBox, Head, Loading } from '../components/bits'
 import { TextPanel } from '../components/TextPanel'
+import { useActions } from '../lib/actionsContext'
+import { who } from '../lib/ai'
 import { docHome, useApp, useLooking } from '../lib/appContext'
 import { needs, plural, quoted, shortName } from '../lib/words'
 import { DBtn, Dock, DockProgress, Sep } from '../ui/Dock'
@@ -82,7 +84,8 @@ export function ReviewList() {
 export function ReviewView() {
   const scope = useParams().scope ?? 'all'
   const review = useApi('review', api.review)
-  const { docs } = useApp()
+  const { docs, ai } = useApp()
+  const acts = useActions()
   const { run } = useFeedback()
   const nav = useNavigate()
   const loc = useLocation()
@@ -208,6 +211,14 @@ export function ReviewView() {
         <Sep />
         <DBtn icon="check" label="The text is correct" kind="primary" tip="The text matches the scan: trust it, and go on to the next page" onClick={confirm} />
         <DBtn icon="pen" label="Save my correction" tip="Keep the text as you’ve corrected it, and go on. Lindley’s reading is kept too." onClick={save} />
+        {ai('vision') && (
+          <DBtn
+            icon="send"
+            label="Ask the AI"
+            tip={`Send it to ${who(ai('vision'))} to read again, instead of checking every word yourself. Sending is your OK.`}
+            onClick={() => acts.readWithAi([p.id])}
+          />
+        )}
         <Sep />
         <DockProgress text={`Page ${i + 1} of ${queue.length} to review`} at={i + 1} of={queue.length} />
         <DBtn icon="chev" label="Next" kind="next" disabled={i >= queue.length - 1} tip="The next page, leaving this one for later (→)" onClick={() => setAt(i + 1)} />

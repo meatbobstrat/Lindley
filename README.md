@@ -420,6 +420,31 @@ and you can ask it about them. All of it from a one-click install.
   app: today either only changes how the page is shown, so its text stays as read the wrong way
   up or from the mirror image. The new reading would replace Tesseract's own, never a person's
   text or an AI's better reading, and the Inbox would be sorted again with it
+- [ ] Performance tiers: Lindley runs on anything from a 10-year-old laptop to a gaming PC with
+  32 GB of graphics memory, and the AI each job uses is picked to suit the computer
+  (design/database.md, "Local models on a CPU"):
+  - **Basic** (any computer): Tesseract, the rules and the small built-in model. No AI; pages
+    Tesseract can't read wait for a person, or for a cloud AI if one is set up
+  - **Light** (8 GB of memory): EmbeddingGemma for what pages are about, and the check whether a
+    page carries on from the last one. Handwriting is read slowly, a few minutes a page
+  - **Full local** (16 GB, a recent processor or built-in graphics): Gemma 4 E4B reads
+    handwriting, sorts pages and answers questions, at a minute or two a hard page
+  - **Power** (32 GB of memory, or a graphics card with 8–32 GB): larger models (Gemma 4 12B,
+    26B-A4B or 31B), quicker and more accurate
+  - **Your own AI server**: the local connection pointed at a computer on your network that has
+    the power (works today)
+  - **Cloud** (an API key): runs on anything, down to a Windows tablet. Pages leave the computer
+    and each one costs money
+- [ ] A local AI that comes with Lindley: llama.cpp's `llama-server` (the Vulkan build, which also
+  uses built-in graphics), started and stopped by Lindley, with each tier's models downloaded when
+  chosen. Ollama and LM Studio stay supported through the local connection. First, bench
+  llama-server on a laptop processor, and on built-in graphics, with the candidates in
+  design/database.md
+- [ ] A look at the computer at first run (processor, memory, graphics card, free disk) that
+  suggests a tier for each job, with how long 100 pages would take
+- [ ] Simple AI choices in Setup and Settings: Private, Balanced or Most capable, each explained
+  in plain words (where your pages go, what it costs, how fast and how good it is). The choice of
+  AI for each job stays underneath, for people who want it
 - [ ] One-click installer (Windows/Mac), with Tesseract included
 
 ### After the MVP
@@ -432,11 +457,12 @@ and you can ask it about them. All of it from a one-click install.
   can't go out of date
 - [x] AI spending: a monthly limit, and the tokens and estimated cost of each call, shown in Settings
 - [ ] Suggest groups of pages Lindley isn't sure of (typescripts, notes) for a person to confirm
-- [ ] Local AI models for intake, tuned on real scans. Small models were measured on real scans
-  (design/database.md, "Local models"): none makes intake quicker, and Tesseract stays for typed
-  pages. Next:
+- [ ] Local AI models for intake, tuned on real scans, for each performance tier. Small models
+  were measured on real scans (design/database.md, "Local models" and "Local models on a CPU"):
+  none makes intake quicker, and Tesseract stays for typed pages. Next:
   - a local model asked whether one page carries straight on from another (`lm_continues`):
     with the rules it scored 0.94 where they alone scored 0.82, at about 7 seconds a pair on a
-    laptop
-  - Gemma 4 E4B for handwriting Tesseract can't read (about half a minute a page)
-  - EmbeddingGemma for what pages are about, if it helps build documents
+    2019 desktop processor
+  - Gemma 4 E4B for handwriting Tesseract can't read (about a minute a page on that processor)
+  - EmbeddingGemma for what pages are about, if it helps build documents; it should replace
+    nomic-embed-text as the local connection's default either way

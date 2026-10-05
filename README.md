@@ -455,6 +455,15 @@ and you can ask it about them. All of it from a one-click install.
 
 ### After the MVP
 
+- [ ] Ask Lindley, next:
+  - related pages by meaning (embeddings) alongside the words searched for, once the `embed`
+    job fills the `embeddings` table
+  - tokens and cost for answers from OpenAI, Google and local AIs (only Claude's are counted
+    now), and for an answer stopped part-way (Claude says what it used only at the end)
+  - for a cloud AI that handles them well, tools over the read-only views, so it can look
+    further itself
+  - "Ask Lindley about this page" in the toolbars and right-click menus, as in the mockup
+  - a local model benched for answering questions, for each performance tier
 - [ ] Searchable text for every alphabet: ship a glyphless font, so text outside Windows-1252
   (Greek, Cyrillic, Hebrew and so on) goes into the PDF as it was read
 - [ ] Details view: everything Lindley found about a page or document

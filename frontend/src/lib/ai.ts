@@ -73,7 +73,7 @@ export const JOB_WORDS: Record<Job, { label: string; what: string; none: string;
   chat: {
     label: 'Answering your questions in Ask Lindley',
     what: 'your questions and the text of your pages',
-    none: 'Nothing connected: Ask Lindley is turned off.',
+    none: 'Nothing connected: Ask Lindley only finds words, and what’s waiting for your review.',
     short: 'answering your questions',
   },
   embed: {

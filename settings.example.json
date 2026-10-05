@@ -20,6 +20,11 @@
     "hint_at": 45,
     "ai_band": [35, 75]
   },
+  "ask": {
+    "local_chars": 6000,
+    "cloud_chars": 40000,
+    "history_turns": 6
+  },
   "ai": {
     "jobs": {
       "vision": { "connection": "local", "model": null },

@@ -1,6 +1,6 @@
 # Lindley database design
 
-Schema version 5. The source of truth is [backend/src/lindley/db/schema.sql](../backend/src/lindley/db/schema.sql).
+Schema version 14. The source of truth is [backend/src/lindley/db/schema.sql](../backend/src/lindley/db/schema.sql).
 This document explains why the schema is shaped the way it is.
 
 ## Goals

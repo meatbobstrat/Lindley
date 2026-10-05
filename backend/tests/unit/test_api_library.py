@@ -173,6 +173,21 @@ def test_turning_pages(client, settings, tmp_path):
     assert client.get(f"/api/pages/{a}").json()["turned"] == 0
 
 
+def test_an_image_asked_for_without_its_turn_is_checked_each_time(client, settings, tmp_path):
+    conn = db(client, settings)
+    a = add_page(conn, tmp_path, "one")
+    first = client.get(f"/api/pages/{a}/image?max_side=120")
+    assert first.status_code == 200 and "no-cache" in first.headers["cache-control"]
+    tag = {"if-none-match": first.headers["etag"]}
+    assert client.get(f"/api/pages/{a}/image?max_side=120", headers=tag).status_code == 304
+    client.post("/api/pages/rotate", json={"page_ids": [a], "degrees": 90})
+    turned = client.get(f"/api/pages/{a}/image?max_side=120", headers=tag)
+    assert turned.status_code == 200 and turned.headers["etag"] != tag["if-none-match"]
+    # With its turn in the address, it may be kept a while
+    kept = client.get(client.get(f"/api/pages/{a}").json()["image"])
+    assert "max-age=300" in kept.headers["cache-control"]
+
+
 def test_flipping_a_mirror_image(client, settings, tmp_path):
     conn = db(client, settings)
     a = add_page(conn, tmp_path, "one")

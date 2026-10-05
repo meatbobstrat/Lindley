@@ -91,9 +91,14 @@ def check_text(page_id: int, body: Text, conn: Conn) -> dict:
 @router.get("/{page_id}/image")
 def page_image(
     page_id: int,
+    request: Request,
     conn: Conn,
     max_side: Annotated[int, Query(ge=64, le=4000)] = 1600,
+    v: str | None = None,
 ) -> Response:
+    """`v` (browse.page's image address has it) changes whenever the page is turned, so that
+    image may be kept a while. One asked for without it is checked each time (its ETag): a
+    page turned since is never shown the old way round."""
     row = conn.execute(
         "SELECT image_path, detected_rotation, user_rotation, detected_mirror, user_mirror"
         " FROM pages WHERE id = ?",
@@ -102,10 +107,14 @@ def page_image(
     if row is None or not row["image_path"] or not Path(row["image_path"]).is_file():
         raise HTTPException(404, "That page has no image")
     rotation = row["detected_rotation"] + row["user_rotation"]
+    headers = {
+        "Cache-Control": "private, max-age=300" if v else "private, no-cache",
+        "ETag": f'"{page_id}-{rotation % 360}-{int(mirrored(row))}-{max_side}"',
+    }
+    if request.headers.get("if-none-match") == headers["ETag"]:
+        return Response(status_code=304, headers=headers)
     img = upright_page(Path(row["image_path"]), rotation, mirrored(row))
     img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=85)
-    return Response(
-        buf.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=300"}
-    )
+    return Response(buf.getvalue(), media_type="image/jpeg", headers=headers)

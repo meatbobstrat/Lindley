@@ -1,7 +1,7 @@
 // What every view needs, shared through context (lib/app.tsx provides it).
 
 import { createContext, useContext, useEffect } from 'react'
-import type { Connector, DocSummary, Folder, Job, Overview, Settings } from '../api/client'
+import type { Connector, DocSummary, Folder, Job, Overview, Scope, Settings } from '../api/client'
 import type { Conn } from './ai'
 
 export interface AppData {
@@ -13,9 +13,10 @@ export interface AppData {
   folders: Map<number, Folder>
   folderPath: (id: number | null) => string[]
   ai: (job: Job) => Conn | null
-  /** What Ask Lindley is looking at, said by the view that's open. */
+  /** What Ask Lindley is looking at, said by the view that's open, and the page or document. */
   looking: string
-  setLooking: (s: string) => void
+  scope: Scope
+  setLooking: (s: string, scope?: Scope) => void
 }
 
 export const AppCtx = createContext<AppData | null>(null)
@@ -26,10 +27,11 @@ export function useApp(): AppData {
   return a
 }
 
-/** The view says what Ask Lindley is looking at. */
-export function useLooking(label: string) {
+/** The view says what Ask Lindley is looking at: in words, and which page or document it is. */
+export function useLooking(label: string, scope: Scope = {}) {
   const { setLooking } = useApp()
-  useEffect(() => setLooking(label), [label, setLooking])
+  const { document_id, page_id } = scope
+  useEffect(() => setLooking(label, { document_id, page_id }), [label, document_id, page_id, setLooking])
 }
 
 /** Where a document lives, in words: its folder path, or In progress or Completed. */

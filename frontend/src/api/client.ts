@@ -259,6 +259,7 @@ export interface Settings {
     jobs: Record<Job, { connection: string | null; model: string | null }>
   }
   assembler: Record<string, unknown>
+  ask: { local_chars: number; cloud_chars: number; history_turns: number }
 }
 
 export interface Connector {
@@ -318,19 +319,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     throw new ApiError(0, 'Lindley’s backend isn’t answering. Is it running?')
   }
-  if (!res.ok) {
-    let message = `${res.status} ${res.statusText}`
-    try {
-      const body = await res.json()
-      const d = body.detail
-      if (typeof d === 'string') message = d
-      else if (Array.isArray(d)) message = d.map((x) => (typeof x === 'string' ? x : x.msg)).join('. ')
-    } catch {
-      // not JSON: keep the status
-    }
-    throw new ApiError(res.status, message)
-  }
+  if (!res.ok) throw await errorOf(res)
   return res.json() as Promise<T>
+}
+
+async function errorOf(res: Response): Promise<ApiError> {
+  let message = `${res.status} ${res.statusText}`
+  try {
+    const body = await res.json()
+    const d = body.detail
+    if (typeof d === 'string') message = d
+    else if (Array.isArray(d)) message = d.map((x) => (typeof x === 'string' ? x : x.msg)).join('. ')
+  } catch {
+    // not JSON: keep the status
+  }
+  return new ApiError(res.status, message)
 }
 
 const get = <T>(path: string) => request<T>(path)
@@ -396,5 +399,112 @@ export const api = {
       body: form,
     })
   },
-  chat: (question: string) => send<{ answer: string }>('POST', '/chat', { question }),
+  chatStatus: () => get<ChatStatus>('/chat/status'),
+  conversations: () => get<{ conversations: ChatSummary[] }>('/chat/conversations'),
+  conversation: (id: number) => get<{ id: number; title: string; messages: ChatSaved[] }>(`/chat/conversations/${id}`),
+  deleteConversation: (id: number) => send<{ deleted: number }>('DELETE', `/chat/conversations/${id}`),
+}
+
+// ---------------------------------------------------------------- Ask Lindley
+
+/** What a person has open, which a question is about unless they say otherwise. */
+export interface Scope {
+  document_id?: number
+  page_id?: number
+}
+
+export interface ChatConn {
+  name: string
+  label: string
+  where: 'local' | 'cloud'
+  company: string | null
+}
+
+/** Whether Ask Lindley can answer: ready; broken (its AI can't be used now: `reason` says why);
+ * offer (an AI that could answer isn't chosen for it yet: `offers`); none. */
+export interface ChatStatus {
+  state: 'ready' | 'broken' | 'offer' | 'none'
+  connection: ChatConn | null
+  reason: string
+  offers: ChatConn[]
+}
+
+/** A page sent with a question; the answer cites it as [n]. */
+export interface ChatSource {
+  n: number
+  page_id: number
+  document_id: number | null
+  page_number: number | null
+  label: string
+  unsure: boolean // read with low confidence, not checked yet
+}
+
+export interface ChatSaved {
+  id: number
+  role: 'user' | 'assistant'
+  text: string
+  sources: ChatSource[]
+  scope: Scope | null
+  status: 'done' | 'stopped' | 'failed'
+  created_at: string
+}
+
+export interface ChatSummary {
+  id: number
+  title: string
+  created_at: string
+  updated_at: string
+  questions: number
+}
+
+export type AskEvent =
+  | { event: 'chat'; data: { chat_id: number; message_id: number } }
+  | { event: 'sources'; data: { sources: ChatSource[] } }
+  | { event: 'text'; data: { text: string } }
+  | { event: 'done'; data: { status: 'done' | 'stopped'; message_id: number } }
+  | { event: 'error'; data: { message: string; message_id?: number } }
+
+export interface Question {
+  question: string
+  chat_id: number | null
+  scope: Scope
+  looking: string
+}
+
+/** Ask Lindley a question. The answer comes as server-sent events (an EventSource can't send a
+ * question, so they're read from the response here), each given to `on` as it arrives. Aborting
+ * `signal` stops the answer: Lindley keeps what was written so far. */
+export async function ask(q: Question, on: (e: AskEvent) => void, signal: AbortSignal): Promise<void> {
+  let res: Response
+  try {
+    res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(q), signal })
+  } catch {
+    if (signal.aborted) return
+    throw new ApiError(0, 'Lindley’s backend isn’t answering. Is it running?')
+  }
+  if (!res.ok || !res.body) throw await errorOf(res)
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+  let buf = ''
+  try {
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) return
+      buf += value.replace(/\r\n?/g, '\n')
+      for (let cut = buf.indexOf('\n\n'); cut >= 0; cut = buf.indexOf('\n\n')) {
+        const frame = buf.slice(0, cut)
+        buf = buf.slice(cut + 2)
+        let event = 'message'
+        const data: string[] = []
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''))
+        }
+        // A frame with no data is the server's keep-alive, while the AI thinks
+        if (data.length) on({ event, data: JSON.parse(data.join('\n')) } as AskEvent)
+      }
+    }
+  } catch {
+    if (signal.aborted) return
+    throw new ApiError(0, 'The answer stopped coming: Lindley’s backend may have stopped.')
+  }
 }

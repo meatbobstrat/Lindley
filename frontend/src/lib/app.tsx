@@ -2,8 +2,8 @@
 // The overview is checked every few seconds; when the background work has moved on (a scan
 // read, pages sorted), every view fetches its data again.
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { api, type Job } from '../api/client'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { api, type Job, type Scope } from '../api/client'
 import { invalidate, useApi } from '../api/store'
 import { forJob } from './ai'
 import { AppCtx, type AppData } from './appContext'
@@ -15,7 +15,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const st = useApi('settings', api.settings)
   const cn = useApi('connectors', api.connectors)
   const [offline, setOffline] = useState(false)
-  const [looking, setLooking] = useState('Your archive')
+  const [looking, setLookingNow] = useState<{ label: string; scope: Scope }>({ label: 'Your archive', scope: {} })
+  const setLooking = useCallback((label: string, scope: Scope = {}) => setLookingNow({ label, scope }), [])
   const last = useRef<string>('')
 
   useEffect(() => {
@@ -55,10 +56,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       folders,
       folderPath,
       ai: (job: Job) => forJob(st.data, connectors, job),
-      looking,
+      looking: looking.label,
+      scope: looking.scope,
       setLooking,
     }
-  }, [ov.data, ov.error, st.data, cn.data, offline, looking])
+  }, [ov.data, ov.error, st.data, cn.data, offline, looking, setLooking])
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }

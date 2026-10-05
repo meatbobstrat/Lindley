@@ -25,7 +25,7 @@ export function ScanView() {
   const nav = useNavigate()
   const text = useRef<HTMLDivElement>(null)
   const p = page.data
-  useLooking(p ? `${p.where === 'aside' ? 'Set aside' : 'Inbox'}, ${p.file}` : 'A scan')
+  useLooking(p ? `${p.where === 'aside' ? 'Set aside' : 'Inbox'}, ${p.file}` : 'A scan', { page_id: p?.id, document_id: p?.document_id ?? undefined })
 
   if (page.error && !p) return <ErrorBox error={page.error} />
   if (!p) return <Loading />

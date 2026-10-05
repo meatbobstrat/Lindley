@@ -38,7 +38,8 @@ export function DocumentView() {
   const setView = (v: View, page = cur) => setParams({ view: v, page: String(page) }, { replace: true })
   const setCur = (i: number) => setParams({ view, page: String(Math.max(0, Math.min(i, n - 1))) }, { replace: true })
 
-  useLooking(d ? (view !== 'grid' && n ? `${d.name}, page ${cur + 1}` : d.name) : 'A document')
+  const onePage = view !== 'grid' && n > 0
+  useLooking(d ? (onePage ? `${d.name}, page ${cur + 1}` : d.name) : 'A document', { document_id: d?.id, page_id: onePage ? d?.pages[cur]?.id : undefined })
 
   // ← and → move between pages in the reader and beside the text
   useEffect(() => {

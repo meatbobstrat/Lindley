@@ -114,7 +114,10 @@ export function ReviewView() {
   }
   const full = useApi(p ? `page:${p.id}` : null, () => api.page(p!.id))
   const scopeName = scope === 'all' ? 'All pages' : scope === 'inbox' ? 'Inbox' : (docs.get(Number(scope))?.name ?? 'A document')
-  useLooking(full.data?.document ? `${full.data.document.name}, page ${full.data.document.page_number}` : p ? `Inbox, ${p.file}` : 'Pages to review')
+  useLooking(full.data?.document ? `${full.data.document.name}, page ${full.data.document.page_number}` : p ? `Inbox, ${p.file}` : 'Pages to review', {
+    page_id: p?.id,
+    document_id: full.data?.document?.id,
+  })
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

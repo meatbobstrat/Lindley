@@ -584,6 +584,30 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); animation: pulse 1s infinite; }
 .typing i:nth-child(2) { animation-delay: .2s; }
 .typing i:nth-child(3) { animation-delay: .4s; }
+.ai-h .icon-btn.on { background: var(--ai-soft); color: var(--ink); }
+.ai-h .icon-btn:disabled { opacity: .45; cursor: default; }
+.ai-offer { padding: 8px 12px 10px; border-bottom: 1px solid var(--line); background: var(--ai-soft); font-size: 13px; }
+.ai-offer p { margin: 0; }
+.msg .ans { white-space: pre-line; }
+.msg.failed { border: 1px solid var(--warn); background: var(--warn-soft); }
+.msg-note { color: var(--muted); font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+.cite { display: inline-grid; place-items: center; min-width: 18px; height: 17px; padding: 0 4px; margin: 0 1px; vertical-align: 1px; border-radius: 4px; border: 1px solid var(--ai); background: var(--ai-soft); color: var(--ink); font-size: 11px; font-weight: 600; line-height: 1; }
+.cite:hover { border-color: var(--accent); color: var(--accent); }
+.cite.unsure { border-style: dashed; }
+.msg-src { margin-top: 6px; font-size: 12.5px; }
+.msg-src summary { cursor: pointer; color: var(--muted); }
+.msg-src ul { list-style: none; padding: 0; margin: 4px 0 0; }
+.msg-src button { border: none; background: none; padding: 1px 0; color: var(--accent); text-align: left; font-size: 12.5px; }
+.msg-src button:hover { text-decoration: underline; }
+.msg-src span { color: var(--warn); }
+.ai-convs ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ai-convs li { display: flex; align-items: center; gap: 4px; border-radius: 8px; }
+.ai-convs li.on { background: var(--ai-soft); }
+.ai-convs .conv { flex: 1; min-width: 0; display: grid; gap: 1px; padding: 6px 8px; border: none; background: none; color: var(--ink); text-align: left; border-radius: 8px; }
+.ai-convs .conv:hover { background: var(--panel); }
+.ai-convs .conv span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.ai-convs .conv small { color: var(--muted); font-size: 12px; }
+.ai-convs .btn { font-size: 12.5px; min-height: 28px; padding: 2px 10px; border-color: var(--warn); color: var(--warn); }
 .ai-sugg { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
 .ai-sugg button { font-size: 13px; min-height: 28px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--ai); background: var(--ai-soft); color: var(--ink); text-align: left; }
 .ai-form { display: flex; gap: 6px; padding: 8px 10px 10px; border-top: 1px solid var(--line); }

@@ -15,7 +15,7 @@ from pathlib import PurePath
 
 from lindley import history
 from lindley.assembler import ai, apply, evidence, relearn
-from lindley.assembler.answers import Answers, AskFirst
+from lindley.assembler.answers import Answers, AskFirst, OnCall
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page, weigh_terms
 from lindley.assembler.place import Candidate, DocEnds, candidates
@@ -259,14 +259,15 @@ def assemble(
     max_ai_calls: int | None = None,
     asked: set[int] | None = None,
     weights: dict[str, float] | None = None,
+    on_call: OnCall | None = None,
 ) -> RunReport:
     """Sort the Inbox. With `chat`, the AI may be asked about what the rules couldn't settle:
     passing it is the OK to call it (see lindley.providers.allowance), at most `max_ai_calls`
-    times if given. A person is asked first, with hints, so on its own the AI is only asked
-    about pages that have waited `ask_ai_after_days` and that no one turned down. With `asked`,
-    a person asked about those pages: only they are sent, at once. Without `chat`, the rules
-    decide alone, helped by what the AI already said about the same pages
-    (lindley.assembler.answers), which costs nothing.
+    times if given, and `on_call` is told of each call as it's made. A person is asked first,
+    with hints, so on its own the AI is only asked about pages that have waited
+    `ask_ai_after_days` and that no one turned down. With `asked`, a person asked about those
+    pages: only they are sent, at once. Without `chat`, the rules decide alone, helped by what
+    the AI already said about the same pages (lindley.assembler.answers), which costs nothing.
 
     The evidence is weighed with `weights` if given, else with weights learned from people's
     answers (lindley.assembler.relearn), else with the shipped ones."""
@@ -274,7 +275,7 @@ def assemble(
         evidence.use_weights(weights if weights is not None else relearn.learned(conn))
         if conn.in_transaction:  # what the caller left uncommitted is kept, as it always was
             conn.commit()
-        answers = Answers(conn)
+        answers = Answers(conn, on_call)
         # Questions for the AI met while the decisions are saved are asked once they're put
         # back, and the Inbox sorted again with the answers (Answers). Those answers may raise
         # new questions, once or twice: the last time round, those wait for a later run.

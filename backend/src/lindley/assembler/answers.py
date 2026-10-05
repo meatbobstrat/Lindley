@@ -10,6 +10,9 @@ A reply that was checked and rejected is kept too: asking again would most likel
 So is a call the AI answered, and was paid for, but whose answer can't be used (cut off, or it
 declined): it fails the same way next time without a call. A call that failed with no answer (no
 network, a refused key) isn't kept, so it's tried again next time.
+
+Each call is told to `on_call` as soon as it's made, with what it used, in the same transaction
+that keeps its answer: a job cut short still shows what it spent.
 """
 
 from __future__ import annotations
@@ -18,12 +21,17 @@ import contextlib
 import hashlib
 import json
 import sqlite3
+from collections.abc import Callable
 from typing import Literal
 
-from lindley.providers.base import ChatMessage, ChatProvider, ProviderError
+from lindley.providers.base import ChatMessage, ChatProvider, ProviderError, Usage
+from lindley.providers.throttle import metered
 
 Purpose = Literal["assemble", "name"]  # grouping pages, naming documents
 FAILED = "lindley:failed:"  # a kept reply that's an answer that couldn't be used, and why
+# Told of each call made: whether it worked, and what it used (throttle.metered). It's called
+# with a transaction open, which the Answers commits.
+OnCall = Callable[[bool, list[Usage]], None]
 
 
 class AskFirst(Exception):  # noqa: N818 - a signal, not an error
@@ -36,8 +44,9 @@ class Answers:
     meanwhile. A question met then gets no answer yet. It's kept, the decision is put back
     (AskFirst), the questions are asked (ask_waiting), and the decision made again with them."""
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(self, conn: sqlite3.Connection, on_call: OnCall | None = None) -> None:
         self.conn = conn
+        self.on_call = on_call
         self.calls = 0  # calls made to the AI, or to be made once the database is let go
         self.reused = 0  # questions answered from earlier replies
         self.failed = 0  # of the calls, those that failed: they answered nothing
@@ -91,24 +100,37 @@ class Answers:
         page_ids: list[int],
     ) -> str:
         self._fresh.add(k)
-        try:
-            reply = chat.chat(messages)
-        except Exception as e:
-            self.failed += 1
-            self._failed[k] = e
-            if getattr(e, "answered", False):  # paid for: not asked again
-                self._keep(k, purpose, page_ids, FAILED + str(e))
-            raise
-        self._keep(k, purpose, page_ids, reply)
+        with metered(chat) as used:
+            try:
+                reply = chat.chat(messages)
+            except Exception as e:
+                self.failed += 1
+                self._failed[k] = e
+                answered = getattr(e, "answered", False)  # paid for: not asked again
+                self._keep(k, purpose, page_ids, FAILED + str(e) if answered else None, False, used)
+                raise
+        self._keep(k, purpose, page_ids, reply, True, used)
         return reply
 
-    def _keep(self, k: str, purpose: Purpose, page_ids: list[int], reply: str) -> None:
+    def _keep(
+        self,
+        k: str,
+        purpose: Purpose,
+        page_ids: list[int],
+        reply: str | None,
+        ok: bool,
+        used: list[Usage],
+    ) -> None:
+        """Keep a reply, if there's one to keep, and tell on_call of the call."""
         with self.conn:
-            self.conn.execute(
-                "INSERT OR REPLACE INTO ai_answers (key, purpose, page_ids, reply)"
-                " VALUES (?, ?, ?, ?)",
-                (k, purpose, json.dumps(sorted(page_ids)), reply),
-            )
+            if reply is not None:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO ai_answers (key, purpose, page_ids, reply)"
+                    " VALUES (?, ?, ?, ?)",
+                    (k, purpose, json.dumps(sorted(page_ids)), reply),
+                )
+            if self.on_call is not None:
+                self.on_call(ok, used)
 
     @property
     def waiting(self) -> bool:

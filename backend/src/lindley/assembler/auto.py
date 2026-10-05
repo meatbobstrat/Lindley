@@ -15,9 +15,8 @@ from lindley import activity
 from lindley.assembler.run import RunReport, assemble
 from lindley.config import Settings
 from lindley.providers import allowance
-from lindley.providers.base import ChatProvider, ProviderError
+from lindley.providers.base import ChatProvider, ProviderError, Usage
 from lindley.providers.registry import get_provider
-from lindley.providers.throttle import metered
 from lindley.worker.pipeline import Pipeline, WaitingRun, waiting_for_vision
 
 log = logging.getLogger(__name__)
@@ -57,21 +56,14 @@ def sort_with(
     automatic: bool,
     **kw,
 ) -> RunReport:
-    """Sort the Inbox with `chat`, recording the calls made to it: those that worked and those
-    that failed, even when sorting itself then fails."""
-    report = None
-    used: list = []
-    try:
-        with metered(chat) as used:
-            report = assemble(conn, settings.assembler, chat, **kw)
-    finally:
-        if chat is not None:
-            worked, failed = (
-                (report.ai_calls - report.ai_failed, report.ai_failed) if report else (0, 0)
-            )
-            name = settings.ai.connection_for("assemble")
-            allowance.record_run(conn, name, "assemble", automatic, worked, failed, used)
-    return report
+    """Sort the Inbox with `chat`, recording each call to it as it's made, whether it worked or
+    failed: a job cut short, or a sort that then fails, still shows what it spent."""
+    name = settings.ai.connection_for("assemble")
+
+    def record(ok: bool, used: list[Usage]) -> None:
+        allowance.record(conn, name, "assemble", automatic, ok=ok, used=used)
+
+    return assemble(conn, settings.assembler, chat, on_call=record, **kw)
 
 
 def read_on_its_own(

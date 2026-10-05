@@ -416,7 +416,7 @@ and you can ask it about them. All of it from a one-click install.
   finds the pages (the one open first), and the answer cites them; it streams, can be stopped, and
   is kept. Available when the chat job has an AI that can be used; an AI set up but not chosen is
   offered in one click
-- [ ] Record each sorting call as it's made, not when the whole job ends, so a job cut short
+- [x] Record each sorting call as it's made, not when the whole job ends, so a job cut short
   still shows what it spent
 - [x] See where a letter starts without "Dear …", from its date line and who it's to: the rules
   had run a 1940 letter on into the typescript before it (design/database.md, "Confidence bars")

@@ -11,7 +11,7 @@ from lindley.assembler.auto import read_on_its_own, sort_on_its_own
 from lindley.assembler.bench import TruePage, load
 from lindley.db.database import connect, init_db
 from lindley.providers import allowance
-from lindley.providers.base import ProviderError
+from lindley.providers.base import ProviderError, Usage
 from lindley.providers.connectors.fake import FakeProvider
 from lindley.worker.intake import import_file
 from lindley.worker.pipeline import Pipeline, follow_settings, waiting_for_vision
@@ -271,6 +271,34 @@ def test_an_ai_that_may_run_on_its_own_leaves_nothing_waiting(conn, settings):
     assert [tuple(r) for r in conn.execute("SELECT purpose, automatic FROM ai_calls")] == [
         ("assemble", 1)
     ]
+
+
+def test_a_sorting_call_is_recorded_as_its_made_though_the_job_is_cut_short(conn, settings):
+    story(conn)
+    settings.ai.providers["local"].allow = "auto"
+    closed = RuntimeError("Lindley closed")  # after the AI answered, before the job ended
+    with (
+        patch("lindley.assembler.apply.save_links", side_effect=closed),
+        pytest.raises(RuntimeError),
+    ):
+        sort_on_its_own(conn, settings)
+    calls = conn.execute("SELECT purpose, automatic, ok, model, output_tokens > 0 FROM ai_calls")
+    assert [tuple(c) for c in calls] == [("assemble", 1, 1, "fake", 1)]  # with what it used
+
+
+def test_a_sorting_call_paid_for_whose_answer_was_cut_off_is_one_failed_call(conn, settings):
+    story(conn)
+    settings.ai.providers["local"].allow = "auto"
+
+    def cut_off(self, messages):
+        self.on_usage(Usage("fake", 500, 4096))
+        raise ProviderError("The AI stopped part way through its answer", answered=True)
+
+    with patch.object(FakeProvider, "chat", cut_off):
+        report = sort_on_its_own(conn, settings)
+    assert (report.ai_calls, report.ai_failed) == (1, 1)
+    calls = conn.execute("SELECT ok, output_tokens FROM ai_calls").fetchall()
+    assert [tuple(c) for c in calls] == [(0, 4096)]
 
 
 def test_a_person_can_send_one_question_or_all_of_them(client, settings, conn):

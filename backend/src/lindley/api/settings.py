@@ -41,13 +41,15 @@ def put_settings(new: Settings, request: Request, conn: Conn) -> Settings:
     request.app.state.settings = new
     # A new threshold, or a vision model set up or taken away, counts for pages read before.
     follow_settings(conn, new)
-    if (watcher := getattr(request.app.state, "watcher", None)) is not None:
-        # The watcher works from the settings it started with: start it again with these, so
-        # new folders are watched, and an AI that may now run on its own gets what's waiting.
-        # The old one may be part way through a long read; the new one waits for it to finish.
-        watcher.stop(wait=False)
-        request.app.state.watcher = FolderWatcher(new)
-        request.app.state.watcher.start()
+    with request.app.state.watcher_swap:
+        if (watcher := getattr(request.app.state, "watcher", None)) is not None:
+            # The watcher works from the settings it started with: start it again with these,
+            # so new folders are watched, and an AI that may now run on its own gets what's
+            # waiting. The old one may be part way through a long read; the new one waits for
+            # it to finish.
+            watcher.stop(wait=False)
+            request.app.state.watcher = FolderWatcher(new)
+            request.app.state.watcher.start()
     for name in set(old.ai.providers) - set(new.ai.providers):
         keys.delete_key(name)  # a connection removed takes its key with it
     return new

@@ -227,6 +227,29 @@ def test_saving_settings_starts_the_watcher_again_with_them(client, settings, mo
     assert started[0] == "stopped" and started[1].ai.providers["local"].allow == "auto"
 
 
+def test_closing_stops_the_watcher_started_by_saving_settings(settings, tmp_path, monkeypatch):
+    made = []
+
+    class Watcher:
+        def __init__(self, s):
+            self.stopped = None
+            made.append(self)
+
+        def start(self):
+            pass
+
+        def stop(self, wait=True):
+            self.stopped = "waited" if wait else "told"
+
+    monkeypatch.setattr("lindley.api.settings.FolderWatcher", Watcher)
+    app = create_app(settings, settings_path=tmp_path / "settings.json", watch=False)
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        app.state.watcher = Watcher(settings)
+        assert client.put("/api/settings", json=settings.model_dump(mode="json")).is_success
+    first, now = made
+    assert first.stopped == "told" and now.stopped == "waited"
+
+
 def test_an_empty_file_doesnt_hold_up_sorting(settings, inbox, monkeypatch):
     calls = []
     monkeypatch.setattr(watcher_mod, "sort_on_its_own", lambda *a: calls.append(a) or _Report())

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
@@ -129,13 +130,16 @@ def create_app(
         try:
             yield
         finally:
-            if watcher:
-                watcher.stop()
+            # The watcher in use now: saving settings starts a new one (api/settings.py)
+            with app.state.watcher_swap:
+                if app.state.watcher:
+                    app.state.watcher.stop()
             app.state.ai_work.stop()
 
     app = FastAPI(title="Lindley", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.settings_path = settings_path
+    app.state.watcher_swap = threading.Lock()  # one watcher at a time is started or stopped
     # AI work a person asked for, done in the background with the settings in use then
     app.state.ai_work = AiWork(lambda: app.state.settings)
 

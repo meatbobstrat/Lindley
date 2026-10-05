@@ -385,3 +385,28 @@ CREATE TABLE IF NOT EXISTS needs_ai (
     proposal   TEXT NOT NULL,                       -- JSON [{pages, name, confidence, reasons}]: the rules'
     since      TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ---------------------------------------------------------------- Ask Lindley
+
+-- Conversations with Ask Lindley, kept on this computer until a person deletes them.
+CREATE TABLE IF NOT EXISTS chats (
+    id          INTEGER PRIMARY KEY,
+    title       TEXT NOT NULL,                      -- the first question, shortened
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id          INTEGER PRIMARY KEY,
+    chat_id     INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    role        TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    text        TEXT NOT NULL,
+    sources     TEXT,                               -- JSON [{n, page_id, label, ...}]: the pages sent
+    scope       TEXT,                               -- JSON {document_id, page_id}: what was open
+    -- An answer: done; stopped by the person part-way; or failed, with why in `text`
+    status      TEXT NOT NULL DEFAULT 'done' CHECK (status IN ('done', 'stopped', 'failed')),
+    connection  TEXT,                               -- the AI that answered, its name in settings
+    model       TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_chat ON chat_messages(chat_id, id);

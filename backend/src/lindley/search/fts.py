@@ -2,6 +2,7 @@
 
 Each word of the query must appear on the page; the last one may be the start of a word, so
 results come as a person types. Semantic (embedding) search will sit alongside this.
+`search_any` is the looser search Ask Lindley uses: any of the words, best match first.
 """
 
 from __future__ import annotations
@@ -44,3 +45,20 @@ def search_pages(conn: sqlite3.Connection, query: str, limit: int = 50) -> list[
         " WHERE transcriptions_fts MATCH ? ORDER BY f.rank LIMIT ?",
         (q, limit),
     ).fetchall()
+
+
+def search_any(conn: sqlite3.Connection, words: list[str], limit: int = 20) -> list[int]:
+    """Pages whose text has any of the words (each may be the start of a word), best match
+    first, as page ids: for Ask Lindley, whose questions name more than any one page has."""
+    terms = [t for w in words if (t := fts_query(w))]
+    if not terms:
+        return []
+    return [
+        r[0]
+        for r in conn.execute(
+            "SELECT t.page_id FROM transcriptions_fts f"
+            " JOIN transcriptions t ON t.id = f.rowid AND t.is_current = 1"
+            " WHERE transcriptions_fts MATCH ? ORDER BY f.rank LIMIT ?",
+            (" OR ".join(f"({t})" for t in terms), limit),
+        )
+    ]

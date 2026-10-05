@@ -7,7 +7,7 @@ from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 # Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}, or a function
 # given the connection.
@@ -33,6 +33,7 @@ MIGRATIONS: dict[int, str | Callable[[sqlite3.Connection], None]] = {
     11: lambda conn: _ai_call_usage(conn),
     12: lambda conn: _mirrors(conn),
     13: lambda conn: _read_turned(conn),
+    14: "",  # new tables only (chats, chat_messages)
 }
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.

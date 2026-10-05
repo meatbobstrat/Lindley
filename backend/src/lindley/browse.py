@@ -106,6 +106,18 @@ def aside(conn: sqlite3.Connection, review_below: float) -> list[dict]:
     return out
 
 
+def page_number(conn: sqlite3.Connection, doc_id: int | None, position: int | None) -> int | None:
+    """A page's number in its document, counting from 1; None for a page in no document."""
+    if doc_id is None:
+        return None
+    return (
+        1
+        + conn.execute(
+            "SELECT COUNT(*) FROM pages WHERE document_id = ? AND position < ?", (doc_id, position)
+        ).fetchone()[0]
+    )
+
+
 def _file(conn: sqlite3.Connection, page_id: int) -> str | None:
     r = conn.execute(
         "SELECT s.original_name FROM pages p JOIN scans s ON s.id = p.scan_id WHERE p.id = ?",
@@ -139,11 +151,7 @@ def page(conn: sqlite3.Connection, page_id: int, review_below: float) -> dict | 
             "name": d["name"],
             "suggested": d["name_source"] == "lindley",
             "status": d["status"],
-            "page_number": 1
-            + conn.execute(
-                "SELECT COUNT(*) FROM pages WHERE document_id = ? AND position < ?",
-                (out["document_id"], out["position"]),
-            ).fetchone()[0],
+            "page_number": page_number(conn, out["document_id"], out["position"]),
         }
     kept = resolve.duplicate_of(conn, page_id) if out["where"] == "aside" else None
     out["duplicate_of"] = kept and {"id": kept, "file": _file(conn, kept)}

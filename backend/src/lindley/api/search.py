@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import sqlite3
 from typing import Annotated
 
 from fastapi import APIRouter, Query
 
 from lindley.api.deps import Conn
+from lindley.browse import page_number
 from lindley.search.fts import HIT_END, HIT_START, search_pages
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -27,23 +27,12 @@ def search(conn: Conn, q: str, limit: Annotated[int, Query(ge=1, le=200)] = 50) 
                 "where": where,
                 "document_id": r["document_id"],
                 "document_name": r["document_name"],
-                "page_number": _page_number(conn, r["document_id"], r["position"]),
+                "page_number": page_number(conn, r["document_id"], r["position"]),
                 "image": f"/api/pages/{r['page_id']}/image",
                 "snippet": _runs(r["snippet"]),
             }
         )
     return {"query": q, "results": results}
-
-
-def _page_number(conn: sqlite3.Connection, doc_id: int | None, position: int | None) -> int | None:
-    if doc_id is None:
-        return None
-    return (
-        1
-        + conn.execute(
-            "SELECT COUNT(*) FROM pages WHERE document_id = ? AND position < ?", (doc_id, position)
-        ).fetchone()[0]
-    )
 
 
 def _runs(snippet: str) -> list[list]:

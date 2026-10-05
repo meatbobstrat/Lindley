@@ -128,6 +128,18 @@ class AssemblerSettings(BaseModel):
     ask_ai_after_days: int = Field(default=0, ge=0)
 
 
+class AskSettings(BaseModel):
+    """Ask Lindley: how much of the archive goes with each question."""
+
+    # Characters of page text sent with a question, to an AI on computers you control (a small
+    # model: Ollama gives it 4096 tokens out of the box, question and answer included) and to
+    # a cloud AI.
+    local_chars: int = Field(default=6000, ge=1000)
+    cloud_chars: int = Field(default=40000, ge=1000)
+    # Earlier questions and answers in the conversation sent with each new question.
+    history_turns: int = Field(default=6, ge=0, le=40)
+
+
 class Settings(BaseModel):
     watch_folders: list[Path] = Field(default_factory=lambda: [Path("data/inbox")])
     processing_dir: Path = Path("data/processing")
@@ -142,6 +154,7 @@ class Settings(BaseModel):
     ocr: OcrSettings = Field(default_factory=OcrSettings)
     ai: AiSettings = Field(default_factory=AiSettings)
     assembler: AssemblerSettings = Field(default_factory=AssemblerSettings)
+    ask: AskSettings = Field(default_factory=AskSettings)
 
     @model_validator(mode="before")
     @classmethod

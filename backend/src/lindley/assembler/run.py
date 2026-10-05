@@ -70,6 +70,27 @@ def _copies(conn: sqlite3.Connection) -> dict[int, frozenset[int]]:
     return {k: frozenset(v) for k, v in out.items()}
 
 
+def _copy_scores(conn: sqlite3.Connection) -> dict[int, int]:
+    """For each page that looks scanned again, how alike its likeliest copy is, 0-100."""
+    out: dict[int, int] = {}
+    for a, b, score in conn.execute(
+        "SELECT page_a, page_b, score FROM duplicates WHERE status = 'open' AND kind = 'same_page'"
+    ):
+        for p in (a, b):
+            out[p] = max(out.get(p, 0), round(score))
+    return out
+
+
+def _set_aside_confidence(p: Page, copy_scores: dict[int, int]) -> int:
+    """How sure Lindley is that a page can be set aside: as sure as it is that the page is
+    another scan of one (a same-page duplicate's score), or that it's blank. A stray note: 70."""
+    if p.copies and p.id in copy_scores:
+        return copy_scores[p.id]
+    if p.clues.kind == "blank" and p.blank_score is not None:
+        return round(100 * p.blank_score)
+    return 70
+
+
 def folder_sizes(conn: sqlite3.Connection) -> Counter[str]:
     """How many pages Lindley holds from each folder scans were found in."""
     out: Counter[str] = Counter()
@@ -375,11 +396,13 @@ def _assemble(
 
         # 1. Pages that continue a document already open. 2. New documents. 3. Hints for the rest.
         waiting = []
+        copy_scores = _copy_scores(conn)
         for g in groups:
             if g.set_aside:
                 for p in g.pages:
+                    sure = _set_aside_confidence(p, copy_scores)
                     report.set_aside_hints += apply.suggest(
-                        conn, "set_aside", p.id, None, 70, g.reasons
+                        conn, "set_aside", p.id, None, sure, g.reasons
                     )
             elif not place(g, first=True):
                 waiting.append(g)

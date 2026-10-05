@@ -421,6 +421,7 @@ The bars were checked against the same test (October 2026). For sorting, the ans
 | `ocr.confidence_threshold`: send a page to the reading AI | 70 | Below 70, Tesseract's error against Claude is flat at about 0.2 (0.27 at 55, 0.20 at 67): its confidence says little about how wrong it is. Claude read all 48 pages well. | 70 |
 | `ocr.review_below` | 90 | It held 339 of the library's pages, nearly all of Tesseract's: a queue that tells a person little. See below. | 80 |
 | `assembler.group_at`: make a document | 75 | All 18 documents the rules made (76–90%) hold pages from one folder, as do Claude's 4 on folder pages (80–92%). | 75 |
+| "Set aside?" hints | 70, always | 82 of 85 were pages scanned again. The two lowest pairs looked at (67% alike) were real rescans read with OCR noise: the score is sound from about 60. | the duplicate's score (54–100), or how blank the page is |
 | `assembler.offer_at`: offer a group the AI checked for one-click accept | (none) | Claude is cautious. Every one of its groups that could be checked held one folder's pages: 11 at 60–92%, 7 of them at 60–72%, which were only suggestions. No group mixed folders. But the rules had mostly sent it one folder at a time, so it wasn't hard. | 60 |
 
 **Tesseract above 70.** Fifteen pages, five from each band, were read by Claude as the reference (`bench_reading.py --reference anthropic --pages ...`, 52¢). Here, unlike below 70, Tesseract's confidence does follow its error:

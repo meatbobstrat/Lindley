@@ -393,7 +393,7 @@ def test_a_page_scanned_twice_never_shares_a_document_with_its_copy(conn):
 def test_a_page_scanned_again_is_set_aside_and_the_pages_around_it_still_join(conn):
     ids = list(load(conn, pages([LETTER[0], LETTER[1], LETTER[1], LETTER[2], LAST])))
     conn.execute(
-        "INSERT INTO duplicates (page_a, page_b, kind, score) VALUES (?, ?, 'same_page', 95)",
+        "INSERT INTO duplicates (page_a, page_b, kind, score) VALUES (?, ?, 'same_page', 88)",
         (ids[1], ids[2]),
     )
     conn.commit()
@@ -402,6 +402,7 @@ def test_a_page_scanned_again_is_set_aside_and_the_pages_around_it_still_join(co
     assert sorted(letter) == [ids[0], ids[1], ids[3], ids[4]]
     aside = open_suggestions(conn, "set_aside")
     assert [s["page_id"] for s in aside] == [ids[2]]
+    assert aside[0]["confidence"] == 88  # as sure as it is that the two are one page
     # Scanners name every scan alike in each folder, so it says which folder
     assert "It looks like scan_0002.jpg (in Scans) scanned again" in aside[0]["reasons"]
 

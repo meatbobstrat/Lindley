@@ -382,13 +382,13 @@ function Hint({
   } else {
     const why = s.reasons[0] ?? 'Not part of a document'
     main = (
-      <button className="pg-hint" onClick={() => acts.setAside([p.id])} data-tip={`${why}, so Lindley thinks it could be set aside. Click to set it aside; nothing is deleted.`}>
+      <button className="pg-hint" onClick={() => acts.setAside([p.id])} data-tip={`${why}, so Lindley thinks it could be set aside, ${s.confidence}% sure. Click to set it aside; nothing is deleted.`}>
         <Mark />
         <span>Set aside? {why}</span>
       </button>
     )
     items = [
-      { head: why },
+      { head: `${why}, ${s.confidence}% sure` },
       { label: 'Set it aside', icon: 'aside', onSelect: () => acts.setAside([p.id]) },
       '-',
       { label: 'Keep it in the Inbox', icon: 'close', tip: 'Lindley won’t suggest this again', onSelect: dismiss },

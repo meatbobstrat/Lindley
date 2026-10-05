@@ -89,6 +89,7 @@ export function Dock({ label, children }: { label: string; children: ReactNode }
     const t = e.target as HTMLElement
     if (t.matches('[data-grip]') && /^(Arrow(Up|Down|Left|Right)|Home)$/.test(e.key)) {
       e.preventDefault()
+      e.stopPropagation() // the toolbar's own keys: not the view's (← → turn the page)
       if (e.key === 'Home') {
         setPos(null)
         return
@@ -107,6 +108,7 @@ export function Dock({ label, children }: { label: string; children: ReactNode }
     // Arrow keys move along the toolbar, as in any toolbar.
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault()
+      e.stopPropagation()
       const bs = [...(bar.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
       const i = bs.indexOf(t.closest('button') as HTMLButtonElement)
       bs[(i + (e.key === 'ArrowRight' ? 1 : -1) + bs.length) % bs.length]?.focus()

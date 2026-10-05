@@ -91,7 +91,10 @@ export function ReviewView() {
   const loc = useLocation()
   const text = useRef<HTMLDivElement>(null)
   const want = (loc.state as { page?: number } | null)?.page
-  const [at, setAt] = useState<number | null>(null)
+  // The page shown, and where it was in the queue: the queue is fetched again as pages are
+  // checked or read, so the place is kept by page. Once that page leaves the queue (checked),
+  // the one after it, now in its place, is shown.
+  const [cur, setCur] = useState<{ id: number; at: number } | null>(null)
 
   const groups = review.data?.groups ?? []
   const queue: Page[] =
@@ -100,9 +103,15 @@ export function ReviewView() {
       : scope === 'inbox'
         ? (groups.find((g) => !g.document)?.pages ?? [])
         : (groups.find((g) => g.document?.id === Number(scope))?.pages ?? [])
-  const start = want !== undefined ? Math.max(0, queue.findIndex((p) => p.id === want)) : 0
-  const i = Math.max(0, Math.min(at ?? start, queue.length - 1))
+  const shown = cur?.id ?? want
+  const found = shown !== undefined ? queue.findIndex((q) => q.id === shown) : 0
+  const i = Math.max(0, Math.min(found >= 0 ? found : (cur?.at ?? 0), queue.length - 1))
   const p = queue[i]
+  if (p && (cur?.id !== p.id || cur.at !== i)) setCur({ id: p.id, at: i }) // kept in step, as it renders
+  const go = (j: number) => {
+    const at = Math.max(0, Math.min(j, queue.length - 1))
+    if (queue[at]) setCur({ id: queue[at].id, at })
+  }
   const full = useApi(p ? `page:${p.id}` : null, () => api.page(p!.id))
   const scopeName = scope === 'all' ? 'All pages' : scope === 'inbox' ? 'Inbox' : (docs.get(Number(scope))?.name ?? 'A document')
   useLooking(full.data?.document ? `${full.data.document.name}, page ${full.data.document.page_number}` : p ? `Inbox, ${p.file}` : 'Pages to review')
@@ -110,8 +119,8 @@ export function ReviewView() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (typing(e.target) || document.querySelector('dialog[open], .menu')) return
-      if (e.key === 'ArrowRight' || e.key === 'PageDown') setAt(Math.min(queue.length - 1, i + 1))
-      if (e.key === 'ArrowLeft' || e.key === 'PageUp') setAt(Math.max(0, i - 1))
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') go(i + 1)
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') go(i - 1)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -132,7 +141,7 @@ export function ReviewView() {
     >
       {queue.length > 1 ? (
         <div className="rv-strip">
-          <Strip pages={queue} cur={i} setCur={setAt} label="Pages to review" flag={false} />
+          <Strip pages={queue} cur={i} setCur={go} label="Pages to review" flag={false} />
         </div>
       ) : (
         <div style={{ height: 6 }} />
@@ -207,7 +216,7 @@ export function ReviewView() {
         </div>
       </div>
       <Dock label="Move between pages to review">
-        <DBtn icon="prev" label="Previous" disabled={i === 0} tip="The page before (←)" onClick={() => setAt(i - 1)} />
+        <DBtn icon="prev" label="Previous" disabled={i === 0} tip="The page before (←)" onClick={() => go(i - 1)} />
         <Sep />
         <DBtn icon="check" label="The text is correct" kind="primary" tip="The text matches the scan: trust it, and go on to the next page" onClick={confirm} />
         <DBtn icon="pen" label="Save my correction" tip="Keep the text as you’ve corrected it, and go on. Lindley’s reading is kept too." onClick={save} />
@@ -221,7 +230,7 @@ export function ReviewView() {
         )}
         <Sep />
         <DockProgress text={`Page ${i + 1} of ${queue.length} to review`} at={i + 1} of={queue.length} />
-        <DBtn icon="chev" label="Next" kind="next" disabled={i >= queue.length - 1} tip="The next page, leaving this one for later (→)" onClick={() => setAt(i + 1)} />
+        <DBtn icon="chev" label="Next" kind="next" disabled={i >= queue.length - 1} tip="The next page, leaving this one for later (→)" onClick={() => go(i + 1)} />
       </Dock>
     </>
   )

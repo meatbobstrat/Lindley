@@ -399,6 +399,8 @@ and you can ask it about them. All of it from a one-click install.
 - [ ] Ask Lindley (chat with your documents)
 - [ ] Record each sorting call as it's made, not when the whole job ends, so a job cut short
   still shows what it spent
+- [ ] Find where a letter ends when a typescript follows it: the rules ran memoir pages on into
+  a 1940 letter, at 85% (design/database.md, "Confidence bars")
 - [ ] Show progress while the AI sorts pages: the status bar now stays at "0 of 143" until the job
   ends
 - [ ] One-click installer (Windows/Mac), with Tesseract included

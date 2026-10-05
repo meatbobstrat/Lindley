@@ -22,7 +22,8 @@
   - `assembler/`: Inbox pages → documents. `clues.py` (rules per page), `evidence.py` (features
     for a page pair, scored with `weights.py`), `layout.py`, `terms.py`, `segment.py`, `learn.py`
     (fitting the weights). Benches: `scripts/bench_assembler.py` (made-up, or `--real DB` with
-    assembled PDFs as the answer key) and `scripts/fit_assembler.py`. `search/`: stub for now
+    assembled PDFs as the answer key; `--sweep`: groups by confidence, to check the bars) and
+    `scripts/fit_assembler.py`. `search/`: stub for now
   - `providers/allowance.py`: when an AI may be called on its own (`allow`, `daily_limit`);
     every call is recorded in `ai_calls`, with its tokens (`throttle.metered`) and estimated
     cost (`providers/prices.py`, list prices by model id: update it when prices change)

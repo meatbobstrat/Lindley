@@ -445,7 +445,9 @@ The same bar applies to an AI's reading, whose confidence is the share of words 
 | 60–74 | "Do these go together?" | 115, 85–93% pure in scan order, 0% shuffled | none | 99, 86–92% pure in scan order |
 | 45–59 | "Do these go together?" | 405, 77–81% pure in scan order, 54% exact at best | 52, all pure, none whole | 164, 77–81% pure in scan order |
 
-What Lindley is 90% sure of on its own is a whole folder that looks like one document's, and those were always right. Below that, the rules make wrong documents: with every scan in one folder, 16 of the 21 documents made at 75–89% mixed pages of two documents. So `group_at` 75 is too low for groups the rules make without a folder to go on. Shuffled scans, fed in no order, defeat the rules' hints altogether.
+What Lindley is 90% sure of on its own is a whole folder that looks like one document's, and those were always right. Below that, the rules made wrong documents: with every scan in one folder, 16 of the 21 documents made at 75–89% mixed pages of two documents. Shuffled scans, fed in no order, defeat the rules' hints altogether.
+
+But a higher bar isn't the cure. Nearly every wrong document is one mistake: the Attorney General's letter of June 1940 (a carbon marked "COPY") is rightly taken for a letter, at 85%, but the rules don't see where it ends, so the typescript pages scanned after it run on into it. On the made-up batches (letters, receipts, deeds, diaries), every one of the rules' 152 documents at 75–89% was right, so a bar of 90 would only turn good documents into hints. `group_at` stays 75. What needs fixing is how a letter's end is found.
 
 ## Duplicates
 

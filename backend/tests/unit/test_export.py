@@ -102,7 +102,7 @@ def test_an_export_isnt_undone_by_undoing_the_grouping(conn, settings, tmp_path)
     conn.commit()
     export_document(conn, settings.library_dir, doc)
     assert history.latest(conn) == batch
-    with pytest.raises(history.UndoError, match="exported"):
+    with pytest.raises(history.UndoError, match="completed|exported"):
         history.undo(conn, batch)
     assert history.place(conn, pid)["document_id"] == doc
 

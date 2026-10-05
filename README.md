@@ -60,14 +60,17 @@ watched folders ─► watcher ─► intake ───────────�
 2. **Assembler.** Groups Inbox pages into documents.
    - **Rules first.** Old-fashioned text rules do most of the work. A number on a row of its
      own at the top or bottom of a page is a page number, read past specks and OCR slips.
-     "Dear Sister," or a byline starts a document, and a closing plus a signature ends one. A
+     "Dear Sister," a byline, or a date line with who a letter is to ("Ely, Nevada, June 24,
+     1940 / Honorable Grey Mashburn,") starts a document, and a closing plus a signature ends one. A
      sentence cut off at the bottom of a page carries on at the top of the next, and scanning
      order links neighbouring pages. Pages set out differently (margins, line spacing, line
      length) are kept apart.
    - **Weighed, not guessed.** Each piece of evidence has a weight in a small, explainable
      model. A fitting script can set the weights from documents whose right answer is known.
    - **You before the AI.** Pages the rules aren't sure about stay in the Inbox with a hint:
-     "Do these go together?" or "Add to …?". Your answer costs nothing.
+     "Do these go together?" or "Add to …?". Your answer costs nothing. Groups the AI checked
+     but was less sure of (60% or more, `assembler.offer_at`) come first, with its reasons,
+     ready to accept with one click, or all at once.
    - **AI as the last resort.** The AI is asked only about uncertain breaks, page order and
      names, and only if one is connected. If its connection may run on its own, it's asked as
      they arrive (or after `ask_ai_after_days`, to give you first go). Otherwise they wait in
@@ -76,13 +79,16 @@ watched folders ─► watcher ─► intake ───────────�
      used.
    - **Needs AI.** One place for every scan waiting for an AI: pages too hard to read
      (Tesseract below 70% confidence, waiting for the vision model) and pages the rules
-     couldn't sort, each with the rules' own guess at the documents. Send one, or all.
+     couldn't sort, each with the rules' own guess at the documents. Send one, or all. A page
+     waiting for your review can be sent too ("Ask the AI", in Review or on the scan).
    - **What you see.** Confident groups appear under In progress with italic, suggested names
      and the reasons behind them.
 3. **Review.** Any page read with less than 80% confidence (adjustable) goes to *Needs your
    review*, so a person checks it before it's trusted for search and chat. AIs don't say how
    sure they are, so a vision model's confidence is the share of words it didn't mark as
-   unsure or illegible. A reading that's mostly `[illegible]` doesn't replace Tesseract's.
+   unsure or illegible. A reading that's mostly `[illegible]` doesn't replace Tesseract's. The
+   80% bar was measured: against Claude, Tesseract got 16% of characters wrong on pages it read
+   at 70–79%, 9% at 80–89% and 2% at 90% or more.
 4. **Export.** A finished document becomes a searchable PDF in your library: each page is its
    scan, with what Lindley read from it as invisible text over the writing. Corrections and
    the vision model's readings are laid over Tesseract's word positions, so search and

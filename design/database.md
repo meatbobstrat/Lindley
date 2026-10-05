@@ -142,6 +142,7 @@ These are the starting kinds. New extractors add new kinds without a schema chan
 | `person`, `place`, `organization` | "John Branson", "Xenia, O." | shared-name matching and search |
 | `amount` | "3.50" | receipts and deeds |
 | `salutation`, `closing`, `signature_name` | "Dear Sister,", "Your loving son", "Will" | where a letter starts and ends, and who wrote it |
+| `dateline` | "Ely, Nevada, June 24, 1940" | where a letter with no greeting starts |
 | `letterhead`, `heading` | "XENIA FEED & SEED CO." | same-letterhead matching and document type |
 | `page_marker` | "- 2 -" | page order |
 | `first_line`, `last_line` | the opening and closing text | joining a sentence that runs from one page onto the next |
@@ -170,7 +171,8 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
 1. **Clues** (`clues.py`, rules only).
    - **Page numbers.** A number on a row of its own in the top or bottom 12% of the page ("- 2 -", "Page 2 of 3", "ii"). Specks and smudges on that row don't count against it, and OCR slips next to a real digit are read through ("1l" is 11). A number inside a sentence, or in a typesetter's note like "Indent 1 em", isn't one. A number read with doubt is marked unsure and counts for less, and never moves a page: creases and specks by the paper's edge are often read as numbers. When every page of a document is numbered, a gap is reported: "Page 4 seems to be missing".
    - **Noise at the edges.** Lines of specks (the paper's edge, show-through, a hole punch) are dropped from the top and bottom before the first and last lines are taken, and so are stray marks before the first word. A scrap Tesseract read out of order goes back into the line it sits in.
-   - greetings ("Dear Sister,"), letterheads, headings and bylines ("By Lindley C. Branson"), which start a document;
+   - greetings ("Dear Sister,", in the first 5 lines, or a short one ending in a comma or colon in the first 15, under a letterhead), letterheads, headings and bylines ("By Lindley C. Branson"), which start a document;
+   - date lines: a short line with a full date near the top, with who the letter is to (Honorable, Mr., Mrs., Dear…) or a greeting just below, which starts a letter that has no "Dear". A diary's dated entry has no one under its date. It's looked for before noise is trimmed, since Tesseract can doubt every word of one (see "Confidence bars");
    - closings and signatures ("Your loving son / John"), "Paid" on a short line of its own ("Paid. Thank you.", not "and paid no attention" in a story) and "Notary Public", which end one;
    - sentences cut off at the bottom of a page and picked up at the top of the next;
    - dates in old spellings, people, places, amounts, and file sequence numbers (`scan_0042` is 42). Scanners and file managers often number only the files after the first (Image, Image (2), Image (3) on Windows; Image, Image 2 on a Mac), so a name without a number is number 1 (`clues.file_series`);
@@ -222,7 +224,7 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    | A suggestion a person dismissed | Never makes it again |
 
 **Needs AI** (`api/needs_ai.py`, `GET /api/needs-ai`). Every scan waiting for an AI, in two kinds, like the two kinds of Duplicates:
-- **Hard to read.** Pages Tesseract read with less than `ocr.confidence_threshold` (70), waiting for the vision model as a queued `vision` step, or whose vision call failed. Their Tesseract reading is used meanwhile. The list follows the settings as they are now (`pipeline.follow_settings`, run when settings are saved and at start-up): a new threshold counts for pages read before, a page a person checked leaves it, and with no vision model nothing waits. `POST /api/needs-ai/read` sends some or all of them (failed ones too), then sorts the Inbox again with the new text.
+- **Hard to read.** Pages Tesseract read with less than `ocr.confidence_threshold` (70), waiting for the vision model as a queued `vision` step, or whose vision call failed. Their Tesseract reading is used meanwhile. The list follows the settings as they are now (`pipeline.follow_settings`, run when settings are saved and at start-up): a new threshold counts for pages read before, a page a person checked leaves it, and with no vision model nothing waits. `POST /api/needs-ai/read` sends some or all of them (failed ones too), then sorts the Inbox again with the new text. Given `page_ids`, it also takes pages waiting for a person's review that don't wait here (read at 70% or more, below `ocr.review_below`): the job queues a `vision` step for each just before reading it (`pipeline.queue_vision`). Lindley on its own still sends only pages below the threshold.
 - **Hard to sort.** Each question the sorting AI would be asked that it hasn't been (`needs_ai`), with the rules' own guess at the documents in it and how sure they are. `POST /api/needs-ai/{id}/sort` sends one, `POST /api/needs-ai/sort` all. Once the AI has looked at pages, they leave the list even if its answer was turned down: they're the person's to sort then.
 
 The list also says which connection would be used, where it runs (local or cloud) and whether it may run on its own. When it may, Lindley sends these itself as they arrive, within its limits (the watcher, through `auto.py`, sends hard pages that waited while it had to ask), so the list is usually empty. Calls a person sends are recorded as theirs, never counted against the limits. The watcher also sorts the Inbox once after it starts, and saving settings starts it again with them, so switching a connection to *Whenever it's needed* sends what's already waiting.
@@ -232,7 +234,8 @@ The list also says which connection would be used, where it runs (local or cloud
 **A person's answers** (`decide.py`, `GET /api/suggestions`, `POST /api/suggestions/{id}/accept` and `/dismiss`).
 - **Accept "Do these go together?"**: the pages become a document, which counts as the person's own (`origin = 'user'`), so Lindley only suggests changes to it from then on.
 - **Accept "Add to …?"**: every page hinted together goes to the start or end of the document, as hinted. Pages already there move down to make room when the new ones go first.
-- **Accept "Set aside?"**: the page is set aside.
+- **Accept "Set aside?"**: the page is set aside. The hint is as sure as the duplicate it comes from (the page scanned again's score), or as the page is blank; a stray note is 70.
+- **Groups the AI checked** carry `checked_by_ai` in their payload. One at `assembler.offer_at` (60) or more, though below `group_at`, is listed with `offer: true`, and the Inbox shows it first with "Accept". `POST /api/suggestions/accept-offers` accepts every one offered, as one batch to undo.
 - Each is one `history` batch, returned as `undo`. Undoing a grouping removes the document it made, unless pages were added to it or it was exported since. A hint whose pages have moved since is refused as out of date.
 - **Dismiss**: the hint is never made again, and the AI isn't sent those pages on its own.
 

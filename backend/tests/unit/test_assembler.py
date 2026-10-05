@@ -366,6 +366,25 @@ def test_a_rejected_reply_is_kept_but_a_failed_call_is_not(conn):
     assert not conn.execute("SELECT 1 FROM ai_answers").fetchone()
 
 
+def test_an_answer_paid_for_but_cut_off_isnt_asked_for_again(conn):
+    from lindley.providers.base import ProviderError
+
+    load(conn, pages(AMBIGUOUS))
+
+    class CutOff:
+        calls = 0
+
+        def chat(self, messages):
+            CutOff.calls += 1
+            raise ProviderError("Claude stopped part way through its answer", answered=True)
+
+    first = assemble(conn, AI_ON, chat=CutOff())
+    again = assemble(conn, AI_ON, chat=CutOff())
+    assert CutOff.calls == 1 and (first.ai_calls, first.ai_failed) == (1, 1)
+    assert again.ai_calls == 0 and again.ai_reused == 1
+    assert again.ai_rejected == ["the AI call failed: Claude stopped part way through its answer"]
+
+
 def test_the_ai_is_asked_no_more_than_it_may_be(conn):
     load(conn, pages(AMBIGUOUS))
     ai = Scripted("{}")

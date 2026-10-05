@@ -7,7 +7,9 @@ page's reading and it's asked again. The rules' own proposal is left out of the 
 shifts whenever new scans arrive beside the pages.
 
 A reply that was checked and rejected is kept too: asking again would most likely get the same.
-A call that failed (no network, a refused key) isn't kept, so it's tried again next time.
+So is a call the AI answered, and was paid for, but whose answer can't be used (cut off, or it
+declined): it fails the same way next time without a call. A call that failed with no answer (no
+network, a refused key) isn't kept, so it's tried again next time.
 """
 
 from __future__ import annotations
@@ -18,9 +20,10 @@ import json
 import sqlite3
 from typing import Literal
 
-from lindley.providers.base import ChatMessage, ChatProvider
+from lindley.providers.base import ChatMessage, ChatProvider, ProviderError
 
 Purpose = Literal["assemble", "name"]  # grouping pages, naming documents
+FAILED = "lindley:failed:"  # a kept reply that's an answer that couldn't be used, and why
 
 
 class AskFirst(Exception):  # noqa: N818 - a signal, not an error
@@ -66,6 +69,8 @@ class Answers:
         if row:
             if k not in self._fresh:
                 self.reused += 1
+            if row[0].startswith(FAILED):
+                raise ProviderError(row[0].removeprefix(FAILED), answered=True)
             return row[0]
         if chat is None:
             return None
@@ -91,14 +96,19 @@ class Answers:
         except Exception as e:
             self.failed += 1
             self._failed[k] = e
+            if getattr(e, "answered", False):  # paid for: not asked again
+                self._keep(k, purpose, page_ids, FAILED + str(e))
             raise
+        self._keep(k, purpose, page_ids, reply)
+        return reply
+
+    def _keep(self, k: str, purpose: Purpose, page_ids: list[int], reply: str) -> None:
         with self.conn:
             self.conn.execute(
                 "INSERT OR REPLACE INTO ai_answers (key, purpose, page_ids, reply)"
                 " VALUES (?, ?, ?, ?)",
                 (k, purpose, json.dumps(sorted(page_ids)), reply),
             )
-        return reply
 
     @property
     def waiting(self) -> bool:

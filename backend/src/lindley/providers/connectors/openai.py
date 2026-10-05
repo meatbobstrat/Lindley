@@ -42,7 +42,7 @@ def _split(messages: list[ChatMessage]) -> tuple[str | openai.Omit, list[dict]]:
 def _incomplete(r) -> None:
     """A response that stopped before its end: held back, or out of room."""
     why = r.incomplete_details.reason if r.incomplete_details else None
-    raise ProviderError(DECLINED) if why == "content_filter" else cut_off("OpenAI")
+    raise ProviderError(DECLINED, answered=True) if why == "content_filter" else cut_off("OpenAI")
 
 
 class Provider(OpenAIChat):
@@ -59,7 +59,7 @@ class Provider(OpenAIChat):
             )
         for item in r.output:
             if item.type == "message" and any(c.type == "refusal" for c in item.content):
-                raise ProviderError(DECLINED)
+                raise ProviderError(DECLINED, answered=True)
         if r.status == "incomplete":
             _incomplete(r)
         return r.output_text
@@ -77,7 +77,7 @@ class Provider(OpenAIChat):
                 if event.type == "response.output_text.delta":
                     yield event.delta
                 elif event.type == "response.refusal.delta":
-                    raise ProviderError(DECLINED)
+                    raise ProviderError(DECLINED, answered=True)
                 elif event.type == "response.failed":
                     error = event.response.error
                     raise ProviderError(

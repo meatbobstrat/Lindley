@@ -78,9 +78,19 @@ class ConnectorInfo:
 
 class ProviderError(RuntimeError):
     """Raised when a provider is misconfigured or a call fails. `busy`: the AI said it's busy
-    (lindley.providers.throttle tries again), after `retry_after` seconds if it said."""
+    (lindley.providers.throttle tries again), after `retry_after` seconds if it said.
+    `answered`: it did answer, and was paid for, but the answer can't be used (cut off, or it
+    declined): asking the same again would most likely get the same."""
 
-    def __init__(self, message: str, *, busy: bool = False, retry_after: float | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        busy: bool = False,
+        retry_after: float | None = None,
+        answered: bool = False,
+    ):
         super().__init__(message)
         self.busy = busy
         self.retry_after = retry_after
+        self.answered = answered

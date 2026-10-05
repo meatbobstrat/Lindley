@@ -51,7 +51,7 @@ Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 def _finished(stop_reason: str | None) -> None:
     if stop_reason == "refusal":
-        raise ProviderError(DECLINED)
+        raise ProviderError(DECLINED, answered=True)
     if stop_reason == "max_tokens":
         raise cut_off("Anthropic")
 

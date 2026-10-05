@@ -389,6 +389,27 @@ So printed and typed pages stay with Tesseract: it's nearly as good, in seconds.
 
 Page 282 is scanned as a mirror image, probably the back of a carbon copy. Claude read it as if it were the right way round, but Tesseract and the local models can't. Lindley checks pages for rotation, not mirroring.
 
+### Claude on real scans
+
+The app tried with Claude Opus 5.5 doing the vision and sorting jobs (October 2026, the dev library: 344 test scans, most of them pages of Lindley Branson's memoir typescript, about 100 pages in several drafts). Each job was started by a person from Needs AI, with the connection at "ask". The costs are from `ai_calls`.
+
+**Reading.** 48 pages, every one Tesseract read below 70%, for $1.62, about 3.4¢ a page. Each call took 3–19 seconds, and none failed. Claude's readings came back at 99–100% confidence (few words marked `[?]`), so those pages left the review queue. It copies the author's own typos ("lookingg", "Ggeat Eastern") and struck-out words, as the prompt asks. That's right for a transcript, but search won't find the corrected spelling. A page where Claude wrote about 2,000 tokens (thinking included) cost twice as much as one where it wrote 850. Lower `effort` is untested.
+
+**Sorting.** 24 calls for $0.94, about 4¢ each. The largest was a 40-page question, at 14,500 tokens sent. They made 9 documents that Claude was at least 75% sure of (`assembler.group_at`). It did things the rules can't:
+- It split a two-page obituary off a 23-page run.
+- It noticed that a page was a second typing of another (an alternate draft), and that a typed letter copied two scanned pages.
+- It kept a letter and its reply apart: the reply says "your letter of June 26".
+- It ordered a 13-page run that starts with the mirror-image page.
+
+Most of the memoir stayed in the Inbox. Claude grouped it sensibly, but at 55–72% confidence, so the groups are only suggestions: 10 groups to make, and 36 pages to add to a document. Examples are the El Dorado memoir (14 pages, put in order), "Dog-Puncher" and "Standpatters Till Death". Its doubts were real. Typed pages 108–116 are missing, some pages carry several numbering schemes ("42/59, 60, 46/62"), and drafts overlap, so it wouldn't join pages whose text doesn't run on. Some replies came wrapped in a ```json fence; they were read all the same.
+
+What it showed needs doing:
+- **Sorting calls are recorded when the whole job ends.** A job cut short would leave calls already paid for unrecorded.
+- **Progress while sorting.** The status bar stayed at "0 of 143" for five minutes.
+- **Reading with the AI is only offered for pages Tesseract read below 70%.** Pages at 70–89% still need review, and can't be sent.
+- **Is 75% the right bar for groups the AI checked?** Its 60–74% groups, with its reasons, may be worth a one-click accept.
+- **Mirror-image scans.** Lindley could find them and turn them round, the way it turns upside-down pages.
+
 ## Duplicates
 
 The same page is often scanned more than once, sometimes with different settings: another dpi, colour or grey, a different exposure, more or less margin. That changes every pixel and the file's hash, but not the words. So duplicates are found by their text (`lindley.duplicates.detect`), checked before the assembler runs:

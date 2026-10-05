@@ -391,10 +391,16 @@ and you can ask it about them. All of it from a one-click install.
   hidden retries, cut-off answers and doubtful AI readings caught)
 - [x] Benches for local AI models, with hand-made PDFs matched back to their scans as the answer
   key; typed pages lying upside down now turned, including ones read before
+- [x] Claude (Opus 5.5) tried on real scans: it read 48 hard pages at about 3¢ a page, and sorted
+  pages into 9 documents, leaving the groups it was less sure of as suggestions (design/database.md, "Claude on real scans")
 
 ### For the MVP
 
 - [ ] Ask Lindley (chat with your documents)
+- [ ] Record each sorting call as it's made, not when the whole job ends, so a job cut short
+  still shows what it spent
+- [ ] Show progress while the AI sorts pages: the status bar now stays at "0 of 143" until the job
+  ends
 - [ ] One-click installer (Windows/Mac), with Tesseract included
 
 ### After the MVP

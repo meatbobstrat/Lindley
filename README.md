@@ -413,6 +413,10 @@ and you can ask it about them. All of it from a one-click install.
   had run a 1940 letter on into the typescript before it (design/database.md, "Confidence bars")
 - [ ] Show progress while the AI sorts pages: the status bar now stays at "0 of 143" until the job
   ends
+- [ ] Read a page again with Tesseract when a person flips it left to right in the app: today a
+  flip only changes how the page is shown, so its text stays as read from the mirror image. The
+  new reading would replace Tesseract's own, never a person's text or an AI's better reading,
+  and the Inbox would be sorted again with it
 - [ ] One-click installer (Windows/Mac), with Tesseract included
 
 ### After the MVP

@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
+from lindley import history
 from lindley.assembler import bench
 from lindley.assembler.evidence import FEATURES, pair
 from lindley.assembler.learn import Example, examples, fit
@@ -56,10 +57,9 @@ def answer_key(conn: sqlite3.Connection) -> list[list[int]]:
     docs: list[list[int]] = []
     taken: set[int] = set()
     rows = conn.execute(
-        """SELECT d.id FROM documents d WHERE d.origin = 'user' OR d.status = 'complete'
-           OR EXISTS (SELECT 1 FROM history h WHERE h.actor = 'user'
-                      AND h.target_type = 'document' AND h.target_id = d.id)
-           ORDER BY d.id"""
+        "SELECT d.id FROM documents d WHERE d.origin = 'user' OR d.status = 'complete' OR "
+        + history.WORKED_ON_SQL
+        + " ORDER BY d.id"
     ).fetchall()
     for (doc,) in rows:
         ids = [

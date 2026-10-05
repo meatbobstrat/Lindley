@@ -4,6 +4,7 @@ import sqlite3
 
 import pytest
 
+from lindley import organise
 from lindley.assembler import assemble
 from lindley.assembler.ai import refine
 from lindley.assembler.bench import TruePage, load, make_batch, proposed_groups, score
@@ -112,6 +113,21 @@ def test_a_late_page_is_only_suggested_for_a_document_a_person_named(conn):
     (first, *_) = json.loads(s["payload"])["candidates"]
     assert first["document"] == s["document_id"] and first["name"] == "Letters from Will"
     assert first["confidence"] == s["confidence"] and first["at"] == "end"
+
+
+@pytest.mark.parametrize("work", ["gave its type", "took a page out and put it back"])
+def test_a_late_page_is_only_suggested_for_a_document_a_person_worked_on(conn, work):
+    ids = load(conn, pages(LETTER))
+    assemble(conn)
+    doc = conn.execute("SELECT id FROM documents").fetchone()[0]
+    if work == "gave its type":
+        organise.update_document(conn, doc, {"doc_type": "diary"})
+    else:
+        organise.move_pages(conn, [list(ids)[-1]], "aside")
+        organise.move_pages(conn, [list(ids)[-1]], "document", doc)
+    (late,) = load(conn, pages([LAST]), start_seq=90)
+    assert assemble(conn).pages_added == 0
+    assert conn.execute("SELECT document_id FROM pages WHERE id = ?", (late,)).fetchone()[0] != doc
 
 
 def test_completed_documents_are_never_changed(conn):

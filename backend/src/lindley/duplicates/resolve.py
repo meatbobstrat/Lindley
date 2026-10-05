@@ -75,20 +75,22 @@ class DocumentPair:
     extra: dict[int, list[int]] = field(default_factory=dict)  # pages only one document has
 
 
-_COPY_SQL = """
+_COPY_SQL = (
+    """
 SELECT p.id, s.original_name, s.imported_at, p.dpi, p.width_px, p.height_px, p.color_mode,
        s.file_size, t.confidence, t.text,
        (t.source = 'user' OR t.confirmed_at IS NOT NULL) AS corrected,
        p.document_id, p.position, p.set_aside_at, d.name AS document_name,
-       (d.origin = 'user' OR d.name_source = 'user' OR EXISTS (
-           SELECT 1 FROM history h WHERE h.actor = 'user' AND h.target_type = 'document'
-           AND h.target_id = d.id)) AS touched
+       (d.origin = 'user' OR d.name_source = 'user' OR """
+    + history.WORKED_ON_SQL
+    + """) AS touched
 FROM pages p
 JOIN scans s ON s.id = p.scan_id
 LEFT JOIN transcriptions t ON t.page_id = p.id AND t.is_current = 1
 LEFT JOIN documents d ON d.id = p.document_id
 WHERE p.id = ?
 """
+)
 
 
 def _copy(conn: sqlite3.Connection, page_id: int) -> Copy:

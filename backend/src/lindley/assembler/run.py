@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePath
 
+from lindley import history
 from lindley.assembler import ai, apply, evidence, relearn
 from lindley.assembler.answers import Answers
 from lindley.assembler.evidence import pair
@@ -177,10 +178,9 @@ def load_open_documents(conn: sqlite3.Connection) -> list[DocEnds]:
     docs = []
     copies, sizes = _copies(conn), folder_sizes(conn)
     for d in conn.execute(
-        """SELECT d.id, d.name, (d.origin = 'user' OR d.name_source = 'user' OR EXISTS (
-               SELECT 1 FROM history h WHERE h.actor = 'user' AND h.target_type = 'document'
-               AND h.target_id = d.id)) AS touched
-           FROM documents d WHERE d.status = 'progress'"""
+        "SELECT d.id, d.name, (d.origin = 'user' OR d.name_source = 'user' OR "
+        + history.WORKED_ON_SQL
+        + ") AS touched FROM documents d WHERE d.status = 'progress'"
     ):
         rows = conn.execute(
             _PAGE_SQL + " WHERE p.document_id = ? ORDER BY p.position", (d["id"],)

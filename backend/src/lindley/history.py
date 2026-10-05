@@ -76,6 +76,16 @@ def place(conn: sqlite3.Connection, page_id: int) -> dict:
     return dict(zip(PLACE, r, strict=True))
 
 
+# A document `d` a person has worked on: they removed it, gave its name, type, date or folder,
+# or moved pages into or out of it. Lindley suggests changes to such a document, but never makes
+# them itself.
+WORKED_ON_SQL = """EXISTS (
+    SELECT 1 FROM history h WHERE h.actor = 'user' AND (
+        (h.target_type IN ('document', 'document_fields') AND h.target_id = d.id)
+        OR (h.target_type = 'page' AND d.id IN (
+            json_extract(h.before, '$.document_id'), json_extract(h.after, '$.document_id')))))"""
+
+
 def latest(conn: sqlite3.Connection) -> int | None:
     """The most recent batch that can still be undone."""
     r = conn.execute(

@@ -4,7 +4,7 @@ import threading
 import pytest
 from PIL import Image, ImageDraw
 
-from lindley import browse
+from lindley import browse, history, organise
 from lindley.assembler import assemble
 from lindley.config import Settings
 from lindley.db.database import connect, init_db
@@ -18,6 +18,7 @@ from lindley.worker.pipeline import (
     Pipeline,
     rate_vision_readings,
     recover_interrupted,
+    turned_since_read,
     unfinished_scans,
     waiting_for_vision,
 )
@@ -882,3 +883,151 @@ def test_vision_readings_made_before_they_had_a_confidence_get_one(conn, setting
     ).fetchall()
     assert [tuple(r) for r in rated] == [("Dear [illegible] Sister [?]", 33.3), ("", None)]
     assert rate_vision_readings(conn) == 0
+
+
+# ---------------------------------------------------------------- Pages a person turned
+
+
+def read_upside_down(conn, settings, scan, *readings):
+    """A page Tesseract read the wrong way up, and the Pipeline to read it again with."""
+    sid = scan()
+    ocr = StubOcr(("Suyuig yodouoy", 27.0), *readings)
+    pipe = Pipeline(settings, ocr)
+    pipe.process_scan(conn, sid)
+    return sid, page_row(conn, sid)["id"], pipe, ocr
+
+
+def test_a_page_a_person_turns_is_read_again_the_new_way_up(conn, settings, scan):
+    sid, page, pipe, ocr = read_upside_down(conn, settings, scan, ("Tonopah Mining Company", 79.0))
+    assert turned_since_read(conn) == []
+    organise.rotate(conn, [page], 180)
+    assert [r["page_id"] for r in turned_since_read(conn)] == [page]
+    assert pipe.read_turned_again(conn) == (1, True)  # in the Inbox: to be sorted again
+    assert current_text(conn, sid) == "Tonopah Mining Company"
+    assert read_turned(conn, sid) == (180, 0)
+    assert [(r["source"], r["is_current"]) for r in readings(conn, sid)] == [
+        ("tesseract", 0),
+        ("tesseract", 1),
+    ]
+    assert page_row(conn, sid)["script"] == "printed"
+    assert steps(conn, sid, "ocr")[-1] == ("done", None)
+    assert pipe.read_turned_again(conn) == (0, False)  # read once
+    assert turned_since_read(conn) == []
+
+
+def test_a_page_turned_on_its_side_is_read_from_an_upright_copy(conn, settings, scan):
+    sid, page, pipe, ocr = read_upside_down(conn, settings, scan, ("Dear Sister", 88.0))
+    organise.rotate(conn, [page], 90)
+    pipe.read_turned_again(conn)
+    assert ocr.seen[-1][1] == (560, 400)
+    assert read_turned(conn, sid) == (90, 0)
+
+
+def test_a_page_a_person_flips_is_read_again_the_right_way_round(conn, settings, scan):
+    sid, page, pipe, _ = read_upside_down(conn, settings, scan, ("It was a shipper", 86.0))
+    organise.flip(conn, [page])
+    assert pipe.read_turned_again(conn) == (1, True)
+    assert current_text(conn, sid) == "It was a shipper"
+    assert read_turned(conn, sid) == (0, 1)
+
+
+def test_undoing_a_turn_reads_the_page_again_the_way_it_was(conn, settings, scan):
+    sid, page, pipe, _ = read_upside_down(
+        conn, settings, scan, ("Tonopah Mining Company", 79.0), ("Suyuig yodouoy", 27.0)
+    )
+    turn = organise.rotate(conn, [page], 180)
+    pipe.read_turned_again(conn)
+    history.undo(conn, turn.batch)
+    assert pipe.read_turned_again(conn) == (1, True)
+    assert read_turned(conn, sid) == (0, 0)
+
+
+@pytest.mark.parametrize("correction", ["Tonopah Mining Co.", None])  # corrected, or checked
+def test_a_persons_text_is_kept_when_they_turn_the_page(conn, settings, scan, correction):
+    sid, page, pipe, _ = read_upside_down(conn, settings, scan, ("Tonopah Mining Company", 79.0))
+    organise.check_text(conn, page, correction)
+    was = current_text(conn, sid)
+    organise.rotate(conn, [page], 180)
+    assert pipe.read_turned_again(conn) == (1, True)
+    assert current_text(conn, sid) == was
+    assert readings(conn, sid)[-1]["source"] == "tesseract"  # kept beside it
+    assert pipe.read_turned_again(conn) == (0, False)
+    assert page_row(conn, sid)["script"] == "printed"  # from Tesseract's words, as it is now
+
+
+@pytest.mark.parametrize(
+    "ai, used", [(95.0, "Tonopah Mining Co"), (40.0, "Tonopah Mining Company")]
+)
+def test_an_ais_reading_is_kept_only_if_it_reads_better(conn, settings, scan, ai, used):
+    sid, page, pipe, _ = read_upside_down(conn, settings, scan, ("Tonopah Mining Company", 79.0))
+    conn.execute("UPDATE transcriptions SET is_current = 0 WHERE page_id = ?", (page,))
+    conn.execute(
+        "INSERT INTO transcriptions (page_id, source, engine_model, text, confidence, is_current)"
+        " VALUES (?, 'vision', 'gemma', 'Tonopah Mining Co', ?, 1)",
+        (page, ai),
+    )
+    conn.commit()
+    organise.rotate(conn, [page], 180)
+    pipe.read_turned_again(conn)
+    assert current_text(conn, sid) == used
+
+
+def test_blank_pages_and_completed_documents_are_left(conn, settings, scan):
+    blank = scan("blank.png", Image.new("RGB", (400, 560), "white"))
+    Pipeline(settings, StubOcr(("", None))).process_scan(conn, blank)
+    sid = scan()
+    Pipeline(settings, StubOcr(("Suyuig", 27.0))).process_scan(conn, sid)
+    pages = [page_row(conn, blank)["id"], page_row(conn, sid)["id"]]
+    organise.rotate(conn, pages, 180)
+    doc = conn.execute("INSERT INTO documents (name, status) VALUES ('Deed', 'complete')")
+    conn.execute(
+        "UPDATE pages SET document_id = ?, position = 0 WHERE id = ?", (doc.lastrowid, pages[1])
+    )
+    conn.commit()
+    assert turned_since_read(conn) == []
+    assert Pipeline(settings, StubOcr()).read_turned_again(conn) == (0, False)
+
+
+def test_a_page_that_fails_to_read_again_waits_until_it_is_turned_again(conn, settings, scan):
+    sid, page, pipe, ocr = read_upside_down(
+        conn, settings, scan, OSError("tesseract crashed"), ("Tonopah Mining Company", 79.0)
+    )
+    organise.rotate(conn, [page], 180)
+    conn.execute("UPDATE pages SET updated_at = datetime('now', '-1 hour')")  # turned a while ago
+    conn.commit()
+    assert pipe.read_turned_again(conn) == (0, False)
+    assert steps(conn, sid, "ocr")[-1] == ("failed", "tesseract crashed")
+    seen = len(ocr.seen)
+    assert pipe.read_turned_again(conn) == (0, False)  # not tried every second
+    assert len(ocr.seen) == seen
+    organise.rotate(conn, [page], 180)
+    organise.rotate(conn, [page], 180)  # turned again: tried again
+    pipe.read_turned_again(conn)
+    assert current_text(conn, sid) == "Tonopah Mining Company"
+
+
+def test_a_page_turned_again_while_it_is_read_is_read_again(conn, settings, scan):
+    sid, page, pipe, ocr = read_upside_down(
+        conn, settings, scan, ("Tonopah Mining Company", 79.0), ("Dear Sister", 88.0)
+    )
+    organise.rotate(conn, [page], 180)
+    read = ocr.recognize
+
+    def turned_meanwhile(image_path):
+        ocr.recognize = read
+        organise.rotate(conn, [page], 90)
+        return read(image_path)
+
+    ocr.recognize = turned_meanwhile
+    assert pipe.read_turned_again(conn) == (1, True)
+    assert current_text(conn, sid) == "Suyuig yodouoy"  # read turned 180; it's 270 now
+    assert pipe.read_turned_again(conn) == (1, True)
+    assert current_text(conn, sid) == "Dear Sister"
+    assert read_turned(conn, sid) == (270, 0)
+
+
+def test_with_the_vision_model_alone_turned_pages_arent_read_again(conn, settings, scan):
+    _, page, pipe, ocr = read_upside_down(conn, settings, scan)
+    organise.rotate(conn, [page], 180)
+    settings.ocr.engine = "vision"
+    assert pipe.read_turned_again(conn) == (0, False)

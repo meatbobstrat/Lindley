@@ -122,6 +122,19 @@ on real scans.
   found there is turned round to show and export even if an AI or a person read it since. Its
   new reading is used only in place of Tesseract's own. A person can flip any page left to
   right (`user_mirror`, undoable), which is trusted, as a turn is.
+- **A page a person turns or flips is read again.** Each Tesseract reading notes how the page
+  was turned when it was made (`read_rotation`, `read_mirror`, schema 13). A page whose latest
+  Tesseract reading was made turned another way than the page is now
+  (`pipeline.turned_since_read`) is read again that way by the watcher, within a second or so
+  (`Pipeline.read_turned_again`). Undoing a turn is a turn too, and several turns one after
+  another are read once. The new reading is used in place of Tesseract's own, and of an AI's
+  that reads no better (`_preference`), never in place of a person's text or one they checked;
+  it's kept beside those. A page turned again while it was being read keeps that reading beside
+  its own and is read again. Blank pages and pages in a completed document are left, as is a
+  page whose reading again failed (Tesseract missing, say) until it's turned again. Inbox pages
+  read again are sorted again once things settle; the status bar counts the pages waiting
+  ("Reading 1 turned page again"). A reading made before schema 13 isn't known to be turned
+  any way: it's read again if a person turned the page, once.
 - `script` is set after reading, from Tesseract's confidence line by line. Lines under 50% look
   handwritten and lines at 75% or more look printed; typewriting on old paper often falls in
   between.
@@ -450,6 +463,7 @@ What it showed needs doing:
 - Done: **a person can send any page under review to the reading AI** (Ask the AI, in Review and on the scan), not only pages Tesseract read below 70%. Lindley still sends only those on its own.
 - Done: **groups the AI checked at 60–74% are offered for one-click accept** (`assembler.offer_at`), first in the Inbox, with "Accept all" as one change to undo. 75% stays the bar for Lindley to make them itself (see "Confidence bars").
 - Done: **mirror-image scans** are found and turned round (`detected_mirror`), and a person can flip a page.
+- Done: **a page a person turns or flips is read again** the new way round (`Pipeline.read_turned_again`); before, only how it was shown changed.
 
 ### Confidence bars
 

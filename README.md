@@ -421,10 +421,10 @@ and you can ask it about them. All of it from a one-click install.
   had run a 1940 letter on into the typescript before it (design/database.md, "Confidence bars")
 - [x] Show progress while the AI sorts pages: the status bar counts the questions it asks the AI
   ("AI sorting 143 pages · question 2 of 4"), and shows the AI sorting on its own too
-- [ ] Read a page again with Tesseract when a person turns it or flips it left to right in the
-  app: today either only changes how the page is shown, so its text stays as read the wrong way
-  up or from the mirror image. The new reading would replace Tesseract's own, never a person's
-  text or an AI's better reading, and the Inbox would be sorted again with it
+- [x] Read a page again with Tesseract when a person turns it or flips it left to right in the
+  app (or undoes either): before, its text stayed as read the wrong way up or from the mirror
+  image. The new reading replaces Tesseract's own, never a person's text or an AI's better
+  reading, the Inbox is sorted again with it, and the status bar says so while it's read
 - [ ] Performance tiers: Lindley runs on anything from a 10-year-old laptop to a gaming PC with
   32 GB of graphics memory, and the AI each job uses is picked to suit the computer
   (design/database.md, "Local models on a CPU"):

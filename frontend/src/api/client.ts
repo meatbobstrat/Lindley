@@ -93,6 +93,7 @@ export interface Counts {
   duplicates: number
   needs_ai: number
   reading: number
+  reading_again: number // pages a person turned, to be read again the way they're turned now
   failed: number
 }
 

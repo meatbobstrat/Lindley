@@ -45,7 +45,9 @@ def overview(request: Request, conn: Conn) -> dict:
         needs_ai += sum(p["id"] not in sending for i in sort_items(conn) for p in i["pages"])
     return {
         "version": __version__,
-        "counts": browse.counts(conn, settings.ocr.review_below, needs_ai),
+        "counts": browse.counts(
+            conn, settings.ocr.review_below, needs_ai, settings.ocr.engine != "vision"
+        ),
         "documents": browse.documents(conn, settings.ocr.review_below),
         "folders": browse.folders(conn),
         # What the AI is doing now, what's queued behind it, and what came of what people asked

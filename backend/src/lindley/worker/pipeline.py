@@ -140,6 +140,35 @@ def vision_failures(conn: sqlite3.Connection) -> tuple[int, str | None]:
     return n, error
 
 
+# Pages turned or flipped since Tesseract last read them: its latest reading was made with the
+# page turned another way than it is now. A reading made before Lindley noted how (schema 13)
+# counts when a person has turned the page: read again once, the way it is now, it's known.
+# Blank pages, pages in a completed document, and pages whose reading again failed since they
+# were last changed are left (a new turn tries again).
+_TURNED_SINCE_READ = (
+    "SELECT p.id AS page_id, p.scan_id, p.image_path, p.dpi, p.blank_score,"
+    " p.detected_rotation, p.user_rotation, p.detected_mirror, p.user_mirror,"
+    " p.document_id IS NULL AND p.set_aside_at IS NULL AS in_inbox"
+    " FROM pages p JOIN (SELECT page_id, max(id) AS id FROM transcriptions"
+    "  WHERE source = 'tesseract' GROUP BY page_id) last ON last.page_id = p.id"
+    " JOIN transcriptions t ON t.id = last.id"
+    " WHERE CASE WHEN t.read_rotation IS NULL THEN p.user_rotation != 0 OR p.user_mirror != 0"
+    "  ELSE t.read_rotation != (p.detected_rotation + p.user_rotation) % 360"
+    "  OR coalesce(t.read_mirror, 0) != (p.detected_mirror != p.user_mirror) END"
+    " AND coalesce(p.blank_score, 0) < ?"
+    f" AND NOT {_COMPLETED}"
+    " AND NOT EXISTS (SELECT 1 FROM intake_steps s WHERE s.page_id = p.id AND s.step = 'ocr'"
+    "  AND s.status = 'failed' AND s.finished_at > p.updated_at)"
+    " ORDER BY p.id"
+)
+
+
+def turned_since_read(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Pages a person turned or flipped since Tesseract read them, to be read again the way
+    they're turned now (Pipeline.read_turned_again)."""
+    return conn.execute(_TURNED_SINCE_READ, (pageimage.BLANK_AT,)).fetchall()
+
+
 def follow_settings(conn: sqlite3.Connection, settings: Settings) -> tuple[int, int]:
     """Bring the pages waiting for the vision model in line with the settings as they are now,
     as Settings shows them: a page whose reading in use is Tesseract's, below
@@ -545,6 +574,59 @@ class Pipeline:
         if found:
             log.info("Found %d mirror image(s) among pages read before", found)
         return checked, found
+
+    def read_turned_again(
+        self, conn: sqlite3.Connection, stop: threading.Event | None = None
+    ) -> tuple[int, bool]:
+        """Pages a person turned or flipped since Tesseract read them (turned_since_read) are
+        read again, the way they're turned now: their text had been read the wrong way up, or
+        from the mirror image. The new reading is used in place of Tesseract's own, and of an
+        AI's if it reads better; never in place of a person's text, or one they checked. A page
+        turned again while it was being read keeps the reading beside its own, and is read
+        again the next time. With reading set to the vision model alone, nothing is read.
+
+        Returns (pages read, whether any is in the Inbox: it's to be sorted again)."""
+        if self.settings.ocr.engine == "vision":
+            return 0, False
+        read, inbox = 0, False
+        for r in turned_since_read(conn):
+            if stop and stop.is_set():
+                break
+            rotation, flip = (r["detected_rotation"] + r["user_rotation"]) % 360, mirrored(r)
+            turned = (rotation, flip)
+            image = Path(r["image_path"])
+            try:
+                reading = self._tesseract_reading(
+                    conn, r["scan_id"], r["page_id"], image, rotation, r["dpi"], flip
+                )
+            except Exception:
+                log.exception("Page %d: reading it again as it was turned failed", r["page_id"])
+                continue
+            with conn:
+                conn.execute("BEGIN IMMEDIATE")  # a person may be turning it again
+                now = self._page(conn, r["page_id"])
+                same = ((now["detected_rotation"] + now["user_rotation"]) % 360, mirrored(now))
+                same = same == turned
+                current = conn.execute(
+                    "SELECT source, text, confidence, confirmed_at FROM transcriptions"
+                    " WHERE page_id = ? AND is_current = 1",
+                    (r["page_id"],),
+                ).fetchone()
+                use = same and _turned_reading_replaces(current, reading)
+                self._add_tesseract_reading(
+                    conn, r["page_id"], reading, r["blank_score"], turned, use
+                )
+                if same and not use:  # the page's script comes from Tesseract's words
+                    conn.execute(
+                        "UPDATE pages SET script = ? WHERE id = ?",
+                        (pageimage.classify_script(reading.words, r["blank_score"]), r["page_id"]),
+                    )
+            read += 1
+            inbox = inbox or bool(r["in_inbox"])
+        if read:
+            log.info("Read %d page(s) again the way a person turned them", read)
+            follow_settings(conn, self.settings)  # some may read well enough now, or not
+        return read, inbox
 
     def _run_checks(
         self,
@@ -1198,6 +1280,19 @@ def _leave_unmirrored(r: sqlite3.Row, ocr) -> str | None:
     if (r["blank_score"] or 0) >= pageimage.BLANK_AT:
         return "The page looks blank"
     return None
+
+
+def _turned_reading_replaces(current: sqlite3.Row | None, reading: PageResult) -> bool:
+    """Whether Tesseract's reading of a page a person turned is used in place of `current`:
+    Tesseract's own, or an AI's that reads no better; never a person's text, or one checked."""
+    if current is None:
+        return True
+    if current["source"] == "user" or current["confirmed_at"] is not None:
+        return False
+    if current["source"] == "tesseract":
+        return True
+    was = PageResult(1, current["text"], current["confidence"], current["source"])
+    return _preference(("tesseract", "", reading)) > _preference((current["source"], "", was))
 
 
 def mirrored(page: sqlite3.Row) -> bool:

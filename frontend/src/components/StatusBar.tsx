@@ -77,9 +77,19 @@ export function StatusBar() {
           <Icon name="eye" /> Watching {plural(folders.length, 'folder')} · {settings.move_files ? 'moving' : 'copying'} new scans
         </button>
       )}
-      <span data-tip={c?.reading ? 'Lindley reads new scans in the background. You can keep working meanwhile.' : 'Every scan that has arrived has been read.'}>
-        <i className={`dot ${c?.reading ? 'busy' : ''}`} aria-hidden="true" />
-        {c?.reading ? `Reading ${plural(c.reading, 'new scan')}` : 'All scans read'}
+      <span
+        data-tip={
+          c?.reading || c?.reading_again
+            ? `Lindley reads ${c.reading ? 'new scans' : 'the pages you turned again, the right way round,'} in the background. You can keep working meanwhile.`
+            : 'Every scan that has arrived has been read.'
+        }
+      >
+        <i className={`dot ${c?.reading || c?.reading_again ? 'busy' : ''}`} aria-hidden="true" />
+        {c?.reading
+          ? `Reading ${plural(c.reading, 'new scan')}${c.reading_again ? ` and ${plural(c.reading_again, 'turned page')}` : ''}`
+          : c?.reading_again
+            ? `Reading ${plural(c.reading_again, 'turned page')} again`
+            : 'All scans read'}
       </span>
       {working.map((w, i) => (
         <button

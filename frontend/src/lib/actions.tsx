@@ -200,9 +200,9 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
           items.push({ label: 'Open to read and correct', icon: 'eye', tip: 'See the scan beside its text', onSelect: () => nav(`/scans/${ids[0]}`) }, '-')
         if (!opts.noBasics) {
           items.push(
-            { label: 'Turn left', icon: 'rotL', tip: 'A quarter turn to the left. The scan itself isn’t changed.', onSelect: () => a.rotate(ids, -90) },
-            { label: 'Turn right', icon: 'rotR', tip: 'A quarter turn to the right. The scan itself isn’t changed.', onSelect: () => a.rotate(ids, 90) },
-            { label: 'Flip left to right', icon: 'flip', tip: 'For a mirror image, such as the back of a carbon copy. The scan itself isn’t changed.', onSelect: () => a.flip(ids) },
+            { label: 'Turn left', icon: 'rotL', tip: 'A quarter turn to the left. The scan itself isn’t changed; its text is read again the new way round.', onSelect: () => a.rotate(ids, -90) },
+            { label: 'Turn right', icon: 'rotR', tip: 'A quarter turn to the right. The scan itself isn’t changed; its text is read again the new way round.', onSelect: () => a.rotate(ids, 90) },
+            { label: 'Flip left to right', icon: 'flip', tip: 'For a mirror image, such as the back of a carbon copy. The scan itself isn’t changed; its text is read again the new way round.', onSelect: () => a.flip(ids) },
           )
           if (where === 'document' && opts.docId && opts.order) {
             const { docId, order } = opts

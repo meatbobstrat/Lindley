@@ -5,8 +5,9 @@ Lindley was closed. A file is taken only once it has finished arriving: its size
 unchanged for `stable_s` seconds, and its ending there (worker.intake.looks_complete), since a
 scanner or a copy may still be writing it. A file that never finishes (empty, or kept locked)
 stops holding things up after `stuck_s` seconds. One background thread does the work: the files
-that have arrived are imported one at a time, then read a few at once. Once no new file has
-arrived for `settle_s` seconds, the assembler runs once over the whole Inbox.
+that have arrived are imported one at a time, then read a few at once, and pages a person turned
+are read again. Once no new file has arrived for `settle_s` seconds, the assembler runs once
+over the whole Inbox.
 """
 
 from __future__ import annotations
@@ -243,6 +244,15 @@ class FolderWatcher:
             if r.status == "new" or r.reading:
                 self._unassembled = True
             self._last_new = time.monotonic()
+        # Pages a person turned or flipped are read again the way they're turned now. Inbox
+        # pages are sorted again with their new text once things settle, so turning several
+        # pages one after another sorts the Inbox once.
+        try:
+            if not self._stop.is_set() and self.pipeline.read_turned_again(conn, self._stop)[1]:
+                self._unassembled = True
+                self._last_new = time.monotonic()
+        except Exception:
+            log.exception("Reading turned pages again failed")
         # Hard pages that arrived while the vision model had to ask go now, if it may run on
         # its own (see lindley.assembler.auto); the rest wait in Needs AI for a person.
         try:

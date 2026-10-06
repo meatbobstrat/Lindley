@@ -20,7 +20,7 @@ import sqlite3
 from lindley.db.progress import document_progress
 from lindley.duplicates import resolve
 from lindley.worker import image as pageimage
-from lindley.worker.pipeline import _LAST_VISION, mirrored
+from lindley.worker.pipeline import _LAST_VISION, mirrored, turned_since_read
 
 _PAGES = f"""
 SELECT p.id, p.scan_id, p.page_index, s.original_name AS file, s.origin, s.imported_at,
@@ -309,8 +309,11 @@ def folders(conn: sqlite3.Connection) -> list[dict]:
 # ---------------------------------------------------------------- Counts
 
 
-def counts(conn: sqlite3.Connection, review_below: float, needs_ai: int) -> dict:
-    """The numbers beside each place in the tree, and what the status bar says."""
+def counts(
+    conn: sqlite3.Connection, review_below: float, needs_ai: int, read_again: bool = True
+) -> dict:
+    """The numbers beside each place in the tree, and what the status bar says. `read_again`:
+    pages a person turns are read again (not when only the vision model reads)."""
     sets = resolve.open_sets(conn)
     pairs = resolve.document_pairs(sets, conn)
     one = lambda sql: conn.execute(sql).fetchone()[0]  # noqa: E731
@@ -322,5 +325,7 @@ def counts(conn: sqlite3.Connection, review_below: float, needs_ai: int) -> dict
         "duplicates": len(sets) - sum(len(p.set_ids) - 1 for p in pairs),
         "needs_ai": needs_ai,
         "reading": one("SELECT COUNT(*) FROM scans WHERE status IN ('queued', 'reading')"),
+        # Pages a person turned, waiting to be read again the way they're turned now
+        "reading_again": len(turned_since_read(conn)) if read_again else 0,
         "failed": one("SELECT COUNT(*) FROM scans WHERE status = 'failed'"),
     }

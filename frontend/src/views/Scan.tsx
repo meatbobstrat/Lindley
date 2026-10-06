@@ -175,9 +175,9 @@ export function ScanView() {
       <Dock label="Scan actions">
         <DBtn icon="back" label={aside ? 'Back to Set aside' : 'Back to Inbox'} tip={`Back to ${aside ? 'Set aside' : 'the Inbox'}`} onClick={() => nav(home)} />
         <Sep />
-        <DBtn icon="rotL" label="Turn left" iconOnly tip="Turn a quarter turn left. The scan itself isn’t changed." onClick={() => acts.rotate([id], -90)} />
-        <DBtn icon="rotR" label="Turn right" iconOnly tip="Turn a quarter turn right. The scan itself isn’t changed." onClick={() => acts.rotate([id], 90)} />
-        <DBtn icon="flip" label="Flip left to right" iconOnly tip="For a mirror image, such as the back of a carbon copy. The scan itself isn’t changed." onClick={() => acts.flip([id])} />
+        <DBtn icon="rotL" label="Turn left" iconOnly tip="Turn a quarter turn left. The scan itself isn’t changed; its text is read again the new way round." onClick={() => acts.rotate([id], -90)} />
+        <DBtn icon="rotR" label="Turn right" iconOnly tip="Turn a quarter turn right. The scan itself isn’t changed; its text is read again the new way round." onClick={() => acts.rotate([id], 90)} />
+        <DBtn icon="flip" label="Flip left to right" iconOnly tip="For a mirror image, such as the back of a carbon copy. The scan itself isn’t changed; its text is read again the new way round." onClick={() => acts.flip([id])} />
         <DBtn icon="newdoc" label="New document…" tip="Start a new document with this scan" onClick={() => acts.newDocument([id])} />
         <DBtn icon="move" label="Add to document…" tip="Add this scan to a document in progress" onClick={(e) => acts.moveMenu([id], e.currentTarget)} />
         {aside ? (

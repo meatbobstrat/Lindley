@@ -205,6 +205,16 @@ def test_flipping_a_mirror_image(client, settings, tmp_path):
     assert not p["mirrored"] and p["mirror_found"]
 
 
+def test_a_turned_page_waits_to_be_read_again(client, settings, tmp_path):
+    conn = db(client, settings)
+    a = add_page(conn, tmp_path, "one")
+    assert client.get("/api/overview").json()["counts"]["reading_again"] == 0
+    body = client.post("/api/pages/rotate", json={"page_ids": [a], "degrees": 180}).json()
+    assert client.get("/api/overview").json()["counts"]["reading_again"] == 1
+    undo(client, body)
+    assert client.get("/api/overview").json()["counts"]["reading_again"] == 0
+
+
 def test_starting_a_document_and_naming_it(client, settings, tmp_path):
     conn = db(client, settings)
     a, b = add_page(conn, tmp_path, "one"), add_page(conn, tmp_path, "two")

@@ -191,7 +191,8 @@ def reorder(conn: sqlite3.Connection, doc_id: int, page_ids: list[int]) -> Chang
 
 def rotate(conn: sqlite3.Connection, page_ids: list[int], degrees: int) -> Change:
     """Turn pages a quarter turn or more. The scan itself is never changed: the turn is kept
-    beside it, and applied when the page is shown, read or exported."""
+    beside it, and applied when the page is shown, read or exported. Tesseract reads its text
+    again the new way round, in the background (Pipeline.read_turned_again)."""
     if degrees % 90:
         raise ValueError("Pages turn in quarter turns")
     with history.deciding(conn):
@@ -219,7 +220,7 @@ def rotate(conn: sqlite3.Connection, page_ids: list[int], degrees: int) -> Chang
 def flip(conn: sqlite3.Connection, page_ids: list[int]) -> Change:
     """Turn pages round left to right: a mirror image (the back of a carbon copy) the right way
     round, or one Lindley took for a mirror image back. As with a turn, the scan itself is never
-    changed, and its text isn't read again."""
+    changed, and its text is read again the new way round."""
     with history.deciding(conn):
         _from(conn, page_ids)
         change = Change(history.new_batch(conn))

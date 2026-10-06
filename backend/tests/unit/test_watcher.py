@@ -515,3 +515,31 @@ def test_scans_a_person_added_are_read_and_sorted(settings, inbox, monkeypatch):
     assert scans(settings) == [("letter.png", "added", "read")]
     w.tick()
     assert len(calls) == 1
+
+
+def test_a_page_a_person_turns_is_read_again_and_the_inbox_sorted(settings, inbox, monkeypatch):
+    from lindley import organise
+
+    calls = []
+    monkeypatch.setattr(watcher_mod, "sort_on_its_own", lambda *a: calls.append(a) or _Report())
+    w = make_watcher(settings)
+    img = Image.new("RGB", (120, 160), "white")
+    ImageDraw.Draw(img).rectangle([10, 20, 100, 120], fill="black")
+    img.save(inbox / "a.png")
+    w.notice(inbox / "a.png")
+    w.tick()
+    w.tick()
+    assert len(calls) == 1
+    conn = connect(settings.db_path)
+    try:
+        page = conn.execute("SELECT id FROM pages").fetchone()[0]
+        organise.rotate(conn, [page], 180)
+        w.tick()
+        turned = conn.execute(
+            "SELECT read_rotation FROM transcriptions WHERE page_id = ? AND is_current = 1",
+            (page,),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert turned == 180
+    assert len(calls) == 2  # sorted again with its new text

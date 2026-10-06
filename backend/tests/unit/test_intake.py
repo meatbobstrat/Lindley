@@ -139,6 +139,22 @@ def test_a_broken_file_fails_and_is_quarantined(conn, settings, inbox):
     assert (settings.quarantine_dir / "broken.jpg").read_bytes() == src.read_bytes()
 
 
+@pytest.mark.parametrize(
+    ("name", "data", "says"),
+    [
+        ("text.png", b"this is not a picture", "isn't a picture Lindley can open"),
+        ("cut.jpg", b"\xff\xd8\xff\xe0 a JPEG start, and no more" + bytes(500), "cut short"),
+        ("junk.pdf", b"%PDF-1.4 and nothing else", "The PDF can't be opened"),
+    ],
+)
+def test_why_a_file_cant_be_added_is_said_in_words(conn, settings, inbox, name, data, says):
+    src = inbox / name
+    src.write_bytes(data)
+    r = import_file(conn, settings, src)
+    assert r.status == "failed" and says in r.error
+    assert conn.execute("SELECT error FROM scans").fetchone()[0] == r.error
+
+
 def test_a_failed_file_can_be_tried_again(conn, settings, inbox, monkeypatch):
     from lindley.worker import intake
 

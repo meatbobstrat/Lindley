@@ -9,7 +9,7 @@ import { type MenuItem, useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
 import { type Actions, ActionsCtx } from './actionsContext'
 import { useApp } from './appContext'
-import { plural, quoted, shortName } from './words'
+import { plural, quoted, sentences, shortName } from './words'
 
 type Dialog =
   | { kind: 'newdoc'; ids: number[]; name: string; lindley: boolean }
@@ -54,7 +54,8 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
         return [
           fresh ? `Added ${plural(fresh, 'scan')} to the Inbox. Lindley is reading ${fresh === 1 ? 'it' : 'them'} now.` : '',
           dup ? `${plural(dup, 'file')} ${dup === 1 ? 'was' : 'were'} already in Lindley.` : '',
-          bad.length ? `${plural(bad.length, 'file')} couldn’t be added: ${bad[0].error}` : '',
+          bad.length === 1 ? `${bad[0].file} couldn’t be added. ${sentences([bad[0].error ?? ''])}` : '',
+          bad.length > 1 ? `${plural(bad.length, 'file')} couldn’t be added. ${bad[0].file}: ${sentences([bad[0].error ?? ''])}` : '',
         ]
           .filter(Boolean)
           .join(' ')

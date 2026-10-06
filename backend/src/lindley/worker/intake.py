@@ -422,11 +422,23 @@ def _scan_scale(page) -> float | None:
 
 
 def _in_words(e: Exception) -> str:
+    """What went wrong opening a scan, for a person: Pillow and PDFium say it their own way
+    ("Truncated File Read", "Data format error")."""
+    from pypdfium2 import PdfiumError
+
     if isinstance(e, Image.DecompressionBombError):
         return (
             "The picture is too big to read safely on this computer"
             f" (over {Image.MAX_IMAGE_PIXELS * 2 // 1_000_000} million pixels)"
         )
+    if isinstance(e, Image.UnidentifiedImageError):
+        return "It isn't a picture Lindley can open. It may be damaged, or not what its name says"
+    if isinstance(e, OSError) and "truncated" in str(e).lower():
+        return "The file is cut short. It may be damaged, or not have finished copying"
+    if isinstance(e, PdfiumError):
+        if "password" in str(e).lower():
+            return "The PDF is locked with a password. Save a copy without one, and add that"
+        return "The PDF can't be opened. It may be damaged, or not what its name says"
     return str(e) or type(e).__name__
 
 

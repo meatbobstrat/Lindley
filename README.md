@@ -471,7 +471,9 @@ and you can ask it about them. All of it from a one-click install.
 - [ ] Advanced settings (hidden from standard users): an interface for creating custom connectors. They're files too, built the same way as the built-in ones
 - [ ] Settings lists the models each AI offers (each library can list them), so the defaults
   can't go out of date
-- [x] AI spending: a monthly limit, and the tokens and estimated cost of each call, shown in Settings
+- [x] AI spending: a monthly limit, and the tokens and estimated cost of each call, shown in
+  Settings. Claude's, OpenAI's and Google's calls are priced from their list prices
+  (`providers/prices.py`); a local AI's calls count tokens, at no cost
 - [ ] Suggest groups of pages Lindley isn't sure of (typescripts, notes) for a person to confirm
 - [ ] Local AI models for intake, tuned on real scans, for each performance tier. Small models
   were measured on real scans (design/database.md, "Local models" and "Local models on a CPU"):

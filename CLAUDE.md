@@ -12,7 +12,8 @@
     `openai_compat` and `fake` (for tests). Each calls its AI through the company's own library
     (`anthropic`, `openai`, `google-genai`), as its docs recommend: never hand-written HTTP.
     `_openai_chat.py` (Chat Completions, for OpenAI-compatible servers) and `_common.py` (errors
-    in words, images) are shared helpers.
+    in words, images) are shared helpers. A connector tells `on_usage` what each call used,
+    before it checks the answer (a cut-off one is charged): `throttle.metered` collects it.
     `keys.py`: API keys in the system credential store (keyring)
   - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
     `pipeline.py` (step records, Tesseract/vision reading; `read_turned_again`: pages a person

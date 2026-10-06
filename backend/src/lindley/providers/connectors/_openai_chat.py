@@ -8,12 +8,18 @@ newer Responses API for chat, and this class for embeddings.)
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from urllib.parse import urlparse
 
 import openai
 
-from lindley.providers.base import ChatMessage, ConnectorInfo, ProviderError, Transcription
+from lindley.providers.base import (
+    ChatMessage,
+    ConnectorInfo,
+    ProviderError,
+    Transcription,
+    Usage,
+)
 from lindley.providers.connectors._common import b64, cut_off, image_type, sdk_errors
 from lindley.providers.prompts import transcribe_prompt
 
@@ -27,6 +33,8 @@ class OpenAIChat:
     # A server that doesn't take them is asked again without them, once, and isn't sent them
     # again. A streamed answer (Ask Lindley) is sent without them.
     quick_options: dict = {}
+    # Told what each call used, even one that then fails (it's charged): set by throttle.Guarded.
+    on_usage: Callable[[Usage], None] | None = None
 
     def __init__(
         self,
@@ -64,6 +72,21 @@ class OpenAIChat:
     def _errors(self):
         return sdk_errors(openai, self.who, self.base_url)
 
+    def _used(self, sent: int | None, written: int | None, cached: int | None = None) -> None:
+        """Tell what a call used. OpenAI's APIs count the tokens read from a cache among those
+        sent; Usage doesn't."""
+        if self.on_usage is not None:
+            cached = cached or 0
+            self.on_usage(Usage(self.model, max(0, (sent or 0) - cached), written or 0, cached))
+
+    def _completed(self, usage) -> None:
+        """Chat Completions' usage, when the server says (Ollama and LM Studio do)."""
+        if usage is not None:
+            details = getattr(usage, "prompt_tokens_details", None)
+            self._used(
+                usage.prompt_tokens, usage.completion_tokens, getattr(details, "cached_tokens", 0)
+            )
+
     def _complete(self, messages: list[dict], **options) -> str:
         with self._errors():
             try:
@@ -76,6 +99,7 @@ class OpenAIChat:
                 # Refused before the AI did any work, so this isn't repeating a failed call
                 self.quick_options = {}
                 r = self.client.chat.completions.create(model=self.model, messages=messages)
+        self._completed(r.usage)
         if not r.choices:
             raise ProviderError(f"{self.who} sent back an answer with no text")
         self._finished(r.choices[0].finish_reason)
@@ -95,18 +119,29 @@ class OpenAIChat:
         )
 
     def chat_stream(self, messages: list[ChatMessage]) -> Iterator[str]:
+        sent = [{"role": m.role, "content": m.content} for m in messages]
         with self._errors():
-            stream = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": m.role, "content": m.content} for m in messages],
-                stream=True,
-            )
+            try:  # what it used comes in a last chunk of its own, after the answer's end
+                stream = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=sent,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
+            except (openai.BadRequestError, openai.UnprocessableEntityError):
+                # Refused before the AI did any work: a server that doesn't take the option
+                stream = self.client.chat.completions.create(
+                    model=self.model, messages=sent, stream=True
+                )
+            reason = None
             for chunk in stream:
+                self._completed(chunk.usage)
                 if not chunk.choices:
                     continue
                 if piece := chunk.choices[0].delta.content:
                     yield piece
-                self._finished(chunk.choices[0].finish_reason)
+                reason = chunk.choices[0].finish_reason or reason
+            self._finished(reason)
 
     def transcribe(self, image: bytes, hints: str | None = None) -> Transcription:
         url = f"data:{image_type(image)};base64,{b64(image)}"
@@ -120,6 +155,8 @@ class OpenAIChat:
     def embed(self, texts: list[str]) -> list[list[float]]:
         with self._errors():
             r = self.client.embeddings.create(model=self.model, input=texts)
+        if r.usage is not None:
+            self._used(r.usage.prompt_tokens, 0)
         rows = sorted(r.data, key=lambda d: d.index)
         if len(rows) != len(texts):
             raise ProviderError(f"{self.who} sent back {len(rows)} embeddings for {len(texts)}")

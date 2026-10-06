@@ -51,12 +51,22 @@ class Provider(OpenAIChat):
 
     info = INFO
 
+    def _responded(self, r) -> None:
+        """What a response used: told before it's checked, as a refused or cut-off answer is
+        charged too."""
+        if (usage := getattr(r, "usage", None)) is not None:
+            details = getattr(usage, "input_tokens_details", None)
+            self._used(
+                usage.input_tokens, usage.output_tokens, getattr(details, "cached_tokens", 0)
+            )
+
     def _respond(self, instructions: str | openai.Omit, items: list[dict]) -> str:
         with self._errors():
             # store=False: OpenAI keeps responses unless asked not to
             r = self.client.responses.create(
                 model=self.model, instructions=instructions, input=items, store=False
             )
+        self._responded(r)
         for item in r.output:
             if item.type == "message" and any(c.type == "refusal" for c in item.content):
                 raise ProviderError(DECLINED, answered=True)
@@ -78,12 +88,16 @@ class Provider(OpenAIChat):
                     yield event.delta
                 elif event.type == "response.refusal.delta":
                     raise ProviderError(DECLINED, answered=True)
+                elif event.type == "response.completed":
+                    self._responded(event.response)
                 elif event.type == "response.failed":
+                    self._responded(event.response)
                     error = event.response.error
                     raise ProviderError(
                         f"OpenAI: {error.message if error else 'the answer failed'}"
                     )
                 elif event.type == "response.incomplete":
+                    self._responded(event.response)
                     _incomplete(event.response)
                 elif event.type == "error":
                     raise ProviderError(f"OpenAI: {event.message}")

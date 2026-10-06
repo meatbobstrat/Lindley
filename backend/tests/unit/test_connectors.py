@@ -202,6 +202,49 @@ def test_local_streams():
     assert server.body["stream"] is True
 
 
+def test_local_says_what_each_call_used():
+    """Ollama reports usage as OpenAI does: prompt tokens include those read from a cache. A
+    streamed answer's comes in a last chunk, after it's cut off too (it's charged)."""
+    reply = json.loads(completion("ok").content) | {
+        "usage": {
+            "prompt_tokens": 11,
+            "completion_tokens": 4,
+            "total_tokens": 15,
+            "prompt_tokens_details": {"cached_tokens": 3},
+        }
+    }
+    chunk = {"id": "c", "object": "chat.completion.chunk", "created": 0, "model": "m"}
+    cut = sse(
+        {**chunk, "choices": [{"index": 0, "delta": {"content": "Will"}}]},
+        {**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": "length"}]},
+        {**chunk, "choices": [], "usage": {"prompt_tokens": 9, "completion_tokens": 2}},
+        "[DONE]",
+        key="object",
+    )
+    server = Server(httpx2.Response(200, json=reply), cut)
+    p, used = make(local, server), []
+    p.on_usage = used.append
+    p.chat(TALK)
+    with pytest.raises(ProviderError, match="ran out of room"):
+        list(p.chat_stream(TALK))
+    assert server.body["stream_options"] == {"include_usage": True}
+    model = local.INFO.default_models["chat"]
+    assert used == [Usage(model, 8, 4, 3), Usage(model, 9, 2)]
+
+
+def test_a_server_that_wont_say_what_a_stream_used_still_streams():
+    chunk = {"id": "c", "object": "chat.completion.chunk", "created": 0, "model": "m"}
+    refused = httpx2.Response(400, json={"error": {"message": "unknown field stream_options"}})
+    server = Server(
+        refused,
+        sse(
+            {**chunk, "choices": [{"index": 0, "delta": {"content": "ok"}}]}, "[DONE]", key="object"
+        ),
+    )
+    assert list(make(local, server).chat_stream(TALK)) == ["ok"]
+    assert "stream_options" not in server.body
+
+
 def test_embeds_in_order():
     server = Server(
         httpx2.Response(
@@ -321,6 +364,21 @@ def test_openai_chat_through_responses_and_not_stored():
         ],
         "store": False,
     }
+
+
+def test_openai_says_what_each_call_used():
+    usage = {
+        "input_tokens": 12,
+        "input_tokens_details": {"cached_tokens": 2},
+        "output_tokens": 5,
+        "output_tokens_details": {"reasoning_tokens": 1},
+        "total_tokens": 17,
+    }
+    reply = json.loads(response(said("ok")).content) | {"usage": usage}
+    p, used = make(openai, Server(httpx2.Response(200, json=reply))), []
+    p.on_usage = used.append
+    p.chat(TALK)
+    assert used == [Usage(openai.INFO.default_models["chat"], 10, 5, 2)]
 
 
 def test_openai_reads_a_page():
@@ -655,6 +713,27 @@ def test_google_incomplete_is_a_failed_call():
     server = Server(sse(*events, lib=httpx, key="event_type"), lib=httpx)
     with pytest.raises(ProviderError, match="ran out of room"):
         list(gemini(server).chat_stream(TALK))
+
+
+def test_google_says_what_each_call_used():
+    """Gemini counts cached tokens among those sent, and thinking apart from the answer. One
+    cut off is charged too."""
+    usage = {
+        "total_input_tokens": 10,
+        "total_cached_tokens": 4,
+        "total_output_tokens": 3,
+        "total_thought_tokens": 2,
+    }
+    body = json.loads(interaction("ok").content) | {"usage": usage}
+    cut = body | {"status": "incomplete"}
+    server = Server(httpx.Response(200, json=body), httpx.Response(200, json=cut), lib=httpx)
+    p, used = gemini(server), []
+    p.on_usage = used.append
+    p.chat(TALK)
+    with pytest.raises(ProviderError, match="ran out of room"):
+        p.transcribe(PNG)
+    model = google.INFO.default_models["chat"]
+    assert used == [Usage(model, 6, 5, 4), Usage(model, 6, 5, 4)]
 
 
 def test_google_embeds():

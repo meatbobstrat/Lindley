@@ -4,7 +4,7 @@ Not private."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
 import httpx
@@ -12,7 +12,14 @@ from google import genai
 from google.genai import types
 from google.genai._gaos.utils.retries import BackoffStrategy, RetryConfig
 
-from lindley.providers.base import JOBS, ChatMessage, ConnectorInfo, ProviderError, Transcription
+from lindley.providers.base import (
+    JOBS,
+    ChatMessage,
+    ConnectorInfo,
+    ProviderError,
+    Transcription,
+    Usage,
+)
 from lindley.providers.connectors._common import (
     b64,
     cut_off,
@@ -104,6 +111,9 @@ def _steps(messages: list[ChatMessage]) -> tuple[str | None, list[dict]]:
 class Provider:
     """Implements ChatProvider, VisionProvider and EmbeddingProvider."""
 
+    # Told what each call used, even one that then fails (it's charged): set by throttle.Guarded.
+    on_usage: Callable[[Usage], None] | None = None
+
     def __init__(
         self,
         config=None,
@@ -147,9 +157,31 @@ class Provider:
             model=self.model, system_instruction=system, input=steps, store=False, **kw
         )
 
-    def chat(self, messages: list[ChatMessage]) -> str:
+    def _used(self, interaction) -> None:
+        """What an interaction used, told before it's checked: one cut off is charged too.
+        Gemini counts the tokens read from a cache among those sent, and thinking apart from
+        the answer; Usage counts neither way."""
+        usage = getattr(interaction, "usage", None)
+        if self.on_usage is None or usage is None:
+            return
+        cached = usage.total_cached_tokens or 0
+        self.on_usage(
+            Usage(
+                model=self.model,
+                input_tokens=max(0, (usage.total_input_tokens or 0) - cached),
+                output_tokens=(usage.total_output_tokens or 0) + (usage.total_thought_tokens or 0),
+                cache_read_tokens=cached,
+            )
+        )
+
+    def _answer(self, system: str | None, steps: list[dict]) -> str:
         with _errors():
-            return _text(self._interact(*_steps(messages)))
+            interaction = self._interact(system, steps)
+            self._used(interaction)
+            return _text(interaction)
+
+    def chat(self, messages: list[ChatMessage]) -> str:
+        return self._answer(*_steps(messages))
 
     def chat_stream(self, messages: list[ChatMessage]) -> Iterator[str]:
         with _errors():
@@ -157,6 +189,7 @@ class Provider:
                 if event.event_type == "step.delta" and event.delta.type == "text":
                     yield event.delta.text
                 elif event.event_type == "interaction.completed":
+                    self._used(event.interaction)
                     _finished(getattr(event.interaction, "status", None))
                 elif event.event_type == "error":
                     why = event.error.message if event.error else "the answer failed"
@@ -167,8 +200,7 @@ class Provider:
             *_content(transcribe_prompt(hints)),
             {"type": "image", "mime_type": image_type(image), "data": b64(image)},
         ]
-        with _errors():
-            text = _text(self._interact(None, [{"type": "user_input", "content": content}]))
+        text = self._answer(None, [{"type": "user_input", "content": content}])
         return Transcription(text=text.strip(), metadata={"model": self.model})
 
     def embed(self, texts: list[str]) -> list[list[float]]:

@@ -10,11 +10,11 @@ import { plural } from '../lib/words'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
 
-/** "AI reading page 2 of 5", "AI sorting 6 pages · question 1 of 2" */
+/** "AI reading page 2 of 5", "AI sorting 6 pages · question 1 of 2 so far": answers can raise more */
 function doing(w: AiWorking): string {
   if (w.kind === 'sort') {
     const what = `AI sorting ${w.pages ? plural(w.pages, 'page') : 'the Inbox'}`
-    return w.of > 0 ? `${what} · question ${Math.min(w.done + 1, w.of)} of ${w.of}` : what
+    return w.of > 0 ? `${what} · question ${Math.min(w.done + 1, w.of)} of ${w.of} so far` : what
   }
   return w.of > 1 ? `AI reading page ${Math.min(w.done + 1, w.of)} of ${w.of}` : 'AI reading a page'
 }

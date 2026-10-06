@@ -422,7 +422,8 @@ and you can ask it about them. All of it from a one-click install.
 - [x] See where a letter starts without "Dear …", from its date line and who it's to: the rules
   had run a 1940 letter on into the typescript before it (design/database.md, "Confidence bars")
 - [x] Show progress while the AI sorts pages: the status bar counts the questions it asks the AI
-  ("AI sorting 143 pages · question 2 of 4"), and shows the AI sorting on its own too
+  ("AI sorting 143 pages · question 2 of 4 so far": answers can raise more), and shows the
+  AI sorting on its own too
 - [x] Read a page again with Tesseract when a person turns it or flips it left to right in the
   app (or undoes either): before, its text stayed as read the wrong way up or from the mirror
   image. The new reading replaces Tesseract's own, never a person's text or an AI's better

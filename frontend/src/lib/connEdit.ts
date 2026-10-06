@@ -32,6 +32,7 @@ export interface Edit {
   atOnce: number
   api_key_env: string | null
   timeout_s: number | null // not shown: kept as settings.json has it
+  tier?: string // the performance tier waiting for this connection, a server or a cloud AI
 }
 
 export function newEdit(c: Connector | undefined): Edit {

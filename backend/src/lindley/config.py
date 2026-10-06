@@ -101,6 +101,9 @@ class AiSettings(BaseModel):
     # vision: reading hard pages; assemble: sorting pages into documents; chat: Ask Lindley;
     # embed: finding related pages.
     jobs: dict[Job, JobConfig] = Field(default_factory=_no_jobs)
+    # The performance tier the jobs were set from (providers/tiers.py), as Setup or Settings
+    # chose it. None: none chosen, or a person changed a job since.
+    tier: str | None = None
 
     def connection_for(self, job: Job) -> str | None:
         j = self.jobs.get(job)

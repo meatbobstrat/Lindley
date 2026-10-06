@@ -260,6 +260,7 @@ export interface Settings {
   ai: {
     providers: Record<string, ProviderConfig>
     jobs: Record<Job, { connection: string | null; model: string | null }>
+    tier: string | null // the performance tier the jobs were set from; null once a person changes one
   }
   assembler: Record<string, unknown>
   ask: { local_chars: number; cloud_chars: number; history_turns: number }
@@ -276,6 +277,16 @@ export interface Connector {
   default_base_url: string | null
   needs_key: boolean
   key_url: string | null
+}
+
+/** A performance tier (backend providers/tiers.py): how much AI the computer can run. */
+export interface Tier {
+  id: string
+  label: string
+  needs: string
+  does: string
+  runs: 'none' | 'this' | 'network' | 'cloud'
+  models: Partial<Record<Job, string>> // for a tier on this computer: each job's model
 }
 
 export interface AiCalls {
@@ -363,6 +374,7 @@ export const api = {
   search: (q: string) => get<{ query: string; results: SearchResult[] }>(`/search?q=${encodeURIComponent(q)}`),
   settings: () => get<Settings>('/settings'),
   connectors: () => get<Connector[]>('/connectors'),
+  tiers: () => get<Tier[]>('/tiers'),
   aiCalls: () => get<AiCalls>('/settings/ai-calls'),
   setupNeeded: () => get<{ needed: boolean }>('/setup'),
 

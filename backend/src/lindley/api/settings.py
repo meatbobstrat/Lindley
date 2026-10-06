@@ -4,6 +4,7 @@ from lindley.api.deps import Conn
 from lindley.config import Settings, save_settings
 from lindley.providers import allowance, keys
 from lindley.providers.registry import connectors
+from lindley.providers.tiers import TIER_IDS
 from lindley.watcher.watcher import FolderWatcher
 from lindley.worker.pipeline import follow_settings
 
@@ -16,8 +17,8 @@ def get_settings(request: Request) -> Settings:
 
 
 def _problems(new: Settings) -> list[str]:
-    """What's wrong with the AI settings: unknown connectors, and jobs given to a connection
-    that isn't there or can't do them."""
+    """What's wrong with the AI settings: unknown connectors and tiers, and jobs given to a
+    connection that isn't there or can't do them."""
     known, out = connectors(), []
     for name, cfg in new.ai.providers.items():
         if cfg.type not in known:
@@ -29,6 +30,8 @@ def _problems(new: Settings) -> list[str]:
         elif cfg is not None and cfg.type in known and job not in known[cfg.type].info.jobs:
             info = known[cfg.type].info
             out.append(f"{info.company or info.label} can't do the job {job!r}")
+    if new.ai.tier is not None and new.ai.tier not in TIER_IDS:
+        out.append(f"There's no performance tier called {new.ai.tier!r}")
     return out
 
 

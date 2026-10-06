@@ -14,7 +14,9 @@
     `_openai_chat.py` (Chat Completions, for OpenAI-compatible servers) and `_common.py` (errors
     in words, images) are shared helpers. A connector tells `on_usage` what each call used,
     before it checks the answer (a cut-off one is charged): `throttle.metered` collects it.
-    `keys.py`: API keys in the system credential store (keyring)
+    `keys.py`: API keys in the system credential store (keyring). `tiers.py`: performance tiers
+    (Basic to Cloud), each job's model by how much the computer can run; the UI sets
+    `ai.jobs` from the one chosen (`frontend/src/lib/tiers.ts`) and records it in `ai.tier`
   - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
     `pipeline.py` (step records, Tesseract/vision reading; `read_turned_again`: pages a person
     turned since Tesseract read them, read again by the watcher), `ocr/` engines, `ai_work.py` (AI

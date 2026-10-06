@@ -102,7 +102,7 @@ def test_each_job_gets_its_connection_and_model():
     assert get_provider(ai, "vision").model == "claude-sonnet-5"  # the connection's
     assert get_provider(ai, "assemble").model == "claude-haiku-4-5"  # the job's
     assert get_provider(ai, "chat").model == "qwen2.5vl"
-    assert get_provider(ai, "embed").model == "nomic-embed-text"  # the connector's default
+    assert get_provider(ai, "embed").model == "embeddinggemma"  # the connector's default
     ai.providers["claude"].model = None
     assert get_provider(ai, "vision").model == "claude-opus-5-5"
 

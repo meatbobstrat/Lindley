@@ -1,23 +1,31 @@
-// First-run setup: where scans come from, whether they're copied or moved, and which AI to use,
-// if any. Shown until there's a settings file.
+// First-run setup: where scans come from, whether they're copied or moved, and how much AI this
+// computer runs (a performance tier). Shown until there's a settings file.
 
 import { useEffect, useRef, useState } from 'react'
-import { api, type Connector, JOBS, type Settings } from '../api/client'
+import { api, type Connector, JOBS, type Settings, type Tier } from '../api/client'
 import { invalidate } from '../api/store'
 import { cloudInUse } from '../lib/ai'
 import { plural } from '../lib/words'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
 import { cfgOf, type Edit, editReady, newEdit, newId } from '../lib/connEdit'
-import { ConnEditor, FoldersEditor, ModeChoices } from './Settings'
+import { withTier } from '../lib/tiers'
+import { ConnEditor, FoldersEditor, ModeChoices, TierChoices, TierModels } from './Settings'
 
-export function Setup({ settings, connectors }: { settings: Settings; connectors: Connector[] }) {
+/** The connection a tier elsewhere starts from: a server on your network, or a cloud AI. */
+const editFor = (t: Tier, connectors: Connector[]): Edit =>
+  t.runs === 'cloud'
+    ? newEdit(connectors.find((c) => c.where === 'cloud'))
+    : { ...newEdit(connectors.find((c) => c.id === 'local')), label: 'Your AI server', base_url: '' }
+
+export function Setup({ settings, connectors, tiers }: { settings: Settings; connectors: Connector[]; tiers: Tier[] }) {
   const { toast } = useFeedback()
   const ref = useRef<HTMLDialogElement>(null)
   const [folders, setFolders] = useState<string[]>([])
   const [move, setMove] = useState(settings.move_files)
-  const [mode, setMode] = useState<'connect' | 'none'>('connect')
-  const [edit, setEdit] = useState<Edit>(() => newEdit(connectors.find((c) => c.where !== 'cloud') ?? connectors[0]))
+  // Until Lindley can look at the computer itself, an AI on it, as before tiers
+  const [tier, setTier] = useState<Tier>(() => tiers.find((t) => t.id === 'full') ?? tiers[0])
+  const [edit, setEdit] = useState<Edit>(() => editFor(tier, connectors))
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -25,6 +33,11 @@ export function Setup({ settings, connectors }: { settings: Settings; connectors
     if (d && !d.open) d.showModal()
   }, [])
   const c = connectors.find((x) => x.id === edit.type)
+  const elsewhere = tier.runs === 'network' || tier.runs === 'cloud'
+  const choose = (t: Tier) => {
+    if (t.runs !== tier.runs && (t.runs === 'network' || t.runs === 'cloud')) setEdit(editFor(t, connectors))
+    setTier(t)
+  }
 
   const save = async () => {
     if (!folders.length) {
@@ -38,27 +51,34 @@ export function Setup({ settings, connectors }: { settings: Settings; connectors
     next.ai.providers = {}
     JOBS.forEach((j) => (next.ai.jobs[j] = { connection: null, model: null }))
     let key: [string, string] | null = null
-    if (mode === 'connect') {
+    let ready: Settings | null
+    if (elsewhere) {
       if (c?.needs_key && !edit.ack) {
         toast('Read the warning and check the box to use a cloud AI, or choose an AI on a computer you own.')
         return
       }
       if (!editReady(edit, c)) {
-        toast('Paste your API key, or choose No AI.')
+        toast('Paste your API key, or choose another tier.')
         document.getElementById('su-key')?.focus()
+        return
+      }
+      if (tier.runs === 'network' && !edit.base_url.trim()) {
+        toast('Type your AI server’s address, for example http://192.168.1.20:11434/v1.')
+        document.getElementById('su-url')?.focus()
         return
       }
       const id = newId(edit.label || c?.short || 'ai', [])
       next.ai.providers[id] = cfgOf(edit, c)
-      // The one connection does every job it can
-      JOBS.forEach((j) => {
-        if (c?.jobs.includes(j)) next.ai.jobs[j] = { connection: id, model: null }
-      })
+      ready = withTier(next, connectors, tier, id)
       if (edit.key.trim()) key = [id, edit.key.trim()]
+    } else ready = withTier(next, connectors, tier)
+    if (!ready) {
+      toast('Lindley can’t set that up. Choose another tier.')
+      return
     }
     setSaving(true)
     try {
-      const saved = await api.saveSettings(next)
+      const saved = await api.saveSettings(ready)
       if (key) await api.saveKey(...key)
       const cloud = cloudInUse(saved, connectors)
       invalidate()
@@ -101,41 +121,17 @@ export function Setup({ settings, connectors }: { settings: Settings; connectors
           <p>Lindley flags any page it read with less than {settings.ocr.review_below}% confidence so you can check it. You can change this in Settings.</p>
         </section>
         <section aria-labelledby="su-4">
-          <h3 id="su-4">4. Connect an AI, if you like</h3>
-          <p>An AI reads handwriting, helps sort pages into documents, and answers your questions. Where it runs decides who else sees your scans.</p>
-          <fieldset className="choices">
-            <legend className="sr-only">Connect an AI</legend>
-            <label className="choice">
-              <input type="radio" name="su-ai" checked={mode === 'connect'} onChange={() => setMode('connect')} />
-              <span>
-                <b>
-                  <Icon name="plus" />
-                  Connect one AI.
-                </b>{' '}
-                Choose the service below. An AI on your own computer keeps your scans private. A cloud AI needs an API key, and sees every page it reads.
-              </span>
-            </label>
-            <label className="choice">
-              <input type="radio" name="su-ai" checked={mode === 'none'} onChange={() => setMode('none')} />
-              <span>
-                <b>
-                  <Icon name="warn" />
-                  No AI. Use Lindley with its rules and Tesseract.
-                </b>{' '}
-                Printed pages are read on this computer, and Lindley groups pages into documents when its rules are sure. You match the other scans to documents by
-                hand. Handwriting waits for your review. You can connect an AI in Settings at any time.
-              </span>
-            </label>
-          </fieldset>
-          {mode === 'connect' && (
-            <>
-              <ConnEditor e={edit} set={(e) => setEdit(e)} connectors={connectors} inSetup saved={false} />
-              <p className="fld-note">
-                <Icon name="plus" /> You can add more AIs later in Settings, and give each job its own: for example, reading on this computer and questions with a
-                cloud AI.
-              </p>
-            </>
-          )}
+          <h3 id="su-4">4. How much AI can this computer run?</h3>
+          <p>
+            An AI reads handwriting, helps sort pages into documents, and answers your questions. The more memory this computer has, the more it can do itself. Where
+            the AI runs decides who else sees your scans.
+          </p>
+          <TierChoices ctx="su" tiers={tiers} value={tier.id} onChoose={choose} />
+          {elsewhere ? <ConnEditor e={edit} set={(e) => setEdit(e)} connectors={connectors} inSetup saved={false} /> : <TierModels tier={tier} />}
+          <p className="fld-note">
+            <Icon name="plus" /> You can change this in Settings at any time, and give each job its own AI: for example, reading on this computer and questions with
+            a cloud AI.
+          </p>
         </section>
         <div className="actions">
           <button className="btn primary" onClick={save} disabled={saving} data-tip="Save these settings and open the Inbox">

@@ -49,7 +49,7 @@ export default function App() {
   const acts = useActions()
   const nav = useNavigate()
   const [params] = useSearchParams()
-  const { settings, connectors } = useApp()
+  const { settings, connectors, tiers } = useApp()
   const [q, setQ] = useState(params.get('q') ?? '')
   const main = useRef<HTMLElement>(null)
   const setup = useApi('setup', api.setupNeeded)
@@ -203,7 +203,7 @@ export default function App() {
           />
         )}
       </div>
-      {setup.data?.needed && settings && connectors.length > 0 && <Setup settings={settings} connectors={connectors} />}
+      {setup.data?.needed && settings && connectors.length > 0 && tiers.length > 0 && <Setup settings={settings} connectors={connectors} tiers={tiers} />}
       <TooltipLayer />
     </>
   )

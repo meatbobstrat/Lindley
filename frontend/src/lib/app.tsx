@@ -1,4 +1,4 @@
-// What every view needs: the overview (counts, documents, folders), settings and connectors.
+// What every view needs: the overview (counts, documents, folders), settings, connectors and tiers.
 // The overview is checked every few seconds; when the background work has moved on (a scan
 // read, pages sorted), every view fetches its data again.
 
@@ -14,6 +14,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const ov = useApi('overview', api.overview)
   const st = useApi('settings', api.settings)
   const cn = useApi('connectors', api.connectors)
+  const tr = useApi('tiers', api.tiers)
   const [offline, setOffline] = useState(false)
   const [looking, setLookingNow] = useState<{ label: string; scope: Scope }>({ label: 'Your archive', scope: {} })
   const setLooking = useCallback((label: string, scope: Scope = {}) => setLookingNow({ label, scope }), [])
@@ -52,6 +53,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       offline: offline || (!!ov.error && !ov.data),
       settings: st.data,
       connectors,
+      tiers: tr.data ?? [],
       docs,
       folders,
       folderPath,
@@ -60,7 +62,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       scope: looking.scope,
       setLooking,
     }
-  }, [ov.data, ov.error, st.data, cn.data, offline, looking, setLooking])
+  }, [ov.data, ov.error, st.data, cn.data, tr.data, offline, looking, setLooking])
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }

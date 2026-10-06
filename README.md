@@ -143,8 +143,9 @@ watched folders ─► watcher ─► intake ───────────�
     questions, and finding related pages. For example, reading on this computer and questions
     with a cloud AI.
   - With no AI connected, the rules and Tesseract still work, and you match pages to documents
-    by hand where the rules aren't sure. First-run setup asks for one AI connection, or none;
-    more can be added in Settings.
+    by hand where the rules aren't sure. First-run setup asks how much AI the computer can run
+    (a performance tier, from Basic, with none, to Cloud) and gives each job an AI to suit it;
+    Settings can change the tier, or any job's AI.
 
 ## UI design
 
@@ -319,6 +320,7 @@ file in these places, in order:
 | `ai.providers` | Named AI connections. `type` is a connector (`local`, `anthropic`, `openai`, `google`, `openai_compat`), with `base_url` and `model` where needed. `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some). `daily_limit` and `monthly_limit` cap the calls it makes on its own. `per_minute` and `at_once` throttle every call |
 | `ask` | Ask Lindley: `local_chars` and `cloud_chars`, how much page text goes with a question to an AI on your own computers (6000) or a cloud AI (40000); `history_turns`, how many earlier questions and answers go with it (6) |
 | `ai.jobs` | Which connection does each job: `vision` (reading hard pages), `assemble` (sorting pages into documents), `chat` (Ask Lindley) and `embed` (finding related pages), each with an optional `model` of its own. Out of the box there are none |
+| `ai.tier` | The performance tier the jobs were set from (`basic`, `light`, `full`, `power`, `server` or `cloud`; see `providers/tiers.py`). Setup and Settings set it; it's `null` once a person changes a job's AI |
 
 **API keys never go in `settings.json`.** They're kept in Windows Credential Manager (the
 Keychain on a Mac), under "Lindley", with the connection's name. Settings › AI and privacy saves
@@ -428,21 +430,26 @@ and you can ask it about them. All of it from a one-click install.
   app (or undoes either): before, its text stayed as read the wrong way up or from the mirror
   image. The new reading replaces Tesseract's own, never a person's text or an AI's better
   reading, the Inbox is sorted again with it, and the status bar says so while it's read
-- [ ] Performance tiers: Lindley runs on anything from a 10-year-old laptop to a gaming PC with
-  32 GB of graphics memory, and the AI each job uses is picked to suit the computer
-  (design/database.md, "Local models on a CPU"):
-  - **Basic** (any computer): Tesseract and the rules. No AI; pages
-    Tesseract can't read wait for a person, or for a cloud AI if one is set up
-  - **Light** (8 GB of memory): EmbeddingGemma for what pages are about, and the check whether a
-    page carries on from the last one. Handwriting is read slowly, a few minutes a page
+- [x] Performance tiers: Lindley runs on anything from a 10-year-old laptop to a gaming PC with
+  32 GB of graphics memory. Setup and Settings ask how much AI the computer can run, and give
+  each job an AI to suit it (`providers/tiers.py`; design/database.md, "Local models on a
+  CPU"). The choice of AI for each job stays underneath, and changing one makes it your own:
+  - **Basic** (any computer): Tesseract and the rules. No AI; pages Tesseract can't read wait
+    for a person. A job can still be given to a cloud AI underneath
+  - **Light** (8 GB of memory): Gemma 4 E2B reads handwriting slowly, a few minutes a page, and
+    EmbeddingGemma finds what pages are about. The check whether a page carries on from the last
+    one comes with `lm_continues` (After the MVP)
   - **Full local** (16 GB, a recent processor or built-in graphics): Gemma 4 E4B reads
     handwriting, sorts pages and answers questions, at a minute or two a hard page
-  - **Power** (32 GB of memory, or a graphics card with 8–32 GB): larger models (Gemma 4 12B,
-    26B-A4B or 31B), quicker and more accurate
+  - **Power** (32 GB of memory, or a graphics card with 8 GB or more): Gemma 4 26B-A4B, quicker
+    and more accurate. Gemma 4 12B (an 8 GB card) or 31B (24 GB) can be set for each job
   - **Your own AI server**: the local connection pointed at a computer on your network that has
-    the power (works today)
+    the power
   - **Cloud** (an API key): runs on anything, down to a Windows tablet. Pages leave the computer
     and each one costs money
+
+  For now a tier on this computer runs on Ollama, and Settings says which models to pull. Gemma 4
+  E2B and 26B haven't been benched on Lindley's scans yet
 - [ ] A local AI that comes with Lindley: llama.cpp's `llama-server` (the Vulkan build, which also
   uses built-in graphics), started and stopped by Lindley, with each tier's models downloaded when
   chosen. Ollama and LM Studio stay supported through the local connection. First, bench
@@ -482,5 +489,5 @@ and you can ask it about them. All of it from a one-click install.
     with the rules it scored 0.94 where they alone scored 0.82, at about 7 seconds a pair on a
     2019 desktop processor
   - Gemma 4 E4B for handwriting Tesseract can't read (about a minute a page on that processor)
-  - EmbeddingGemma for what pages are about, if it helps build documents; it should replace
-    nomic-embed-text as the local connection's default either way
+  - EmbeddingGemma for what pages are about, if it helps build documents (it's the local
+    connection's default now, in place of nomic-embed-text)

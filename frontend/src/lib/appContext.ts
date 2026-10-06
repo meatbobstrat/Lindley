@@ -1,7 +1,7 @@
 // What every view needs, shared through context (lib/app.tsx provides it).
 
 import { createContext, useContext, useEffect } from 'react'
-import type { Connector, DocSummary, Folder, Job, Overview, Scope, Settings } from '../api/client'
+import type { Connector, DocSummary, Folder, Job, Overview, Scope, Settings, Tier } from '../api/client'
 import type { Conn } from './ai'
 
 export interface AppData {
@@ -9,6 +9,7 @@ export interface AppData {
   offline: boolean
   settings: Settings | undefined
   connectors: Connector[]
+  tiers: Tier[]
   docs: Map<number, DocSummary>
   folders: Map<number, Folder>
   folderPath: (id: number | null) => string[]

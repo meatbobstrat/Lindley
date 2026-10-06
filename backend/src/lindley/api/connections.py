@@ -1,4 +1,5 @@
-"""AI connectors and connections: what can be connected, keys, and Test connection."""
+"""AI connectors and connections: what can be connected, performance tiers, keys, and Test
+connection."""
 
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ from lindley.config import ProviderConfig, Settings, resolve_settings_path
 from lindley.providers import keys
 from lindley.providers.base import JOBS, Job, ProviderError
 from lindley.providers.registry import connectors
+from lindley.providers.tiers import TIERS
 
 router = APIRouter(tags=["connections"])
 
@@ -37,6 +39,23 @@ def list_connectors() -> list[dict]:
             }
         )
     return out
+
+
+@router.get("/tiers")
+def list_tiers() -> list[dict]:
+    """The performance tiers a person can choose from, in providers/tiers.py. The UI sets each
+    job's AI from the one chosen."""
+    return [
+        {
+            "id": t.id,
+            "label": t.label,
+            "needs": t.needs,
+            "does": t.does,
+            "runs": t.runs,
+            "models": dict(t.models),
+        }
+        for t in TIERS
+    ]
 
 
 @router.get("/setup")

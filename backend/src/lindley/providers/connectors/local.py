@@ -16,7 +16,7 @@ INFO = ConnectorInfo(
         "vision": "gemma4:e4b",
         "assemble": "gemma4:e4b",
         "chat": "gemma4:e4b",
-        "embed": "nomic-embed-text",
+        "embed": "embeddinggemma",
     },
     default_base_url="http://localhost:11434/v1",
     # A laptop with no graphics card may take minutes over a page

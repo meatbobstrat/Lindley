@@ -12,6 +12,7 @@ import logging
 import sqlite3
 
 from lindley import activity
+from lindley.assembler.answers import Progress
 from lindley.assembler.run import RunReport, assemble
 from lindley.config import Settings
 from lindley.providers import allowance
@@ -44,9 +45,12 @@ def sort_on_its_own(
     if chat is not None and allowance.failing(conn, name):
         chat = None  # its last calls all failed: the rules sort alone for a while
     left = allowance.automatic_left(conn, settings, name) if chat else 0
-    return sort_with(
-        conn, settings, chat if left is None or left > 0 else None, True, max_ai_calls=left
-    )
+    if chat is None or left == 0:
+        return sort_with(conn, settings, None, True)
+    # Shown in the status bar only once there's a question for the AI: mostly there's none
+    label = _label(settings, name)
+    with activity.doing("sort", 0, asked=False, connection=label, quiet=True) as step:
+        return sort_with(conn, settings, chat, True, progress=step, max_ai_calls=left)
 
 
 def sort_with(
@@ -54,16 +58,24 @@ def sort_with(
     settings: Settings,
     chat: ChatProvider | None,
     automatic: bool,
+    progress: Progress | None = None,
     **kw,
 ) -> RunReport:
     """Sort the Inbox with `chat`, recording each call to it as it's made, whether it worked or
-    failed: a job cut short, or a sort that then fails, still shows what it spent."""
+    failed: a job cut short, or a sort that then fails, still shows what it spent. `progress`
+    is told how many calls are made, of how many are coming."""
     name = settings.ai.connection_for("assemble")
 
     def record(ok: bool, used: list[Usage]) -> None:
         allowance.record(conn, name, "assemble", automatic, ok=ok, used=used)
 
-    return assemble(conn, settings.assembler, chat, on_call=record, **kw)
+    return assemble(conn, settings.assembler, chat, on_call=record, on_progress=progress, **kw)
+
+
+def _label(settings: Settings, name: str | None) -> str | None:
+    """The name people see for a connection, as the status bar gives it."""
+    cfg = settings.ai.providers.get(name) if name else None
+    return (cfg.label if cfg else None) or name
 
 
 def read_on_its_own(
@@ -79,8 +91,7 @@ def read_on_its_own(
     left = allowance.automatic_left(conn, settings, name)
     if left == 0 or allowance.failing(conn, name) or not waiting_for_vision(conn):
         return None
-    label = settings.ai.providers[name].label if name in settings.ai.providers else None
-    with activity.doing("read", 0, asked=False, connection=label or name) as step:
+    with activity.doing("read", 0, asked=False, connection=_label(settings, name)) as step:
         run = pipeline.read_waiting(conn, automatic=True, limit=left, progress=step)
     if run.stopped:
         log.info("Reading hard pages on its own: %s", run.stopped)

@@ -20,6 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from lindley import activity
+from lindley.assembler.answers import Progress
 from lindley.assembler.auto import sort_on_its_own, sort_with
 from lindley.config import Settings
 from lindley.db.database import connect
@@ -45,15 +46,21 @@ def connection_label(settings: Settings, job: str) -> str | None:
     return cfg.label or (connector.info.label if connector else cfg.type)
 
 
-def sort_as_asked(conn: sqlite3.Connection, settings: Settings, page_ids: set[int]) -> dict:
+def sort_as_asked(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    page_ids: set[int],
+    progress: Progress | None = None,
+) -> dict:
     """Send these pages to the sorting AI at once, as a person asked: asking is the OK,
     whatever the connection's `allow`, and the calls are recorded as ones a person asked for.
-    Raises ProviderError when there's no AI to sort with."""
+    `progress` is told how many calls are made, of how many are coming. Raises ProviderError
+    when there's no AI to sort with."""
     name = settings.ai.connection_for("assemble")
     if not name:
         raise ProviderError("No AI is set up to sort pages. Choose one in Settings.")
     chat = get_provider(settings.ai, "assemble")
-    report = sort_with(conn, settings, chat, False, asked=page_ids)
+    report = sort_with(conn, settings, chat, False, progress, asked=page_ids)
     return {
         "ai_calls": report.ai_calls,
         "reused": report.ai_reused,
@@ -179,8 +186,9 @@ class AiWork:
     def _sort(self, conn: sqlite3.Connection, settings: Settings, job: Job) -> tuple[str, bool]:
         label = connection_label(settings, "assemble")
         log.info("Sorting %s with %s, as a person asked", _plural(len(job.pages), "page"), label)
-        with activity.doing("sort", len(job.pages), asked=True, connection=label):
-            r = sort_as_asked(conn, settings, set(job.pages))
+        pages = len(job.pages)
+        with activity.doing("sort", 0, pages=pages, asked=True, connection=label) as step:
+            r = sort_as_asked(conn, settings, set(job.pages), progress=step)
         return (
             f"The AI sorted the pages: {_plural(r['documents_created'], 'new document')} and"
             f" {_plural(r['pages_added'], 'page')} added to documents. Check its work under"

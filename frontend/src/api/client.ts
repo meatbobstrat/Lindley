@@ -96,8 +96,10 @@ export interface Counts {
   failed: number
 }
 
-/** AI work in hand: reading hard pages, or sorting pages; `asked`: a person sent it. */
-export interface AiWorking { kind: 'read' | 'sort'; done: number; of: number; asked: boolean; connection: string | null }
+/** AI work in hand: reading hard pages, or sorting pages; `asked`: a person sent it. `done` of
+ *  `of` counts pages when reading, and questions asked of the AI when sorting; `pages`: how many
+ *  pages it's about (0: not known). */
+export interface AiWorking { kind: 'read' | 'sort'; done: number; of: number; pages: number; asked: boolean; connection: string | null }
 /** What came of AI work a person asked for; ids grow, so a newer one is higher. */
 export interface AiFinished { id: number; kind: 'read' | 'sort'; message: string; ok: boolean }
 

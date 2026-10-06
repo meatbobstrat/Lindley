@@ -15,7 +15,7 @@ from pathlib import PurePath
 
 from lindley import history
 from lindley.assembler import ai, apply, evidence, relearn
-from lindley.assembler.answers import Answers, AskFirst, OnCall
+from lindley.assembler.answers import Answers, AskFirst, OnCall, Progress
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page, weigh_terms
 from lindley.assembler.place import Candidate, DocEnds, candidates
@@ -260,10 +260,12 @@ def assemble(
     asked: set[int] | None = None,
     weights: dict[str, float] | None = None,
     on_call: OnCall | None = None,
+    on_progress: Progress | None = None,
 ) -> RunReport:
     """Sort the Inbox. With `chat`, the AI may be asked about what the rules couldn't settle:
     passing it is the OK to call it (see lindley.providers.allowance), at most `max_ai_calls`
-    times if given, and `on_call` is told of each call as it's made. A person is asked first,
+    times if given, and `on_call` is told of each call as it's made, `on_progress` of how many
+    calls are made of how many are coming. A person is asked first,
     with hints, so on its own the AI is only asked about pages that have waited
     `ask_ai_after_days` and that no one turned down. With `asked`, a person asked about those
     pages: only they are sent, at once. Without `chat`, the rules decide alone, helped by what
@@ -275,7 +277,7 @@ def assemble(
         evidence.use_weights(weights if weights is not None else relearn.learned(conn))
         if conn.in_transaction:  # what the caller left uncommitted is kept, as it always was
             conn.commit()
-        answers = Answers(conn, on_call)
+        answers = Answers(conn, on_call, on_progress)
         # Questions for the AI met while the decisions are saved are asked once they're put
         # back, and the Inbox sorted again with the answers (Answers). Those answers may raise
         # new questions, once or twice: the last time round, those wait for a later run.
@@ -339,9 +341,24 @@ def _assemble(
         if more and sum(len(g.pages) for g in more) <= MAX_AI_PAGES:
             windows.append(more)
     unasked: list[list[Group]] = []  # not asked, and no earlier answer: they wait for the AI
-    for window in windows:
-        ps = [p for g in window for p in g.pages]
-        result = ai.refine(may_ask(ps), ps, window, answers)
+
+    def pages_of(window: list[Group]) -> list[Page]:
+        return [p for g in window for p in g.pages]
+
+    # Earlier answers first, which cost nothing, so the calls still to make are known
+    earlier = [ai.refine(None, pages_of(w), w, answers) for w in windows]
+    to_ask = sum(
+        1
+        for w, r in zip(windows, earlier, strict=True)
+        if r.groups is None and not r.problem and may_ask(pages_of(w))
+    )
+    if max_ai_calls is not None:
+        to_ask = min(to_ask, max(0, max_ai_calls - answers.calls))
+    answers.expect(to_ask)
+    for window, result in zip(windows, earlier, strict=True):
+        ps = pages_of(window)
+        if result.groups is None and not result.problem:
+            result = ai.refine(may_ask(ps), ps, window, answers)
         if result.groups is None:
             if result.problem:
                 report.ai_rejected.append(result.problem)

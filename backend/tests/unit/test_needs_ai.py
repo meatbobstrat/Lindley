@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from lindley import activity
 from lindley.assembler import assemble
 from lindley.assembler.auto import read_on_its_own, sort_on_its_own
 from lindley.assembler.bench import TruePage, load
@@ -354,3 +355,71 @@ def test_failed_sorting_calls_are_recorded_as_failed_and_an_ai_that_keeps_failin
     # Failed calls use up nothing of the day's limit, and after three the AI is left alone
     assert allowance.automatic_left(conn, settings, "local") == 10
     assert sort_on_its_own(conn, settings, down).ai_calls == 0 and down.calls == 3
+
+
+def test_sorting_says_how_many_questions_it_has_asked_of_how_many(conn):
+    story(conn)
+    steps = []
+    assemble(conn, chat=FakeProvider(), on_progress=lambda done, of: steps.append((done, of)))
+    assert steps[0] == (0, 1) and steps[-1] == (1, 1)  # known before it's asked
+    steps.clear()  # the fake's reply was rejected: the pages wait, and it's not asked again
+    assemble(conn, chat=FakeProvider(), on_progress=lambda done, of: steps.append((done, of)))
+    assert set(steps) == {(0, 0)}
+
+
+def test_questions_the_ai_may_not_be_asked_arent_counted(conn):
+    story(conn)
+    steps = []
+    report = assemble(
+        conn, chat=FakeProvider(), max_ai_calls=0, on_progress=lambda *s: steps.append(s)
+    )
+    assert report.ai_calls == 0 and set(steps) == {(0, 0)}
+
+
+def test_quiet_work_isnt_shown_until_theres_something_to_do():
+    with activity.doing("sort", 0, asked=False, quiet=True) as step:
+        assert activity.current() == []
+        step(0, 2)
+        [shown] = activity.current()
+        assert (shown["done"], shown["of"], shown["pages"]) == (0, 2, 0) and "quiet" not in shown
+    assert activity.current() == []
+
+
+def test_sorting_on_its_own_shows_in_the_status_bar_while_it_asks(conn, settings):
+    story(conn)
+    settings.ai.providers["local"].allow = "auto"
+    seen = []
+    fake = FakeProvider.chat
+
+    def watched(self, messages):
+        seen.extend(activity.current())
+        return fake(self, messages)
+
+    with patch.object(FakeProvider, "chat", watched):
+        sort_on_its_own(conn, settings)
+    [entry] = seen
+    assert entry["kind"] == "sort" and not entry["asked"] and (entry["done"], entry["of"]) == (0, 1)
+    assert activity.current() == []
+
+
+def test_the_status_bar_counts_the_questions_while_a_person_s_sort_runs(client, settings, conn):
+    client.get("/api/health")
+    story(conn)
+    assemble(conn)
+    gate, inside = threading.Event(), threading.Event()
+    fake = FakeProvider.chat
+
+    def slow(self, messages):
+        inside.set()
+        assert gate.wait(10)
+        return fake(self, messages)
+
+    with patch.object(FakeProvider, "chat", slow):
+        assert client.post("/api/needs-ai/sort").json()["queued"] == 2
+        assert inside.wait(10)
+        [working] = client.get("/api/overview").json()["ai"]["working"]
+        assert working["kind"] == "sort" and working["asked"] and working["pages"] == 2
+        assert (working["done"], working["of"]) == (0, 1)
+        gate.set()
+        assert client.app.state.ai_work.wait_idle()
+    assert client.get("/api/overview").json()["ai"]["working"] == []

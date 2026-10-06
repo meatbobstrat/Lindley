@@ -12,7 +12,8 @@ declined): it fails the same way next time without a call. A call that failed wi
 network, a refused key) isn't kept, so it's tried again next time.
 
 Each call is told to `on_call` as soon as it's made, with what it used, in the same transaction
-that keeps its answer: a job cut short still shows what it spent.
+that keeps its answer: a job cut short still shows what it spent. And `on_progress` is told how
+many calls are made of how many are known to be coming, for the status bar.
 """
 
 from __future__ import annotations
@@ -32,6 +33,8 @@ FAILED = "lindley:failed:"  # a kept reply that's an answer that couldn't be use
 # Told of each call made: whether it worked, and what it used (throttle.metered). It's called
 # with a transaction open, which the Answers commits.
 OnCall = Callable[[bool, list[Usage]], None]
+# Told how many calls are made, of how many are known to be coming: more can come up as it goes.
+Progress = Callable[[int, int], None]
 
 
 class AskFirst(Exception):  # noqa: N818 - a signal, not an error
@@ -44,12 +47,20 @@ class Answers:
     meanwhile. A question met then gets no answer yet. It's kept, the decision is put back
     (AskFirst), the questions are asked (ask_waiting), and the decision made again with them."""
 
-    def __init__(self, conn: sqlite3.Connection, on_call: OnCall | None = None) -> None:
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        on_call: OnCall | None = None,
+        on_progress: Progress | None = None,
+    ) -> None:
         self.conn = conn
         self.on_call = on_call
+        self.on_progress = on_progress
         self.calls = 0  # calls made to the AI, or to be made once the database is let go
         self.reused = 0  # questions answered from earlier replies
         self.failed = 0  # of the calls, those that failed: they answered nothing
+        self.expected = 0  # calls known to be coming in this run, for on_progress
+        self.asked = 0  # calls finished in this run, whether they worked or failed
         self._waiting: dict[str, tuple[ChatProvider, Purpose, list[ChatMessage], list[int]]] = {}
         self._fresh: set[str] = set()  # asked in this run: not reused when met again
         self._failed: dict[str, Exception] = {}  # failed in this run: fails the same way again
@@ -100,17 +111,31 @@ class Answers:
         page_ids: list[int],
     ) -> str:
         self._fresh.add(k)
-        with metered(chat) as used:
-            try:
-                reply = chat.chat(messages)
-            except Exception as e:
-                self.failed += 1
-                self._failed[k] = e
-                answered = getattr(e, "answered", False)  # paid for: not asked again
-                self._keep(k, purpose, page_ids, FAILED + str(e) if answered else None, False, used)
-                raise
-        self._keep(k, purpose, page_ids, reply, True, used)
-        return reply
+        try:
+            with metered(chat) as used:
+                try:
+                    reply = chat.chat(messages)
+                except Exception as e:
+                    self.failed += 1
+                    self._failed[k] = e
+                    answered = getattr(e, "answered", False)  # paid for: not asked again
+                    kept = FAILED + str(e) if answered else None
+                    self._keep(k, purpose, page_ids, kept, False, used)
+                    raise
+            self._keep(k, purpose, page_ids, reply, True, used)
+            return reply
+        finally:
+            self.asked += 1
+            self._tell()
+
+    def expect(self, n: int) -> None:
+        """`n` more calls are coming."""
+        self.expected += n
+        self._tell()
+
+    def _tell(self) -> None:
+        if self.on_progress is not None:
+            self.on_progress(self.asked, max(self.expected, self.asked))
 
     def _keep(
         self,
@@ -142,6 +167,7 @@ class Answers:
         fails is remembered, and fails the same way when the decision is made again."""
         assert not self.conn.in_transaction
         waiting, self._waiting = self._waiting, {}
+        self.expect(len(waiting))
         for k, (chat, purpose, messages, page_ids) in waiting.items():
             with contextlib.suppress(Exception):  # kept in _failed, and met again
                 self._call(k, chat, purpose, messages, page_ids)

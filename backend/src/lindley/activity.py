@@ -28,12 +28,29 @@ _finished: deque[dict] = deque(maxlen=FINISHED_KEPT)
 
 @contextmanager
 def doing(
-    kind: Kind, of: int, *, asked: bool, connection: str | None = None
+    kind: Kind,
+    of: int,
+    *,
+    asked: bool,
+    connection: str | None = None,
+    pages: int | None = None,
+    quiet: bool = False,
 ) -> Iterator[Callable[[int, int | None], None]]:
     """While the block runs, the status bar shows this work; `step(done, of)` says how many
-    are done, and of how many if that's changed."""
+    are done, and of how many if that's changed. Reading counts pages; sorting counts the
+    questions asked of the AI, and `pages` is how many pages it's sorting (0: not known).
+    `quiet`: not shown until a step says there's something to do (of > 0), for work that
+    mostly turns out to need no AI."""
     key = next(_ids)
-    entry = {"kind": kind, "done": 0, "of": of, "asked": asked, "connection": connection}
+    entry = {
+        "kind": kind,
+        "done": 0,
+        "of": of,
+        "pages": of if pages is None else pages,
+        "asked": asked,
+        "connection": connection,
+        "quiet": quiet,
+    }
     with _lock:
         _working[key] = entry
 
@@ -60,7 +77,11 @@ def finished(kind: Kind, message: str, ok: bool = True) -> int:
 
 def current() -> list[dict]:
     with _lock:
-        return [dict(e) for e in _working.values()]
+        return [
+            {k: v for k, v in e.items() if k != "quiet"}
+            for e in _working.values()
+            if not (e["quiet"] and e["of"] == 0)
+        ]
 
 
 def recent() -> list[dict]:

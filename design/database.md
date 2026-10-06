@@ -446,7 +446,7 @@ Most of the memoir stayed in the Inbox. Claude grouped it sensibly, but at 55–
 
 What it showed needs doing:
 - **Sorting calls are recorded when the whole job ends.** A job cut short would leave calls already paid for unrecorded.
-- **Progress while sorting.** The status bar stayed at "0 of 143" for five minutes.
+- Done: **progress while sorting.** The status bar stayed at "0 of 143" for five minutes. It now counts the questions asked of the AI ("question 2 of 4"): the calls for groups the rules couldn't settle are known before the first is made, and questions met while decisions are saved are added when they're asked.
 - Done: **a person can send any page under review to the reading AI** (Ask the AI, in Review and on the scan), not only pages Tesseract read below 70%. Lindley still sends only those on its own.
 - Done: **groups the AI checked at 60–74% are offered for one-click accept** (`assembler.offer_at`), first in the Inbox, with "Accept all" as one change to undo. 75% stays the bar for Lindley to make them itself (see "Confidence bars").
 - Done: **mirror-image scans** are found and turned round (`detected_mirror`), and a person can flip a page.

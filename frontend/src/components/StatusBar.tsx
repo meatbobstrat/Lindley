@@ -10,9 +10,12 @@ import { plural } from '../lib/words'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
 
-/** "AI reading page 2 of 5", "AI sorting 6 pages" */
+/** "AI reading page 2 of 5", "AI sorting 6 pages · question 1 of 2" */
 function doing(w: AiWorking): string {
-  if (w.kind === 'sort') return `AI sorting ${plural(w.of, 'page')}`
+  if (w.kind === 'sort') {
+    const what = `AI sorting ${w.pages ? plural(w.pages, 'page') : 'the Inbox'}`
+    return w.of > 0 ? `${what} · question ${Math.min(w.done + 1, w.of)} of ${w.of}` : what
+  }
   return w.of > 1 ? `AI reading page ${Math.min(w.done + 1, w.of)} of ${w.of}` : 'AI reading a page'
 }
 
@@ -82,7 +85,9 @@ export function StatusBar() {
         <button
           key={i}
           onClick={() => nav('/needs-ai')}
-          data-tip={`${w.connection ?? 'The AI'} is ${w.kind === 'sort' ? 'sorting pages' : 'reading hard pages'}, ${w.asked ? 'as you asked' : 'on its own'}. You can keep working meanwhile.${
+          data-tip={`${w.connection ?? 'The AI'} is ${w.kind === 'sort' ? 'sorting pages' : 'reading hard pages'}, ${w.asked ? 'as you asked' : 'on its own'}.${
+            w.kind === 'sort' ? ' It’s asked about the pages the rules couldn’t settle, a few at a time, and more questions can come up as it goes.' : ''
+          } You can keep working meanwhile.${
             queued ? ` ${plural(queued, 'more request')} ${queued === 1 ? 'waits' : 'wait'} behind it.` : ''
           }`}
         >

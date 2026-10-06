@@ -1,5 +1,7 @@
 """When Lindley may call an AI on its own, and the record of the calls it makes."""
 
+from datetime import date
+
 import pytest
 
 from lindley.db.database import connect, init_db
@@ -116,3 +118,45 @@ def test_the_cost_of_a_call():
     assert cost(Usage("claude-sonnet-5-5", 1000, 1000)) == pytest.approx(0.012)
     assert cost(Usage("llama", 1000, 1000)) is None
     assert cost(Usage(None)) is None
+
+
+MILLION = 1_000_000
+
+
+def test_openai_and_google_calls_cost_their_own_prices():
+    sol, k100 = "gpt-6.1-sol", 100_000  # under OpenAI's long prompts
+    assert cost(Usage(sol, k100, k100)) == pytest.approx(0.2 + 1.0)
+    assert cost(Usage(sol, cache_read_tokens=k100)) == pytest.approx(0.01)
+    assert cost(Usage(sol, cache_write_tokens=k100)) == pytest.approx(0.25)
+    # "-" in OpenAI's table: no discount for a cached read, and a write costs as input
+    assert cost(Usage("gpt-5.5-pro", cache_read_tokens=k100)) == pytest.approx(3.0)
+    assert cost(Usage("gpt-5.4", cache_write_tokens=k100)) == pytest.approx(0.25)
+    assert cost(Usage("text-embedding-3-small", MILLION)) == pytest.approx(0.02)
+    assert cost(Usage("gemini-2.5-flash", MILLION, MILLION, MILLION)) == pytest.approx(2.83)
+    assert cost(Usage("gemini-embedding-2", MILLION)) == pytest.approx(0.20)
+
+
+def test_a_long_prompt_is_priced_as_long_for_the_whole_call():
+    # OpenAI over 272K tokens sent, cache included
+    assert cost(Usage("gpt-6.1-sol", 272_000)) == pytest.approx(0.544)
+    assert cost(Usage("gpt-6.1-sol", 200_000, 1000, 72_001)) == pytest.approx(
+        (200_000 * 4.0 + 1000 * 15.0 + 72_001 * 0.20) / MILLION
+    )
+    # Gemini Pro over 200K; Claude has no long price
+    assert cost(Usage("gemini-2.5-pro", 200_001)) == pytest.approx(200_001 * 2.5 / MILLION)
+    assert cost(Usage("claude-opus-5-5", 900_000)) == pytest.approx(3.6)
+
+
+def test_gemini_flash_costs_twice_as_much_from_2027():
+    flash = Usage("gemini-3.8-flash", MILLION, MILLION)
+    assert cost(flash, date(2026, 12, 31)) == 4.5
+    assert cost(flash, date(2027, 1, 1)) == 9.0
+
+
+def test_a_dated_snapshot_costs_as_its_model():
+    assert cost(Usage("gpt-6.1-sol-2026-09-15", 100_000)) == pytest.approx(0.2)
+    assert cost(Usage("claude-haiku-4-5-20251001", MILLION)) == 1.0
+    assert cost(Usage("gemini-2.5-flash-001", MILLION)) == pytest.approx(0.30)
+    # Not a snapshot: another model, not priced as one it starts like
+    assert cost(Usage("claude-opus-5-6", MILLION)) is None
+    assert cost(Usage("gemini-2.5-flash-lite", MILLION)) == pytest.approx(0.10)

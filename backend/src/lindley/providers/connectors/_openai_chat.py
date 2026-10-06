@@ -72,20 +72,20 @@ class OpenAIChat:
     def _errors(self):
         return sdk_errors(openai, self.who, self.base_url)
 
-    def _used(self, sent: int | None, written: int | None, cached: int | None = None) -> None:
-        """Tell what a call used. OpenAI's APIs count the tokens read from a cache among those
-        sent; Usage doesn't."""
+    def _used(self, sent: int | None, written: int | None, details=None) -> None:
+        """Tell what a call used. OpenAI's APIs count the tokens read from a cache, and those
+        written to it, among those sent (`details` says how many); Usage doesn't."""
         if self.on_usage is not None:
-            cached = cached or 0
-            self.on_usage(Usage(self.model, max(0, (sent or 0) - cached), written or 0, cached))
+            cached = getattr(details, "cached_tokens", None) or 0
+            cache_write = getattr(details, "cache_write_tokens", None) or 0
+            rest = max(0, (sent or 0) - cached - cache_write)
+            self.on_usage(Usage(self.model, rest, written or 0, cached, cache_write))
 
     def _completed(self, usage) -> None:
         """Chat Completions' usage, when the server says (Ollama and LM Studio do)."""
         if usage is not None:
             details = getattr(usage, "prompt_tokens_details", None)
-            self._used(
-                usage.prompt_tokens, usage.completion_tokens, getattr(details, "cached_tokens", 0)
-            )
+            self._used(usage.prompt_tokens, usage.completion_tokens, details)
 
     def _complete(self, messages: list[dict], **options) -> str:
         with self._errors():

@@ -56,9 +56,7 @@ class Provider(OpenAIChat):
         charged too."""
         if (usage := getattr(r, "usage", None)) is not None:
             details = getattr(usage, "input_tokens_details", None)
-            self._used(
-                usage.input_tokens, usage.output_tokens, getattr(details, "cached_tokens", 0)
-            )
+            self._used(usage.input_tokens, usage.output_tokens, details)
 
     def _respond(self, instructions: str | openai.Omit, items: list[dict]) -> str:
         with self._errors():

@@ -460,9 +460,7 @@ and you can ask it about them. All of it from a one-click install.
 - [ ] Ask Lindley, next:
   - related pages by meaning (embeddings) alongside the words searched for, once the `embed`
     job fills the `embeddings` table
-  - an estimated cost for OpenAI's and Google's calls: their tokens are counted, but
-    `providers/prices.py` lists only Claude's prices. And what an answer stopped part-way
-    used (an AI says only at the end)
+  - what an answer stopped part-way used (an AI says only at the end)
   - for a cloud AI that handles them well, tools over the read-only views, so it can look
     further itself
   - "Ask Lindley about this page" in the toolbars and right-click menus, as in the mockup

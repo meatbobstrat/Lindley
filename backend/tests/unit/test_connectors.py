@@ -369,7 +369,7 @@ def test_openai_chat_through_responses_and_not_stored():
 def test_openai_says_what_each_call_used():
     usage = {
         "input_tokens": 12,
-        "input_tokens_details": {"cached_tokens": 2},
+        "input_tokens_details": {"cached_tokens": 2, "cache_write_tokens": 3},
         "output_tokens": 5,
         "output_tokens_details": {"reasoning_tokens": 1},
         "total_tokens": 17,
@@ -378,7 +378,7 @@ def test_openai_says_what_each_call_used():
     p, used = make(openai, Server(httpx2.Response(200, json=reply))), []
     p.on_usage = used.append
     p.chat(TALK)
-    assert used == [Usage(openai.INFO.default_models["chat"], 10, 5, 2)]
+    assert used == [Usage(openai.INFO.default_models["chat"], 7, 5, 2, 3)]
 
 
 def test_openai_reads_a_page():

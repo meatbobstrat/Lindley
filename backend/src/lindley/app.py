@@ -40,7 +40,12 @@ from lindley.db.database import connect, init_db
 from lindley.watcher.watcher import FolderWatcher
 from lindley.worker.ai_work import AiWork
 from lindley.worker.intake import absolute_paths
-from lindley.worker.pipeline import follow_settings, rate_vision_readings, recover_interrupted
+from lindley.worker.pipeline import (
+    follow_settings,
+    rate_vision_readings,
+    recover_interrupted,
+    remove_leftovers,
+)
 
 # Built frontend (frontend/dist), served in production so the app is a single process.
 FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
@@ -118,6 +123,7 @@ def create_app(
         conn = connect(settings.db_path)
         try:  # nothing else is running yet: whatever was running was cut off
             recover_interrupted(conn)
+            remove_leftovers(settings)
             rate_vision_readings(conn)
             absolute_paths(conn)
             follow_settings(conn, settings)  # settings.json may have changed while it was closed

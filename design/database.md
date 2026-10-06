@@ -57,7 +57,7 @@ Settings stay in `settings.json`. API keys stay in Windows Credential Manager an
 
 ## What intake extracts
 
-Each step writes an `intake_steps` row, so the UI can show "Reading…" and a failed step can be retried alone. Steps left `running` when Lindley closed are picked up at start-up: a vision call goes back in the queue, any other step is marked failed, and each watcher start reads scans whose reading never finished, from Lindley's own copy.
+Each step writes an `intake_steps` row, so the UI can show "Reading…" and a failed step can be retried alone. Steps left `running` when Lindley closed are picked up at start-up: a vision call goes back in the queue; a one-off check of a page read before (upside down, mirror image) goes back once, and is marked failed if it's cut off again, in case that page is what stops Lindley; any other step is marked failed, and each watcher start reads scans whose reading never finished, from Lindley's own copy. Work files a cut-off reading left (turned page copies in the processing folder, Tesseract's `lindley-ocr-*` temp folders) are removed at start-up once they're an hour old.
 
 | Step | Reads | Writes |
 |---|---|---|

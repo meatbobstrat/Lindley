@@ -1,5 +1,8 @@
 import json
+import os
+import tempfile
 import threading
+import time
 
 import pytest
 from PIL import Image, ImageDraw
@@ -15,9 +18,13 @@ from lindley.providers.throttle import Guarded, Throttle
 from lindley.worker.intake import import_file
 from lindley.worker.ocr.base import PageResult
 from lindley.worker.pipeline import (
+    CHECK_AGAIN,
     Pipeline,
+    Step,
     rate_vision_readings,
     recover_interrupted,
+    remove_leftovers,
+    run_step,
     turned_since_read,
     unfinished_scans,
     waiting_for_vision,
@@ -744,6 +751,47 @@ def test_steps_cut_off_when_lindley_closed_are_picked_up(conn, settings, scan):
     assert steps(conn, sid, "ocr")[0][0] == "failed"
     assert steps(conn, sid, "vision")[0][0] == "queued" and waiting_for_vision(conn) == 1
     assert unfinished_scans(conn) == [sid]  # its reading was cut off too
+
+
+def test_a_check_cut_off_when_lindley_closed_is_done_again_once(conn, settings, scan):
+    sid = read_before_mirrors_were_tried(conn, settings, scan, ("ee ; me ,9t0", 42.0))
+    [(step,)] = conn.execute(
+        "SELECT id FROM intake_steps WHERE step = 'image' AND status = 'queued'"
+    ).fetchall()
+    page = page_row(conn, sid)["id"]
+
+    def cut_off():
+        with (  # the step is left running, as when Lindley closes
+            pytest.raises(KeyboardInterrupt),
+            run_step(conn, sid, Step.IMAGE, page_id=page, queued=step),
+        ):
+            raise KeyboardInterrupt
+
+    cut_off()
+    assert recover_interrupted(conn) == (1, 0)
+    assert steps(conn, sid, "image")[-1] == ("queued", CHECK_AGAIN)
+    cut_off()
+    assert recover_interrupted(conn) == (0, 1)  # cut off twice: it may be what stops Lindley
+    assert steps(conn, sid, "image")[-1][0] == "failed"
+    assert Pipeline(settings, MirrorOcr()).check_mirrored(conn) == (0, 0)
+
+
+def test_work_files_left_by_a_reading_cut_off_are_removed(settings, tmp_path, monkeypatch):
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "temp"))
+    work = settings.processing_dir
+    work.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "temp").mkdir()
+    old = [work / "page-72-45de86e5.png", tmp_path / "temp" / "lindley-ocr-qvk4z0q6"]
+    new = [work / "page-73-0a1b2c3d.png", tmp_path / "temp" / "lindley-ocr-k2j4h5g6"]
+    kept = [work / "added", tmp_path / "temp" / "someone-else"]  # uploads waiting; not ours
+    for path in old + new + kept:
+        path.mkdir() if "." not in path.name else path.write_bytes(b"png")
+    (old[1] / "mirrored.png").write_bytes(b"png")
+    an_hour_ago = time.time() - 3700
+    for path in old + kept:
+        os.utime(path, (an_hour_ago, an_hour_ago))
+    assert remove_leftovers(settings) == 2
+    assert [p.exists() for p in old + new + kept] == [False, False, True, True, True, True]
 
 
 def test_unfinished_scans_leave_out_pages_waiting_for_vision(conn, settings, scan):

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import sqlite3
 import threading
 import time
@@ -30,7 +31,12 @@ from lindley.providers.registry import get_provider
 from lindley.providers.throttle import metered
 from lindley.worker import image as pageimage
 from lindley.worker.ocr.base import OcrEngine, PageResult, marked_confidence
-from lindley.worker.ocr.tesseract import ORIENTATION_MIN_CONF, TesseractEngine, TesseractNotFound
+from lindley.worker.ocr.tesseract import (
+    ORIENTATION_MIN_CONF,
+    TesseractEngine,
+    TesseractNotFound,
+)
+from lindley.worker.ocr.tesseract import leftovers as tesseract_leftovers
 from lindley.worker.ocr.vision import VisionEngine
 
 
@@ -61,6 +67,9 @@ log = logging.getLogger(__name__)
 STOP_AFTER_FAILURES = 3  # read_waiting stops after this many vision failures in a row
 # When Tesseract is unsure which way up a page is, the turned reading must beat this many points.
 TURN_MARGIN = 10
+# A one-off check cut off when Lindley closed, queued again; cut off again, it's left failed.
+CHECK_AGAIN = "Lindley closed while checking this page; it will be checked again"
+LEFTOVER_AFTER_S = 3600  # remove_leftovers: work files older than this were left behind
 
 # Each page's latest vision step.
 _LAST_VISION = (
@@ -239,10 +248,13 @@ def follow_settings(conn: sqlite3.Connection, settings: Settings) -> tuple[int, 
 def recover_interrupted(conn: sqlite3.Connection) -> tuple[int, int]:
     """After Lindley stopped part way (closed, or the computer slept and was shut down): steps
     left running can't finish now. A vision call goes back in the queue, sent again on its own
-    or waiting in Needs AI as any other; any other step is marked failed, and the scan's reading
-    is picked up again (unfinished_scans). Run once at start-up, before any work.
+    or waiting in Needs AI as any other. A one-off check of a page read before (run_step from a
+    queued row: it keeps the note it was queued with) goes back in the queue once; cut off a
+    second time, it's marked failed, so a page that stops Lindley isn't tried for ever. Any
+    other step is marked failed, and the scan's reading is picked up again (unfinished_scans).
+    Run once at start-up, before any work.
 
-    Returns (vision calls queued again, other steps marked failed).
+    Returns (steps queued again, steps marked failed).
     """
     with conn:
         vision = conn.execute(
@@ -250,14 +262,46 @@ def recover_interrupted(conn: sqlite3.Connection) -> tuple[int, int]:
             " WHERE status = 'running' AND step = 'vision'",
             ("Lindley closed while the vision model was reading this page",),
         ).rowcount
+        checks = conn.execute(
+            "UPDATE intake_steps SET status = 'queued', started_at = NULL, error = ?"
+            " WHERE status = 'running' AND step IN ('ocr', 'image') AND error IS NOT NULL"
+            " AND error != ?",
+            (CHECK_AGAIN, CHECK_AGAIN),
+        ).rowcount
         other = conn.execute(
             "UPDATE intake_steps SET status = 'failed', finished_at = datetime('now'), error = ?"
             " WHERE status = 'running'",
             ("Lindley closed before this step finished",),
         ).rowcount
-    if vision or other:
-        log.info("Picked up after an interruption: %d vision call(s), %d step(s)", vision, other)
-    return vision, other
+    if vision or checks or other:
+        log.info(
+            "Picked up after an interruption: %d vision call(s), %d check(s), %d step(s)",
+            vision,
+            checks,
+            other,
+        )
+    return vision + checks, other
+
+
+def remove_leftovers(settings: Settings) -> int:
+    """Work files a reading cut off when Lindley closed left behind: turned page copies in the
+    processing folder (Pipeline._upright) and Tesseract's folders (tesseract.leftovers). Only
+    those over an hour old, in case another Lindley (scripts/intake.py) is reading now: one
+    page's reading never takes that long. Run at start-up. Returns how many were removed."""
+    old = time.time() - LEFTOVER_AFTER_S
+    found = [*settings.processing_dir.glob("page-*.png"), *tesseract_leftovers()]
+    removed = 0
+    for path in found:
+        try:
+            if path.stat().st_mtime > old:
+                continue
+            shutil.rmtree(path) if path.is_dir() else path.unlink()
+        except OSError:
+            continue  # in use, or gone already
+        removed += 1
+    if removed:
+        log.info("Removed %d work file(s) left by a reading cut off", removed)
+    return removed
 
 
 def unfinished_scans(conn: sqlite3.Connection) -> list[int]:
@@ -319,7 +363,8 @@ def run_step(
 ) -> Iterator[None]:
     """Record a step as running while the block runs, then as done, or failed with the error.
 
-    `queued` is the id of a queued row to run, instead of adding a new one; `supersedes` is the
+    `queued` is the id of a queued row to run, instead of adding a new one (it keeps the note
+    it was queued with while it runs: recover_interrupted); `supersedes` is the
     id of the page's last row for this step, run again in a new one. Either is claimed in one
     statement, and raises StepTaken if another thread has claimed it since. The block should
     commit its own writes (`with conn:`) so a failure rolls them back.
@@ -328,7 +373,7 @@ def run_step(
         if queued:
             row = queued
             claimed = conn.execute(
-                "UPDATE intake_steps SET status = 'running', engine_version = ?, error = NULL,"
+                "UPDATE intake_steps SET status = 'running', engine_version = ?,"
                 " started_at = datetime('now') WHERE id = ? AND status = 'queued'",
                 (engine_version, row),
             ).rowcount
@@ -356,7 +401,8 @@ def run_step(
         raise
     with conn:
         conn.execute(
-            "UPDATE intake_steps SET status = 'done', finished_at = datetime('now') WHERE id = ?",
+            "UPDATE intake_steps SET status = 'done', error = NULL, finished_at = datetime('now')"
+            " WHERE id = ?",
             (row,),
         )
 
@@ -509,8 +555,7 @@ class Pipeline:
         queued once by the database upgrade to schema 10: each still read poorly by Tesseract,
         the way it was scanned, is tried turned over when the orientation check calls it
         upright, and the turn kept if it reads clearly better. A page a person checked, turned
-        or completed, or that reads well now, is left alone. Each queued page is checked once;
-        one cut off when Lindley closed isn't checked again.
+        or completed, or that reads well now, is left alone. Each queued page is checked once.
 
         Returns (pages checked, pages turned).
         """
@@ -637,7 +682,8 @@ class Pipeline:
     ) -> tuple[int, int]:
         """Queued one-off checks of pages read before (check_upside_down, check_mirrored): each
         row's queued step is skipped, with why `leave` says, or done by `check`, True if it
-        changed the page. Each is done once; one cut off when Lindley closed isn't done again.
+        changed the page. Each is done once; one cut off when Lindley closed is done again
+        (recover_interrupted).
         Returns (pages checked, pages changed)."""
         checked = changed = 0
         version = self.tesseract_version

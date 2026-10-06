@@ -36,6 +36,12 @@ ORIENTATION_MIN_CONF = 2.0
 # A reading with fewer words than this is tried again with an adaptive threshold.
 FEW_WORDS = 20
 ADAPTIVE = ["-c", "thresholding_method=1"]  # Leptonica's adaptive Otsu
+WORK_PREFIX = "lindley-ocr-"  # the folders its output and turned pages are written to
+
+
+def leftovers() -> list[Path]:
+    """Work folders a reading cut off part way left behind (pipeline.remove_leftovers)."""
+    return list(Path(tempfile.gettempdir()).glob(f"{WORK_PREFIX}*"))
 
 
 class TesseractNotFound(RuntimeError):
@@ -151,7 +157,7 @@ class TesseractEngine:
         """Read the page turned round left to right, as a mirror image must be: the back of a
         carbon copy, or a page scanned through the paper. The words' boxes are those of the
         turned-round page."""
-        with tempfile.TemporaryDirectory(prefix="lindley-ocr-", ignore_cleanup_errors=True) as d:
+        with tempfile.TemporaryDirectory(prefix=WORK_PREFIX, ignore_cleanup_errors=True) as d:
             turned = Path(d) / "mirrored.png"
             with Image.open(image_path) as img:
                 dpi = {"dpi": img.info["dpi"]} if "dpi" in img.info else {}
@@ -192,7 +198,7 @@ class TesseractEngine:
     def _read_oriented(self, image_path: Path, extra: list[str] | None = None):
         """One --psm 1 run: (turn, page size, parsed TSV). TSV and hOCR can't both go to
         stdout, so they're written to a folder of their own."""
-        with tempfile.TemporaryDirectory(prefix="lindley-ocr-", ignore_cleanup_errors=True) as d:
+        with tempfile.TemporaryDirectory(prefix=WORK_PREFIX, ignore_cleanup_errors=True) as d:
             out = Path(d) / "page"
             self._run(image_path, str(out), ["--psm", "1", *(extra or []), "tsv", "hocr"])
             tsv = out.with_suffix(".tsv").read_text(encoding="utf-8", errors="replace")

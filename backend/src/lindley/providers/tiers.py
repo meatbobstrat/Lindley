@@ -45,10 +45,13 @@ TIERS: tuple[Tier, ...] = (
         id="light",
         label="Light",
         needs="8 GB of memory.",
-        does="A small AI on this computer reads handwriting, slowly: a few minutes a page. It "
-        "also finds pages about the same thing. Sorting and questions use Lindley's rules.",
+        # E4B, not E2B: on the bench E2B left words and half a page out (design/database.md,
+        # "Local models"). The smaller computer only makes it slower
+        does="Gemma 4 E4B on this computer reads handwriting, slowly: a few minutes a page. "
+        "EmbeddingGemma finds pages about the same thing. Sorting and questions use Lindley's "
+        "rules.",
         runs="this",
-        models={"vision": "gemma4:e2b", "embed": EMBED},
+        models={"vision": "gemma4:e4b", "embed": EMBED},
     ),
     Tier(
         id="full",

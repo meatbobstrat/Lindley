@@ -436,7 +436,7 @@ and you can ask it about them. All of it from a one-click install.
   CPU"). The choice of AI for each job stays underneath, and changing one makes it your own:
   - **Basic** (any computer): Tesseract and the rules. No AI; pages Tesseract can't read wait
     for a person. A job can still be given to a cloud AI underneath
-  - **Light** (8 GB of memory): Gemma 4 E2B reads handwriting slowly, a few minutes a page, and
+  - **Light** (8 GB of memory): Gemma 4 E4B reads handwriting slowly, a few minutes a page, and
     EmbeddingGemma finds what pages are about. The check whether a page carries on from the last
     one comes with `lm_continues` (After the MVP)
   - **Full local** (16 GB, a recent processor or built-in graphics): Gemma 4 E4B reads
@@ -449,7 +449,7 @@ and you can ask it about them. All of it from a one-click install.
     and each one costs money
 
   For now a tier on this computer runs on Ollama, and Settings says which models to pull. Gemma 4
-  E2B and 26B haven't been benched on Lindley's scans yet
+  26B hasn't been benched on Lindley's scans yet
 - [ ] A local AI that comes with Lindley: llama.cpp's `llama-server` (the Vulkan build, which also
   uses built-in graphics), started and stopped by Lindley, with each tier's models downloaded when
   chosen. Ollama and LM Studio stay supported through the local connection. First, bench

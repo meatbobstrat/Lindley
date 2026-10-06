@@ -20,6 +20,7 @@ def test_the_tiers_grow_with_the_computer():
     assert set(full.models) == set(power.models) == {"vision", "assemble", "chat", "embed"}
     assert full.models["chat"] == connectors()["local"].info.default_models["chat"]
     assert light.models["embed"] == full.models["embed"] == "embeddinggemma"
+    assert light.models["vision"] == full.models["vision"]  # E2B left half a page out
 
 
 def test_tiers_are_offered(client):

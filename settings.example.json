@@ -18,7 +18,9 @@
   "assembler": {
     "group_at": 75,
     "hint_at": 45,
-    "ai_band": [35, 75]
+    "offer_at": 60,
+    "ai_band": [35, 75],
+    "ask_ai_after_days": 0
   },
   "ask": {
     "local_chars": 6000,
@@ -26,6 +28,7 @@
     "history_turns": 6
   },
   "ai": {
+    "tier": null,
     "jobs": {
       "vision": { "connection": "local", "model": null },
       "assemble": { "connection": "claude", "model": null },
@@ -47,7 +50,7 @@
       "claude": {
         "type": "anthropic",
         "label": "Claude",
-        "model": "claude-opus-5",
+        "model": "claude-opus-5-5",
         "allow": "ask",
         "daily_limit": 50,
         "monthly_limit": 1000,

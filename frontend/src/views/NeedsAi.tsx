@@ -10,7 +10,7 @@ import { PageGrid } from '../components/PageGrid'
 import { SizeControl } from '../components/SizeControl'
 import { useActions } from '../lib/actionsContext'
 import { useSelection, useThumb } from '../lib/view'
-import { type Conn } from '../lib/ai'
+import { type Conn, pagesToSort } from '../lib/ai'
 import { docHome, useApp, useLooking } from '../lib/appContext'
 import { needs, plural, quoted, sentences, them, when } from '../lib/words'
 import { DBtn, Dock, DockProgress, Sep } from '../ui/Dock'
@@ -69,10 +69,10 @@ export function NeedsAiList() {
   const items = sorter ? sort.items : []
   const groups = new Map<number | null, ReadItem[]>()
   read.pages.forEach((r) => groups.set(r.document_id, [...(groups.get(r.document_id) ?? []), r]))
-  const n = read.pages.length + items.reduce((k, x) => k + x.pages.length, 0)
+  const n = read.pages.length + pagesToSort(items)
   const toRead = read.pages.filter((r) => !r.sending)
   const toSort = items.filter((x) => !x.sending)
-  const unsent = toRead.length + toSort.reduce((k, x) => k + x.pages.length, 0)
+  const unsent = toRead.length + pagesToSort(toSort)
   const auto = vision?.cfg.allow === 'auto' || sorter?.cfg.allow === 'auto'
 
   const readThem = acts.readWithAi
@@ -210,7 +210,7 @@ export function NeedsAiList() {
                   </button>
                 }
               >
-                <b>No AI is set up to sort pages.</b> {plural(sort.items.reduce((k, x) => k + x.pages.length, 0), 'page')} Lindley’s rules couldn’t sort wait in
+                <b>No AI is set up to sort pages.</b> {plural(pagesToSort(sort.items), 'page')} Lindley’s rules couldn’t sort wait in
                 the Inbox for you to group by hand.
               </Banner>
             )}

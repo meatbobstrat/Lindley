@@ -11,7 +11,7 @@ import { PageGrid } from '../components/PageGrid'
 import { SizeControl } from '../components/SizeControl'
 import { useActions } from '../lib/actionsContext'
 import { useApp, useLooking } from '../lib/appContext'
-import { who } from '../lib/ai'
+import { pagesToSort, who } from '../lib/ai'
 import { useSelection, useThumb } from '../lib/view'
 import { plural, quoted, sentences, shortName, them } from '../lib/words'
 import { DBtn, Dock, DockText, Sep } from '../ui/Dock'
@@ -80,7 +80,7 @@ export function InboxView() {
   const asides = pages.filter((p) => hintOf.get(p.id)?.kind === 'set_aside')
   const toRead = (waiting.data?.read.pages ?? []).filter((r) => r.document_id == null).map((r) => r.page_id)
   const toSort = sorting ? (waiting.data?.sort.items ?? []) : []
-  const nAi = toRead.length + toSort.reduce((k, x) => k + x.pages.length, 0)
+  const nAi = toRead.length + pagesToSort(toSort)
 
   const showOnly = (want: number[]) => {
     setSort('match')
@@ -111,7 +111,7 @@ export function InboxView() {
         {nAi > 0 && (
           <AiBanner
             read={toRead}
-            sortPages={toSort.reduce((k, x) => k + x.pages.length, 0)}
+            sortPages={pagesToSort(toSort)}
             onAsk={() => {
               if (toRead.length) acts.readWithAi(toRead)
               if (toSort.length) acts.sortWithAi()

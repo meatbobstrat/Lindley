@@ -148,6 +148,22 @@ def test_pages_on_their_way_to_the_ai_are_marked_and_not_sent_twice(client, sett
     assert overview["ai"]["working"] == [] and len(overview["ai"]["finished"]) == 2
 
 
+def test_a_page_in_two_questions_for_the_sorting_ai_counts_once(client, conn, scan):
+    a, b, c = (
+        conn.execute("SELECT id FROM pages WHERE scan_id = ?", (scan(f"{n}.png"),)).fetchone()[0]
+        for n in "abc"
+    )
+    with conn:
+        conn.executemany(
+            "INSERT INTO needs_ai (pages, proposal, since) VALUES (?, '[]', datetime('now'))",
+            [(json.dumps([a, b]),), (json.dumps([b, c]),)],
+        )
+    assert client.get("/api/overview").json()["counts"]["needs_ai"] == 3
+    sent = client.post("/api/needs-ai/sort").json()
+    assert sent["queued"] + sent["already"] == 3
+    assert client.app.state.ai_work.wait_idle()
+
+
 def test_pages_the_ai_didnt_manage_say_so(client, settings, conn, scan):
     queue_hard_pages(conn, settings, scan)
 

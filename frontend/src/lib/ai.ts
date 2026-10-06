@@ -1,6 +1,6 @@
 // Where each AI connection runs, and so who else sees what it's sent. Always said in words.
 
-import type { Connector, Job, ProviderConfig, Settings } from '../api/client'
+import type { Connector, Job, ProviderConfig, Settings, SortItem } from '../api/client'
 
 export type Reach = 'this' | 'network' | 'server' | 'cloud'
 
@@ -100,3 +100,6 @@ export const anyAi = (settings: Settings | undefined, connectors: Connector[]) =
 
 /** Who gets it: the company for a cloud AI, else the connection's name. */
 export const who = (c: Conn | null) => (c ? (c.cloud ? c.company : c.label) : '')
+
+/** The pages waiting for the sorting AI: a page can be in more than one question. */
+export const pagesToSort = (items: SortItem[]) => new Set(items.flatMap((x) => x.pages.map((p) => p.id))).size

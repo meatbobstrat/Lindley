@@ -40,9 +40,11 @@ def overview(request: Request, conn: Conn) -> dict:
     work = request.app.state.ai_work
     sending = work.pages()  # sent already, on their way to the AI
     sorting = settings.ai.connection_for("assemble") is not None
-    needs_ai = sum(r["page_id"] not in sending for r in vision_queue(conn))
+    waiting = {r["page_id"] for r in vision_queue(conn)}
     if sorting:  # with no AI to sort with, there's nothing to ask: a person sorts them
-        needs_ai += sum(p["id"] not in sending for i in sort_items(conn) for p in i["pages"])
+        # a page can be in more than one question, and counts once
+        waiting |= {p["id"] for i in sort_items(conn) for p in i["pages"]}
+    needs_ai = len(waiting - set(sending))
     return {
         "version": __version__,
         "counts": browse.counts(

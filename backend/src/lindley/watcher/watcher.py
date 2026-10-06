@@ -342,9 +342,10 @@ class FolderWatcher:
             log.info("%d possible duplicate(s) to look at under Duplicates", len(found))
         report = sort_on_its_own(conn, self.settings, self.chat)
         log.info(
-            "Assembled %d Inbox pages: %d new documents",
+            "Assembled %d Inbox pages: %d new document%s",
             report.considered,
             report.documents_created,
+            "" if report.documents_created == 1 else "s",
         )
         try:  # people's answers so far may teach it to do better
             if (learnt := relearn(conn)) is not None:

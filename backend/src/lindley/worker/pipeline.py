@@ -592,8 +592,7 @@ class Pipeline:
         for r in turned_since_read(conn):
             if stop and stop.is_set():
                 break
-            rotation, flip = (r["detected_rotation"] + r["user_rotation"]) % 360, mirrored(r)
-            turned = (rotation, flip)
+            rotation, flip = turned = _turned_now(r)
             image = Path(r["image_path"])
             try:
                 reading = self._tesseract_reading(
@@ -604,9 +603,7 @@ class Pipeline:
                 continue
             with conn:
                 conn.execute("BEGIN IMMEDIATE")  # a person may be turning it again
-                now = self._page(conn, r["page_id"])
-                same = ((now["detected_rotation"] + now["user_rotation"]) % 360, mirrored(now))
-                same = same == turned
+                same = _turned_now(self._page(conn, r["page_id"])) == turned
                 current = conn.execute(
                     "SELECT source, text, confidence, confirmed_at FROM transcriptions"
                     " WHERE page_id = ? AND is_current = 1",
@@ -1284,7 +1281,7 @@ def _leave_unmirrored(r: sqlite3.Row, ocr) -> str | None:
 
 def _turned_reading_replaces(current: sqlite3.Row | None, reading: PageResult) -> bool:
     """Whether Tesseract's reading of a page a person turned is used in place of `current`:
-    Tesseract's own, or an AI's that reads no better; never a person's text, or one checked."""
+    Tesseract's own, or an AI's that reads worse; never a person's text, or one checked."""
     if current is None:
         return True
     if current["source"] == "user" or current["confirmed_at"] is not None:
@@ -1293,6 +1290,12 @@ def _turned_reading_replaces(current: sqlite3.Row | None, reading: PageResult) -
         return True
     was = PageResult(1, current["text"], current["confidence"], current["source"])
     return _preference(("tesseract", "", reading)) > _preference((current["source"], "", was))
+
+
+def _turned_now(page: sqlite3.Row) -> tuple[int, bool]:
+    """How the page is turned now: its rotation, and whether it's turned round (a mirror image),
+    as image.upright_page takes them and transcriptions.read_rotation, read_mirror note them."""
+    return (page["detected_rotation"] + page["user_rotation"]) % 360, mirrored(page)
 
 
 def mirrored(page: sqlite3.Row) -> bool:

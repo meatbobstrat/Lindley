@@ -259,7 +259,9 @@ vision model. Tesseract finds which way up a page is as it reads it; an upside-d
 are turned back with it, and a sideways page is read again from a turned copy (this needs
 `osd.traineddata`, which the UB-Mannheim installer includes). A page that still reads poorly
 is tried turned round left to right, in case it's a mirror image such as the back of a carbon
-copy, and a person can flip any page. Each page is also
+copy, and a person can flip any page. A page a person turns or flips in the app (or turns
+back with Undo) is read again by Tesseract the new way round, in the background; the new text
+replaces Tesseract's own, but never a person's text or an AI's better reading. Each page is also
 marked handwritten, printed or mixed. The script's summary counts blank pages, turned pages and
 each kind of writing.
 

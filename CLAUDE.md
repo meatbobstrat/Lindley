@@ -15,7 +15,8 @@
     in words, images) are shared helpers.
     `keys.py`: API keys in the system credential store (keyring)
   - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
-    `pipeline.py` (step records, Tesseract/vision reading), `ocr/` engines, `ai_work.py` (AI
+    `pipeline.py` (step records, Tesseract/vision reading; `read_turned_again`: pages a person
+    turned since Tesseract read them, read again by the watcher), `ocr/` engines, `ai_work.py` (AI
     work a person asked for, done in the background, one job at a time). `activity.py`: what
     the AI is doing now, and what came of it, for the status bar (in the overview)
   - `watcher/`: watchdog folder watcher, started by the app lifespan (`create_app(watch=False)` in tests)

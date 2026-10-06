@@ -128,7 +128,7 @@ on real scans.
   (`pipeline.turned_since_read`) is read again that way by the watcher, within a second or so
   (`Pipeline.read_turned_again`). Undoing a turn is a turn too, and several turns one after
   another are read once. The new reading is used in place of Tesseract's own, and of an AI's
-  that reads no better (`_preference`), never in place of a person's text or one they checked;
+  that reads worse (`_preference`), never in place of a person's text or one they checked;
   it's kept beside those. A page turned again while it was being read keeps that reading beside
   its own and is read again. Blank pages and pages in a completed document are left, as is a
   page whose reading again failed (Tesseract missing, say) until it's turned again. Inbox pages

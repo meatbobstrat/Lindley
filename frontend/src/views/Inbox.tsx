@@ -13,7 +13,7 @@ import { useActions } from '../lib/actionsContext'
 import { useApp, useLooking } from '../lib/appContext'
 import { who } from '../lib/ai'
 import { useSelection, useThumb } from '../lib/view'
-import { plural, quoted, shortName, them } from '../lib/words'
+import { plural, quoted, sentences, shortName, them } from '../lib/words'
 import { DBtn, Dock, DockText, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -174,7 +174,7 @@ export function InboxView() {
             }
           >
             <b>Do these {plural(g.payload.pages?.length ?? 0, 'scan')} go together?</b> {g.offer ? 'The AI checked them: it' : 'Lindley'} thinks they’re one document, <i>{g.payload.name}</i>, {g.confidence}% sure.{' '}
-            {g.reasons.join('. ')}.
+            {sentences(g.reasons)}
           </Banner>
         ))}
         {groups.length > 2 && (
@@ -203,7 +203,7 @@ export function InboxView() {
             <b>
               Lindley thinks {plural(asides.length, 'scan')} {asides.length === 1 ? 'isn’t' : 'aren’t'} part of any document.
             </b>{' '}
-            {[...new Set(asides.flatMap((p) => hintOf.get(p.id)?.reasons ?? []))].join('; ')}.
+            {sentences([...new Set(asides.flatMap((p) => hintOf.get(p.id)?.reasons ?? []))])}
           </Banner>
         )}
         </div>
@@ -329,7 +329,7 @@ function Hint({
       </button>
     )
   }
-  const sure = `${s.confidence}% sure${s.reasons.length ? `: ${s.reasons.join('. ')}` : ''}`
+  const sure = `${s.confidence}% sure${s.reasons.length ? `: ${sentences(s.reasons)}` : ''}`
   const dismiss = () => run(api.dismissSuggestion(s.id), 'Okay. Lindley won’t suggest that again.')
   let main
   let items: Parameters<typeof openMenu>[0]
@@ -349,11 +349,11 @@ function Hint({
     const cands = (s.payload.candidates ?? []).filter((c) => c.document != null && c.document !== s.document_id && docs.get(c.document!)?.status === 'progress')
     items = [
       { head: 'Where Lindley thinks it goes' },
-      { label: `Add to ${quoted(shortName(name))}, ${s.confidence}% sure`, icon: 'doc', tip: s.reasons.join('. '), onSelect: () => run(api.acceptSuggestion(s.id), `Added to ${quoted(shortName(name))}.`) },
+      { label: `Add to ${quoted(shortName(name))}, ${s.confidence}% sure`, icon: 'doc', tip: sentences(s.reasons), onSelect: () => run(api.acceptSuggestion(s.id), `Added to ${quoted(shortName(name))}.`) },
       ...cands.map((c) => ({
         label: `Add to ${quoted(shortName(c.name))}, ${c.confidence}% sure`,
         icon: 'doc' as const,
-        tip: c.reasons.join('. '),
+        tip: sentences(c.reasons),
         onSelect: () => acts.moveTo([p.id], { id: c.document!, name: c.name }),
       })),
       '-',

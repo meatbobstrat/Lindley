@@ -8,7 +8,7 @@ import { api, type DupCopy, type DupDocPair, type Duplicates, type DupSet, image
 import { useApi } from '../api/store'
 import { Banner, Crumb, Done, ErrorBox, Head, Loading } from '../components/bits'
 import { docHome, useApp, useLooking } from '../lib/appContext'
-import { plural, quoted, when } from '../lib/words'
+import { plural, quoted, sentences, when } from '../lib/words'
 import { DBtn, Dock, DockProgress, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -240,7 +240,7 @@ export function DupView() {
     }`
   } else if (!similar) {
     title = 'The same page, scanned twice'
-    sub = `${s?.reasons.join('. ') ?? ''}. The scans may look different because the scanner settings were. Keep the better copy; the other is set aside.`
+    sub = `${s?.reasons.length ? `${sentences(s.reasons)} ` : ''}The scans may look different because the scanner settings were. Keep the better copy; the other is set aside.`
   } else {
     title = 'Very similar text'
     sub = 'The wording is close but not the same, so these may be two drafts, or a copy with changes. If you want both, keep both.'
@@ -270,7 +270,7 @@ export function DupView() {
       >
         {s && !similar && (
           <Banner kind="ai">
-            <b>Lindley suggests keeping copy {copies.findIndex((c) => c.page_id === s.suggested) + 1}.</b> {s.why.join('. ')}.
+            <b>Lindley suggests keeping copy {copies.findIndex((c) => c.page_id === s.suggested) + 1}.</b> {sentences(s.why)}
           </Banner>
         )}
         {s && similar && (
@@ -338,7 +338,7 @@ export function DupView() {
                     {e.pair && doc ? `: ${docHome(doc, folderPath)}` : ''}
                   </h2>
                   {mine && (
-                    <span className="chip ai" data-tip={s.why.join('. ')}>
+                    <span className="chip ai" data-tip={sentences(s.why)}>
                       <Mark />
                       Lindley suggests this one
                     </span>

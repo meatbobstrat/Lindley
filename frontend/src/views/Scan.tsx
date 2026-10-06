@@ -10,7 +10,7 @@ import { TextPanel } from '../components/TextPanel'
 import { useActions } from '../lib/actionsContext'
 import { useApp, useLooking } from '../lib/appContext'
 import { who } from '../lib/ai'
-import { plural, quoted, shortName } from '../lib/words'
+import { plural, quoted, sentences, shortName } from '../lib/words'
 import { DBtn, Dock, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -62,7 +62,7 @@ export function ScanView() {
               </button>
             }
           >
-            Lindley thinks this belongs in {quoted(add.document_name ?? '')}, {add.confidence}% sure. {add.reasons.join('. ')}.
+            Lindley thinks this belongs in {quoted(add.document_name ?? '')}, {add.confidence}% sure. {sentences(add.reasons)}
           </Banner>
         )}
         {!aside && !add && group && (

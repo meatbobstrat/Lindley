@@ -12,7 +12,7 @@ import { useActions } from '../lib/actionsContext'
 import { useSelection, useThumb } from '../lib/view'
 import { type Conn } from '../lib/ai'
 import { docHome, useApp, useLooking } from '../lib/appContext'
-import { needs, plural, quoted, them, when } from '../lib/words'
+import { needs, plural, quoted, sentences, them, when } from '../lib/words'
 import { DBtn, Dock, DockProgress, Sep } from '../ui/Dock'
 import { Icon, Mark } from '../ui/icons'
 
@@ -316,7 +316,7 @@ export function NeedsAiItem() {
                   <li key={i}>
                     <span>
                       <b>{c.name}</b>, at the {c.at}, {c.confidence}% sure
-                      <small>{c.reasons.join('. ')}</small>
+                      <small>{sentences(c.reasons)}</small>
                     </span>
                     {c.document != null && docs.get(c.document)?.status === 'progress' && (
                       <button className="btn" onClick={() => acts.moveTo(ids, { id: c.document!, name: c.name })} data-tip={`Add ${them(ids.length)} to the end of ${quoted(c.name)}`}>
@@ -332,12 +332,12 @@ export function NeedsAiItem() {
               <b>Lindley’s guess, not sure enough to act on:</b>
               <ul className="na-guess">
                 {x.proposal.map((g, i) => (
-                  <li key={i} data-tip={g.reasons.join('. ')}>
+                  <li key={i} data-tip={sentences(g.reasons)}>
                     {plural(g.pages.length, 'page')}: <i>{g.name}</i>, {g.confidence}% sure
                   </li>
                 ))}
               </ul>
-              <span>{[...new Set(x.proposal.flatMap((g) => g.reasons))].join('. ')}.</span>
+              <span>{sentences([...new Set(x.proposal.flatMap((g) => g.reasons))])}</span>
             </>
           )}
         </Banner>

@@ -14,7 +14,7 @@ import { useActions } from '../lib/actionsContext'
 import { useSelection, useThumb } from '../lib/view'
 import { useApp, useLooking } from '../lib/appContext'
 import { who } from '../lib/ai'
-import { docDate, needs, plural, quoted, them, when } from '../lib/words'
+import { docDate, needs, plural, quoted, sentences, them, when } from '../lib/words'
 import { DBtn, Dock, DockText, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -139,7 +139,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
             <Meter
               value={d.confidence}
               label="Grouping confidence"
-              tip={`How sure Lindley is that these pages belong together${d.reasons.length ? `: ${d.reasons.join('. ')}` : ''}`}
+              tip={`How sure Lindley is that these pages belong together${d.reasons.length ? `: ${sentences(d.reasons)}` : ''}`}
             />
           )}
         </div>

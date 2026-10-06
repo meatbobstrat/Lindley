@@ -17,6 +17,15 @@ export function quoted(n: string): string {
   return opens > n.split('”').length - 1 ? `${n}”` : n
 }
 
+/** Reasons as sentences, each ending in one full stop: the rules' have none, an AI's often
+ * have their own (“…to Shermantown.”), and an ellipsis isn't the end of a sentence. */
+export const sentences = (reasons: string[]) =>
+  reasons
+    .map((r) => r.trim())
+    .filter(Boolean)
+    .map((r) => (/[.!?]["'”’)\]]*$/.test(r) ? r : `${r}.`))
+    .join(' ')
+
 /** "it"/"them" and friends, by count. */
 export const them = (n: number) => (n === 1 ? 'it' : 'them')
 export const needs = (n: number) => (n === 1 ? 'needs' : 'need')

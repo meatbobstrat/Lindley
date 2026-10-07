@@ -10,7 +10,8 @@ def test_the_frontends_own_pages_open_directly(settings, tmp_path, monkeypatch):
     (dist / "assets").mkdir(parents=True)
     (dist / "index.html").write_text("<html>Lindley</html>", encoding="utf-8")
     (dist / "assets" / "app.js").write_text("// app", encoding="utf-8")
-    monkeypatch.setattr(app_mod, "FRONTEND_DIST", dist)
+    # Not installed: no lindley/web, so the repo's frontend/dist
+    monkeypatch.setattr(app_mod, "FRONTEND_DIRS", (tmp_path / "web", dist))
     app = app_mod.create_app(settings, settings_path=tmp_path / "settings.json", watch=False)
     with TestClient(app, base_url="http://127.0.0.1") as client:
         assert client.get("/").text == "<html>Lindley</html>"
@@ -21,6 +22,16 @@ def test_the_frontends_own_pages_open_directly(settings, tmp_path, monkeypatch):
         assert client.get("/assets/app.js").text == "// app"
         assert client.get("/assets/gone.js").status_code == 404
         assert client.get("/api/nothing-here").status_code == 404
+
+
+def test_installed_its_own_copy_of_the_frontend_comes_first(settings, tmp_path, monkeypatch):
+    for name in ("web", "dist"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "index.html").write_text(name, encoding="utf-8")
+    monkeypatch.setattr(app_mod, "FRONTEND_DIRS", (tmp_path / "web", tmp_path / "dist"))
+    app = app_mod.create_app(settings, settings_path=tmp_path / "settings.json", watch=False)
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        assert client.get("/").text == "web"
 
 
 def test_only_lindleys_own_names_reach_it(client):

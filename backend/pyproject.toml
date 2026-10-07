@@ -40,7 +40,8 @@ lindley = "lindley.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-lindley = ["db/schema.sql"]
+# web: the built frontend, copied in by the installer (see app.FRONTEND_DIRS)
+lindley = ["db/schema.sql", "web/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

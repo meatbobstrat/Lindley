@@ -50,8 +50,10 @@ from lindley.worker.pipeline import (
     remove_leftovers,
 )
 
-# Built frontend (frontend/dist), served in production so the app is a single process.
-FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
+# The built frontend, served so the app is a single process: inside the package once installed
+# (the installer copies frontend/dist to lindley/web), else frontend/dist in the repo.
+_HERE = Path(__file__).resolve().parent
+FRONTEND_DIRS = (_HERE / "web", _HERE.parents[2] / "frontend" / "dist")
 
 DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
@@ -186,7 +188,7 @@ def create_app(
     ):
         app.include_router(router, prefix="/api")
 
-    if FRONTEND_DIST.is_dir():
-        app.mount("/", Frontend(directory=FRONTEND_DIST, html=True), name="frontend")
+    if built := next((d for d in FRONTEND_DIRS if d.is_dir()), None):
+        app.mount("/", Frontend(directory=built, html=True), name="frontend")
 
     return app

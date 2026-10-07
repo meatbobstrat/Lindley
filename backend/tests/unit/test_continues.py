@@ -35,6 +35,16 @@ def scanned(names: list[str]) -> list[Page]:
     ]
 
 
+@pytest.fixture(autouse=True)
+def shipped_weights():
+    """Scores here are the shipped weights': a test before may have left learned ones in use."""
+    from lindley.assembler import evidence
+
+    evidence.use_weights(None)
+    yield
+    evidence.use_weights(None)
+
+
 @pytest.fixture
 def conn(tmp_path):
     db = tmp_path / "lindley.db"

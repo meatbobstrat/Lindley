@@ -21,7 +21,8 @@ anything it isn't sure of, and never changes or deletes your original scans.
 
 Lindley is in early development. The app works end to end, from scans dropped in a folder to
 searchable PDFs and questions answered about them, and has been tried on a first batch of real
-scans. What's left for the MVP is the one-click installer (see the Roadmap).
+scans. Installers for Windows, Ubuntu and the Mac are built; what's left for the MVP is
+trying each by hand on a clean computer (see the Roadmap).
 
 | Part | State |
 | --- | --- |

@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections import Counter
 from functools import cache
@@ -30,6 +31,14 @@ from lindley.worker.ocr.base import PageResult
 
 # Where the UB-Mannheim installer puts it when it isn't added to PATH.
 WINDOWS_DEFAULT = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+# Where Homebrew puts it (Apple processors, then Intel): an app opened from the Finder doesn't
+# get Homebrew's PATH.
+MAC_DEFAULTS = (Path("/opt/homebrew/bin/tesseract"), Path("/usr/local/bin/tesseract"))
+# How to install it, where it isn't bundled
+INSTALL_HELP = {
+    "win32": "winget install UB-Mannheim.TesseractOCR",
+    "darwin": "brew install tesseract",
+}
 TIMEOUT_S = 300
 # Below this orientation confidence, Tesseract's answer is only a guess (see orientation).
 ORIENTATION_MIN_CONF = 2.0
@@ -109,12 +118,23 @@ def parse_hocr_turn(hocr: str) -> tuple[int, tuple[int, int] | None]:
     return (turn if turn in (90, 180, 270) else 0), size
 
 
+def bundled() -> Path:
+    """The Tesseract Lindley's Windows installer brings, beside the program (sys.prefix is the
+    install folder). Its tessdata is beside it, where it looks first."""
+    return Path(sys.prefix) / "tesseract" / "tesseract.exe"
+
+
 def find_tesseract(configured: Path | None = None) -> Path | None:
+    """The one settings name; else the one Lindley brings, the one on PATH, or one installed
+    where its installer usually puts it."""
     if configured:
         return configured if configured.exists() else None
+    if (ours := bundled()).exists():
+        return ours
     if found := shutil.which("tesseract"):
         return Path(found)
-    return WINDOWS_DEFAULT if WINDOWS_DEFAULT.exists() else None
+    usual = {"win32": (WINDOWS_DEFAULT,), "darwin": MAC_DEFAULTS}.get(sys.platform, ())
+    return next((p for p in usual if p.exists()), None)
 
 
 @cache
@@ -244,8 +264,9 @@ class TesseractEngine:
         return parse_osd(run.stdout) if run.returncode == 0 else None
 
     def missing_help(self) -> str:
-        where = self.settings.tesseract_path or "PATH or " + str(WINDOWS_DEFAULT)
+        where = self.settings.tesseract_path or "it isn't on PATH"
+        install = INSTALL_HELP.get(sys.platform, "sudo apt install tesseract-ocr")
         return (
-            f"Tesseract wasn't found ({where}). Install it "
-            "(winget install UB-Mannheim.TesseractOCR) or set ocr.tesseract_path in settings.json."
+            f"Tesseract wasn't found ({where}). Install it ({install}) "
+            "or set ocr.tesseract_path in settings.json."
         )

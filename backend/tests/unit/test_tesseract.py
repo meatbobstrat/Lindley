@@ -10,6 +10,7 @@ from lindley.worker.ocr import tesseract
 from lindley.worker.ocr.tesseract import (
     TesseractEngine,
     TesseractNotFound,
+    find_tesseract,
     parse_hocr_turn,
     parse_osd,
     parse_tsv,
@@ -63,8 +64,19 @@ def test_an_empty_page_has_no_text_and_no_confidence():
 def test_a_missing_tesseract_is_explained(tmp_path):
     engine = TesseractEngine(OcrSettings(tesseract_path=tmp_path / "nope.exe"))
     assert not engine.is_available()
-    with pytest.raises(TesseractNotFound, match="winget install"):
+    with pytest.raises(TesseractNotFound, match="Install it"):
         engine.recognize(tmp_path / "page.png")
+
+
+def test_the_tesseract_lindley_brings_comes_before_another(tmp_path, monkeypatch):
+    ours = tmp_path / "tesseract" / "tesseract.exe"
+    monkeypatch.setattr(tesseract.sys, "prefix", str(tmp_path))
+    monkeypatch.setattr(tesseract.shutil, "which", lambda name: str(tmp_path / "other.exe"))
+    assert find_tesseract() == tmp_path / "other.exe"  # not installed with Lindley
+    ours.parent.mkdir()
+    ours.write_bytes(b"")
+    assert find_tesseract() == ours
+    assert find_tesseract(tmp_path / "chosen.exe") is None  # one a person chose, or none
 
 
 def test_recognize_runs_tesseract_and_parses_its_output(tmp_path, monkeypatch):

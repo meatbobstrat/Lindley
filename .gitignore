@@ -38,3 +38,6 @@ test_scans/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Briefcase's logs of failed builds
+backend/logs/

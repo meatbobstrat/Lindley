@@ -1,0 +1,9 @@
+Copyright (c) 2026 Bob Stratton. All rights reserved.
+
+Lindley's source code is published so it can be read, but it is not licensed for use,
+copying, changing or distribution without the copyright holder's written permission.
+
+Lindley includes, or downloads when a person asks, software from others under their own
+licenses, which this notice doesn't change. Among them: Python (PSF License), Tesseract OCR
+(Apache License 2.0), llama.cpp (MIT License), the Python packages Lindley depends on (each
+under its own license, listed in its package), and AI models under their makers' licenses.

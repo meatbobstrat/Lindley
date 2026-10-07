@@ -46,6 +46,44 @@ where = ["src"]
 # web: the built frontend, copied in by the installer (see app.FRONTEND_DIRS)
 lindley = ["db/schema.sql", "icon.png", "web/**/*"]
 
+# The installers, built with BeeWare's Briefcase (`briefcase package`), each on its own system
+# by .github/workflows/installers.yml. Name, version, description and dependencies come from
+# [project] above. Before `briefcase create`: the built frontend copied to src/lindley/web; on
+# Windows, after it, Tesseract into the app's tesseract folder (see worker/ocr/tesseract.py).
+[tool.briefcase]
+project_name = "Lindley"
+bundle = "io.github.meatbobstrat"
+url = "https://github.com/meatbobstrat/Lindley"
+author = "Bob Stratton"
+author_email = "me@bobstratton.net"
+# Here, not in [project]: the LICENSE is the repo's, a folder up, where packaging can't look
+license = "LicenseRef-Proprietary"
+license-files = ["../LICENSE"]
+
+[tool.briefcase.app.lindley]
+formal_name = "Lindley"
+sources = ["src/lindley"]
+icon = "icons/lindley"  # drawn by scripts/make_icons.py
+console_app = false  # no console window: the launcher opens the browser, and logs to a file
+
+[tool.briefcase.app.lindley.macOS]
+universal_build = false  # Apple processors (the CI runner's); Intel Macs aren't built yet
+
+[tool.briefcase.app.lindley.linux.system.debian]
+# Ubuntu 26.04's own: Tesseract with English and its orientation check; Vulkan and Mesa's
+# drivers for Lindley's own AI (and OpenMP, which llama.cpp's build uses); the tray icon
+system_runtime_requires = [
+    "tesseract-ocr",
+    "tesseract-ocr-eng",
+    "tesseract-ocr-osd",
+    "libvulkan1",
+    "mesa-vulkan-drivers",
+    "libgomp1",
+    "python3-pystray",
+    "python3-gi",
+    "gir1.2-ayatanaappindicator3-0.1",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import random
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path, PurePath
@@ -739,3 +741,33 @@ def score_groups(groups, truth: dict[int, TruePage]) -> tuple[float, float, floa
                 truth[i].index for i in members
             )
     return precision, recall, f1, exact / max(1, len(docs)), ordered / max(1, exact)
+
+
+@contextmanager
+def kept_answers(conn: sqlite3.Connection, path: Path | None) -> Iterator[None]:
+    """The checks whether pages carry on (the continues job), kept in the database at `path`
+    across the scratch databases the benches make for each run: a pair asked about once is
+    answered from there after, as Lindley answers a pair it was asked about before. None: not
+    kept."""
+    if path is None:
+        yield
+        return
+    conn.commit()
+    conn.execute("ATTACH DATABASE ? AS kept", (str(path),))
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS kept.ai_answers (key TEXT PRIMARY KEY, purpose TEXT NOT NULL,"
+        " page_ids TEXT NOT NULL, reply TEXT NOT NULL, at TEXT)"
+    )
+    columns = "key, purpose, page_ids, reply, at"
+    conn.execute(f"INSERT OR IGNORE INTO main.ai_answers SELECT {columns} FROM kept.ai_answers")
+    conn.commit()
+    try:
+        yield
+    finally:
+        conn.commit()
+        conn.execute(
+            f"INSERT OR IGNORE INTO kept.ai_answers SELECT {columns} FROM main.ai_answers"
+            " WHERE purpose = 'continues'"
+        )
+        conn.commit()
+        conn.execute("DETACH DATABASE kept")

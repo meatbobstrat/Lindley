@@ -45,6 +45,10 @@ WEIGHTS = {
     "topic_alike": 0.0,
     "folder_shared": 2.0,
     "folder_differs": -3.0,
+    # A local model's log-odds that the writing runs on, asked only about pairs the rules are
+    # unsure of (continues.py). Its chance is fairly well calibrated, so near 1: on the bench,
+    # the rules' log-odds and the model's added ranked pairs best (design/database.md)
+    "lm_continues": 0.8,
 }
 
 # A group's confidence, in log-odds, over segment.GROUP_FEATURES. Empty: the hand-made rule in

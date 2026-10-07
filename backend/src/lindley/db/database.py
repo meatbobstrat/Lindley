@@ -7,7 +7,7 @@ from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 # Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}, or a function
 # given the connection.
@@ -34,6 +34,7 @@ MIGRATIONS: dict[int, str | Callable[[sqlite3.Connection], None]] = {
     12: lambda conn: _mirrors(conn),
     13: lambda conn: _read_turned(conn),
     14: "",  # new tables only (chats, chat_messages)
+    15: lambda conn: _continues(conn),
 }
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.
@@ -105,6 +106,34 @@ def _read_turned(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE transcriptions ADD COLUMN {column} INTEGER")
 
 
+def _schema() -> str:
+    return files("lindley.db").joinpath("schema.sql").read_text(encoding="utf-8")
+
+
+def _continues(conn: sqlite3.Connection) -> None:
+    """v15: whether one page carries on from another is an AI job of its own ('continues'),
+    recorded and kept like the others. SQLite can't change a CHECK, so ai_calls and ai_answers
+    are made again from schema.sql, and what they held copied over."""
+    tables = _tables(conn)
+    old = [t for t in ("ai_calls", "ai_answers") if t in tables]
+    if not old:
+        return
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        columns = {t: [r[1] for r in conn.execute(f"PRAGMA table_info({t})")] for t in old}
+        conn.execute("DROP INDEX IF EXISTS idx_ai_calls_provider")  # made again with the table
+        for t in old:
+            conn.execute(f"ALTER TABLE {t} RENAME TO {t}_v14")
+        conn.executescript(_schema())
+        for t in old:
+            cols = ", ".join(columns[t])
+            conn.execute(f"INSERT INTO {t} ({cols}) SELECT {cols} FROM {t}_v14")
+            conn.execute(f"DROP TABLE {t}_v14")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
 def _drop_placeholder(conn: sqlite3.Connection) -> None:
     """Remove the empty placeholder tables so the real schema can be created."""
     existing = _tables(conn)
@@ -122,7 +151,7 @@ def init_db(db_path: Path) -> None:
     """Create or upgrade the database to SCHEMA_VERSION (safe to call repeatedly)."""
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    schema = files("lindley.db").joinpath("schema.sql").read_text(encoding="utf-8")
+    schema = _schema()
     conn = connect(db_path)
     try:
         version = conn.execute("PRAGMA user_version").fetchone()[0]

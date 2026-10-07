@@ -4,6 +4,7 @@ python scripts/fit_assembler.py                       # made-up batches only
 python scripts/fit_assembler.py --real lindley.db     # plus real scans (PDFs or sorted folders)
 python scripts/fit_assembler.py --real lindley.db --write
 python scripts/fit_assembler.py --real lindley.db --only folder_shared,folder_differs
+python scripts/fit_assembler.py --real lindley.db --answers judge.db --only lm_continues
 
 Pages are filed by each scanning habit in turn (HABITS in lindley.assembler.bench), or those
 given with --habits. Real scans count as much as all the made-up batches together. Each real
@@ -11,6 +12,10 @@ document is also left out in turn and its pairs predicted by weights fitted with
 says how well the weights should do on documents they've never seen. --only fits just the
 weights named, holding the rest at what weights.py has now. --write saves them to
 src/lindley/assembler/weights.py. Only the weights are saved: no text from any scan.
+
+lm_continues needs the continuation check's answers (lindley.assembler.continues): those kept
+in --answers by scripts/bench_assembler.py --judge, and with --judge a model of Lindley's own AI
+asked about the rest (--device none: on the processor alone).
 """
 
 from __future__ import annotations
@@ -19,10 +24,13 @@ import argparse
 import tempfile
 from pathlib import Path
 
+from lindley.assembler import continues
+from lindley.assembler.answers import Answers
 from lindley.assembler.bench import (
     HABITS,
     ORDERS,
     arrange,
+    kept_answers,
     load,
     load_real,
     make_batch,
@@ -30,13 +38,20 @@ from lindley.assembler.bench import (
 )
 from lindley.assembler.evidence import FEATURES
 from lindley.assembler.learn import L2, Example, accuracy, examples, fit, log_loss
+from lindley.assembler.model import weigh_terms
 from lindley.assembler.run import load_inbox
 from lindley.assembler.weights import WEIGHTS
+from lindley.config import ProviderConfig, load_settings
 from lindley.db.database import connect, init_db
+from lindley.localai import server
+from lindley.localai.catalog import MODELS
+from lindley.providers.registry import build_provider
 
 OUT = Path(__file__).resolve().parents[1] / "src" / "lindley" / "assembler" / "weights.py"
 MADE_UP = range(1000, 1060)  # not the bench's seeds, so the bench stays a fair test
 REAL_SEEDS = range(5)
+ANSWERS: Path | None = None  # --answers: the continuation check's, kept
+JUDGE = None  # --judge: asked about pairs with no kept answer
 
 
 def batch(fill) -> tuple[list, dict[int, tuple[str, int]]]:
@@ -48,6 +63,10 @@ def batch(fill) -> tuple[list, dict[int, tuple[str, int]]]:
         conn = connect(db)
         truth = fill(conn)
         pages = load_inbox(conn)
+        if ANSWERS or JUDGE:  # what the continuation check says, as Lindley asks it
+            weigh_terms(pages)
+            with kept_answers(conn, ANSWERS):
+                continues.judge(pages, JUDGE, Answers(conn), None)
         conn.close()
     return pages, {
         pid: (tp.doc if tp.kind not in ("blank", "notes") else f"single{pid}", tp.index)
@@ -92,7 +111,15 @@ def main() -> None:
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--habits", default=",".join(HABITS))
     ap.add_argument("--only", default="", help="fit only these weights, comma-separated")
+    ap.add_argument("--answers", type=Path, help="the continuation check's kept answers")
+    ap.add_argument("--judge", choices=list(MODELS), help="asked whether pages carry on")
+    ap.add_argument("--device", help="for --judge: none, the processor alone")
     a = ap.parse_args()
+    global ANSWERS, JUDGE
+    ANSWERS = a.answers
+    if a.judge:
+        server.use(load_settings().ai.local.model_copy(update={"device": a.device}))
+        JUDGE = build_provider(ProviderConfig(type="builtin"), "continues", a.judge)
 
     habits = a.habits.split(",")
     synthetic = made_up(habits)

@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import PurePath
 
 from lindley import history
-from lindley.assembler import ai, apply, evidence, relearn
+from lindley.assembler import ai, apply, continues, evidence, relearn
 from lindley.assembler.answers import Answers, AskFirst, OnCall, Progress
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page, weigh_terms
@@ -47,6 +47,7 @@ class RunReport:
     ai_placed: int = 0  # pages added to a document the AI chose from a few likely ones
     ai_rejected: list[str] = field(default_factory=list)
     inbox_left: int = 0
+    judged: int = 0  # questions asked whether one page carries on from another (continues)
 
 
 _PAGE_SQL = """
@@ -261,12 +262,19 @@ def assemble(
     weights: dict[str, float] | None = None,
     on_call: OnCall | None = None,
     on_progress: Progress | None = None,
+    judge=None,
+    on_judge: OnCall | None = None,
+    max_judged: int | None = continues.MOST,
 ) -> RunReport:
-    """Sort the Inbox. With `chat`, the AI may be asked about what the rules couldn't settle:
-    passing it is the OK to call it (see lindley.providers.allowance), at most `max_ai_calls`
-    times if given, and `on_call` is told of each call as it's made, `on_progress` of how many
-    calls are made of how many are coming. A person is asked first,
-    with hints, so on its own the AI is only asked about pages that have waited
+    """Sort the Inbox. With `judge` (the continues job's AI, which gives p_yes), a small local
+    model is asked first whether the pages the rules are unsure of carry on from one another
+    (lindley.assembler.continues), at most `max_judged` new questions (None: every one), and
+    `on_judge` told of each call. With `chat`, the AI may be
+    asked about what the rules couldn't settle: passing it is the OK to call it (see
+    lindley.providers.allowance), at most `max_ai_calls` times if given, and `on_call` is told
+    of each call as it's made, `on_progress` of how many calls are made of how many are coming.
+    A person is asked first, with hints, so on its own the AI is only asked about pages that
+    have waited
     `ask_ai_after_days` and that no one turned down. With `asked`, a person asked about those
     pages: only they are sent, at once. Without `chat`, the rules decide alone, helped by what
     the AI already said about the same pages (lindley.assembler.answers), which costs nothing.
@@ -277,14 +285,22 @@ def assemble(
         evidence.use_weights(weights if weights is not None else relearn.learned(conn))
         if conn.in_transaction:  # what the caller left uncommitted is kept, as it always was
             conn.commit()
-        answers = Answers(conn, on_call, on_progress)
+        answers = Answers(conn, on_call, on_progress, on_judge)
         # Questions for the AI met while the decisions are saved are asked once they're put
         # back, and the Inbox sorted again with the answers (Answers). Those answers may raise
         # new questions, once or twice: the last time round, those wait for a later run.
         for final in (False, False, True):
             try:
                 return _assemble(
-                    conn, cfg or AssemblerSettings(), chat, max_ai_calls, asked, answers, final
+                    conn,
+                    cfg or AssemblerSettings(),
+                    chat,
+                    max_ai_calls,
+                    asked,
+                    answers,
+                    final,
+                    judge,
+                    max_judged,
                 )
             except AskFirst:
                 answers.ask_waiting()
@@ -299,6 +315,8 @@ def _assemble(
     asked: set[int] | None,
     answers: Answers,
     final: bool,
+    judge=None,
+    max_judged: int | None = continues.MOST,
 ) -> RunReport:
     waited = (datetime.now(UTC) - timedelta(days=cfg.ask_ai_after_days)).strftime(
         "%Y-%m-%d %H:%M:%S"
@@ -329,6 +347,9 @@ def _assemble(
         pages + list({id(p): p for d in docs for p in (d.first, d.last)}.values()),
         library_terms(conn),
     )
+    # Whether the pages the rules are unsure of run on, before they're grouped: asked now,
+    # while nothing holds the database (earlier answers are used however it's run)
+    report.judged = continues.judge(pages, judge, answers, max_judged)
     groups, pairs, ordered = segment(pages)
 
     # The AI looks only at what the rules couldn't settle.

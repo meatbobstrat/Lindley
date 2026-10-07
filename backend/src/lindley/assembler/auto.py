@@ -17,7 +17,7 @@ from lindley.assembler.run import RunReport, assemble
 from lindley.config import Settings
 from lindley.providers import allowance
 from lindley.providers.base import ChatProvider, ProviderError, Usage
-from lindley.providers.registry import get_provider
+from lindley.providers.registry import connectors, get_provider
 from lindley.worker.pipeline import Pipeline, WaitingRun, waiting_for_vision
 
 log = logging.getLogger(__name__)
@@ -33,6 +33,24 @@ def chat_on_its_own(settings: Settings) -> ChatProvider | None:
         return get_provider(settings.ai, "assemble")
     except ProviderError:
         return None
+
+
+def judge_for(settings: Settings):
+    """The AI that checks whether pages carry on from one another (the continues job), if it
+    runs on a computer a person controls. That check is part of the rules' own sorting, many
+    quick questions that cost nothing, so it runs on its own whatever the connection's
+    `allow`. None: there's none, or its model isn't downloaded."""
+    cfg = allowance.provider_config(settings, settings.ai.connection_for("continues"))
+    c = connectors().get(cfg.type) if cfg else None
+    if c is None or c.info.where != "local":
+        return None
+    try:
+        judge = get_provider(settings.ai, "continues")
+        if cfg.type == "builtin":  # whether its model is downloaded: nothing is started
+            judge.check()
+    except ProviderError:
+        return None
+    return judge
 
 
 def sort_on_its_own(
@@ -63,13 +81,27 @@ def sort_with(
 ) -> RunReport:
     """Sort the Inbox with `chat`, recording each call to it as it's made, whether it worked or
     failed: a job cut short, or a sort that then fails, still shows what it spent. `progress`
-    is told how many calls are made, of how many are coming."""
+    is told how many calls are made, of how many are coming. The checks whether pages carry on
+    are made too (judge_for), and recorded as theirs."""
     name = settings.ai.connection_for("assemble")
+    checker = settings.ai.connection_for("continues")
 
     def record(ok: bool, used: list[Usage]) -> None:
         allowance.record(conn, name, "assemble", automatic, ok=ok, used=used)
 
-    return assemble(conn, settings.assembler, chat, on_call=record, on_progress=progress, **kw)
+    def judged(ok: bool, used: list[Usage]) -> None:
+        allowance.record(conn, checker, "continues", True, ok=ok, used=used)
+
+    return assemble(
+        conn,
+        settings.assembler,
+        chat,
+        on_call=record,
+        on_progress=progress,
+        judge=judge_for(settings),
+        on_judge=judged,
+        **kw,
+    )
 
 
 def _label(settings: Settings, name: str | None) -> str | None:

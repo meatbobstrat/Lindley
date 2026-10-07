@@ -28,7 +28,8 @@ from typing import Literal
 from lindley.providers.base import ChatMessage, ChatProvider, ProviderError, Usage
 from lindley.providers.throttle import metered
 
-Purpose = Literal["assemble", "name"]  # grouping pages, naming documents
+# grouping pages, naming documents, whether one page carries on from another
+Purpose = Literal["assemble", "name", "continues"]
 FAILED = "lindley:failed:"  # a kept reply that's an answer that couldn't be used, and why
 # Told of each call made: whether it worked, and what it used (throttle.metered). It's called
 # with a transaction open, which the Answers commits.
@@ -52,11 +53,14 @@ class Answers:
         conn: sqlite3.Connection,
         on_call: OnCall | None = None,
         on_progress: Progress | None = None,
+        on_judge: OnCall | None = None,
     ) -> None:
         self.conn = conn
         self.on_call = on_call
+        self.on_judge = on_judge  # told of each call to the judge (chance), as on_call
         self.on_progress = on_progress
         self.calls = 0  # calls made to the AI, or to be made once the database is let go
+        self.judged = 0  # calls made to the judge (chance): not the AI's, nor counted with them
         self.reused = 0  # questions answered from earlier replies
         self.failed = 0  # of the calls, those that failed: they answered nothing
         self.expected = 0  # calls known to be coming in this run, for on_progress
@@ -102,6 +106,39 @@ class Answers:
         self.calls += 1
         return self._call(k, chat, purpose, messages, page_ids)
 
+    def chance(self, judge, system: str, question: str, page_ids: list[int]) -> float | None:
+        """The judge's chance of yes (its p_yes), from an earlier answer to the same question
+        if there is one. Without `judge`, or while the database is held, only an earlier answer
+        is given; None if there's none. A failing call raises, as `ask`'s do."""
+        k = self.key("continues", system, question)
+        if k in self._failed:
+            raise self._failed[k]
+        row = self.conn.execute("SELECT reply FROM ai_answers WHERE key = ?", (k,)).fetchone()
+        if row:
+            if k not in self._fresh:
+                self.reused += 1
+            if row[0].startswith(FAILED):
+                raise ProviderError(row[0].removeprefix(FAILED), answered=True)
+            return float(row[0])
+        if judge is None or self.conn.in_transaction:
+            return None
+        self.judged += 1
+        self._fresh.add(k)
+        try:
+            with metered(judge) as used:
+                try:
+                    p = judge.p_yes(system, question)
+                except Exception as e:
+                    self._failed[k] = e
+                    kept = FAILED + str(e) if getattr(e, "answered", False) else None
+                    self._keep(k, "continues", page_ids, kept, False, used, self.on_judge)
+                    raise
+            self._keep(k, "continues", page_ids, repr(p), True, used, self.on_judge)
+            return p
+        finally:
+            self.asked += 1
+            self._tell()
+
     def _call(
         self,
         k: str,
@@ -145,8 +182,10 @@ class Answers:
         reply: str | None,
         ok: bool,
         used: list[Usage],
+        on: OnCall | None | bool = True,
     ) -> None:
-        """Keep a reply, if there's one to keep, and tell on_call of the call."""
+        """Keep a reply, if there's one to keep, and tell on_call of the call (or `on`)."""
+        on = self.on_call if on is True else on
         with self.conn:
             if reply is not None:
                 self.conn.execute(
@@ -154,8 +193,8 @@ class Answers:
                     " VALUES (?, ?, ?, ?)",
                     (k, purpose, json.dumps(sorted(page_ids)), reply),
                 )
-            if self.on_call is not None:
-                self.on_call(ok, used)
+            if on is not None:
+                on(ok, used)
 
     @property
     def waiting(self) -> bool:

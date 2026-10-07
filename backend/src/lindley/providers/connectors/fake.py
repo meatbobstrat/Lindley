@@ -50,6 +50,11 @@ class FakeProvider:
             [b / 255 for b in hashlib.sha256(t.encode()).digest()[:EMBEDDING_DIM]] for t in texts
         ]
 
+    def p_yes(self, system: str, question: str) -> float:
+        """Undecided, so the rules decide as they would alone."""
+        self._used(len(question.split()), "yes")
+        return 0.5
+
     def check(self) -> str:
         return f"Connected. {self.model} answered."
 

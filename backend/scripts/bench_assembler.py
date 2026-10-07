@@ -3,6 +3,8 @@
 python scripts/bench_assembler.py                 # rules only, 30 made-up batches
 python scripts/bench_assembler.py --ai oracle     # plus a stand-in AI that is always right
 python scripts/bench_assembler.py --ai settings   # plus the chat AI in your settings.json
+python scripts/bench_assembler.py --ai gemma-4-e4b --device none  # plus Lindley's own AI
+python scripts/bench_assembler.py --real lindley.db --judge qwen3.5-4b --answers judge.db
 
 python scripts/bench_assembler.py --real lindley.db [--orders in_order,shuffled] [--seeds 10]
 python scripts/bench_assembler.py --habits one_folder,per_document
@@ -13,6 +15,13 @@ pages) and exact (all of them). That's the check for assembler.group_at, offer_a
 
 --habits says how the scans are filed: all in one folder, a folder per document, or mixed (see
 HABITS in lindley.assembler.bench). Each is reported apart; the default is all of them.
+
+--ai with a model's id (lindley.localai.catalog) sorts with Lindley's own AI, as the builtin
+connector does, from the folder in settings; --device none keeps it on the processor.
+
+--judge asks a model of Lindley's own AI whether the pages the rules are unsure of carry on from
+one another, as the continues job does (lindley.assembler.continues). Its answers are kept in
+--answers across runs, so each pair is asked once.
 
 --real scores it on real scans instead, read into a Lindley database with scripts/intake.py.
 The answer key is its assembled PDFs, or if it has none, the folders a person sorted the scans
@@ -36,6 +45,7 @@ from lindley.assembler.bench import (
     Proposed,
     Score,
     arrange,
+    kept_answers,
     load,
     load_real,
     make_batch,
@@ -46,9 +56,11 @@ from lindley.assembler.bench import (
 )
 from lindley.assembler.run import load_inbox
 from lindley.assembler.segment import segment
-from lindley.config import load_settings
+from lindley.config import ProviderConfig, load_settings
 from lindley.db.database import connect, init_db
-from lindley.providers.registry import get_provider
+from lindley.localai import server
+from lindley.localai.catalog import MODELS
+from lindley.providers.registry import build_provider, get_provider
 
 
 def show(conn, truth, s: Score, label: str, calls: int, asks: tuple[int, int]) -> None:
@@ -62,6 +74,11 @@ def show(conn, truth, s: Score, label: str, calls: int, asks: tuple[int, int]) -
             f"      {'OK ' if len(docs) == 1 else 'BAD'} {r['grouping_confidence']:.0f}"
             f" {r['name']} {sorted(docs)}"
         )
+
+
+DEVICE: str | None = None  # --device, for Lindley's own AI
+JUDGE: str | None = None  # --judge: the model asked whether pages carry on
+ANSWERS: Path | None = None  # --answers: where its answers are kept across runs
 
 
 def run(
@@ -87,14 +104,23 @@ def run(
             chat = OracleChat(truth)
         elif ai == "settings":
             chat = get_provider(settings.ai, "assemble")
-        r = assemble(conn, settings.assembler, chat)
+        elif ai in MODELS:
+            server.use(settings.ai.local.model_copy(update={"device": DEVICE}))
+            chat = build_provider(ProviderConfig(type="builtin"), "assemble", ai)
+        judge = None
+        if JUDGE:
+            server.use(settings.ai.local.model_copy(update={"device": DEVICE}))
+            judge = build_provider(ProviderConfig(type="builtin"), "continues", JUDGE)
+        with kept_answers(conn, ANSWERS):
+            r = assemble(conn, settings.assembler, chat, judge=judge, max_judged=None)
         calls, asks = r.ai_calls, (r.ai_windows, r.ai_pages)
         if batch and batch.late:
             late = load(conn, batch.late, len(batch.pages) + 50, habit=habit, seed=seed)
             truth |= late
             if isinstance(chat, OracleChat):
                 chat.truth = truth
-            r = assemble(conn, settings.assembler, chat)
+            with kept_answers(conn, ANSWERS):
+                r = assemble(conn, settings.assembler, chat, judge=judge, max_judged=None)
             calls += r.ai_calls
             asks = (asks[0] + r.ai_windows, asks[1] + r.ai_pages)
         s = score(conn, truth)
@@ -156,7 +182,15 @@ def sweep(groups: list[Proposed]) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=int, default=None, help="default 30, or 10 with --real")
-    ap.add_argument("--ai", choices=["none", "oracle", "settings"], default="none")
+    ap.add_argument(
+        "--ai",
+        choices=["none", "oracle", "settings", *MODELS],
+        default="none",
+        help="no AI, one always right, settings.json's, or a model of Lindley's own AI",
+    )
+    ap.add_argument("--device", help="for Lindley's own AI: none, the processor alone")
+    ap.add_argument("--judge", choices=list(MODELS), help="asked whether pages carry on")
+    ap.add_argument("--answers", type=Path, help="a database to keep the judge's answers in")
     ap.add_argument(
         "--real", type=Path, help="a Lindley database of assembled PDFs or sorted folders"
     )
@@ -165,6 +199,18 @@ def main() -> None:
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--sweep", action="store_true", help="groups by confidence band")
     a = ap.parse_args()
+    global DEVICE, JUDGE, ANSWERS
+    DEVICE, JUDGE, ANSWERS = a.device, a.judge, a.answers
+    try:
+        bench(a)
+    finally:
+        running = server.current()
+        if peak := running.peak_memory():
+            print(f"Lindley's own AI took {peak / 1e9:.1f} GB at most")
+        running.stop()
+
+
+def bench(a: argparse.Namespace) -> None:
     if a.real:
         src = connect(a.real)
         docs = real_answers(src)

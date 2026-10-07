@@ -46,6 +46,9 @@ class Page:
     # Rare words, weighed against the other pages being sorted (see weigh_terms)
     terms: dict[str, float] = field(init=False, default_factory=dict)
     topic: Vector | None = field(init=False, default=None)  # what it's about: none yet (meaning.py)
+    # The chance, from a small local model, that the page with each id carries straight on from
+    # this one (lindley.assembler.continues): only for pairs it was asked about
+    runs_into: dict[int, float] = field(init=False, default_factory=dict)
 
     def __post_init__(self) -> None:
         self.clues = page_clues(

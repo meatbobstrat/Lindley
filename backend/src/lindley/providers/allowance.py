@@ -24,6 +24,9 @@ FAILING_AFTER = 3  # calls made on its own that failed in a row: the AI looks do
 FAILING_WAIT_MIN = 15  # then Lindley waits this long before calling it on its own again
 
 
+NOT_CHECKS = "purpose != 'continues'"  # the calls the limits count
+
+
 def provider_config(settings: Settings, name: str | None) -> ProviderConfig | None:
     return settings.ai.providers.get(name) if name else None
 
@@ -32,10 +35,11 @@ def calls_today(
     conn: sqlite3.Connection, provider: str, automatic: bool = True, worked: bool = False
 ) -> int:
     """Calls to a provider today (this computer's day), made on Lindley's own, or OKed.
-    `worked`: only the ones that worked, as the limits count them."""
+    `worked`: only the ones that worked, as the limits count them. Not the checks whether a
+    page carries on (the continues job): part of the rules' own sorting, many and free."""
     return conn.execute(
         "SELECT COUNT(*) FROM ai_calls WHERE provider = ? AND automatic = ? AND ok >= ?"
-        " AND date(at, 'localtime') = date('now', 'localtime')",
+        f" AND {NOT_CHECKS} AND date(at, 'localtime') = date('now', 'localtime')",
         (provider, int(automatic), int(worked)),
     ).fetchone()[0]
 
@@ -46,6 +50,7 @@ def calls_this_month(
     """Calls to a provider this calendar month (this computer's), on Lindley's own, or OKed."""
     return conn.execute(
         "SELECT COUNT(*) FROM ai_calls WHERE provider = ? AND automatic = ? AND ok >= ?"
+        f" AND {NOT_CHECKS}"
         " AND strftime('%Y-%m', at, 'localtime') = strftime('%Y-%m', 'now', 'localtime')",
         (provider, int(automatic), int(worked)),
     ).fetchone()[0]
@@ -56,7 +61,7 @@ def failing(conn: sqlite3.Connection, name: str | None) -> bool:
     FAILING_WAIT_MIN minutes ago: Lindley doesn't call it on its own for now."""
     rows = conn.execute(
         "SELECT ok, at > datetime('now', ?) FROM ai_calls WHERE provider = ? AND automatic = 1"
-        " ORDER BY id DESC LIMIT ?",
+        f" AND {NOT_CHECKS} ORDER BY id DESC LIMIT ?",
         (f"-{FAILING_WAIT_MIN} minutes", name or "unnamed", FAILING_AFTER),
     ).fetchall()
     return len(rows) == FAILING_AFTER and not any(ok for ok, _ in rows) and bool(rows[0][1])

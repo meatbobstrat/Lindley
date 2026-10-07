@@ -395,6 +395,47 @@ def test_v11_database_gains_mirrors_and_queues_pages_tesseract_read(tmp_path):
     c.close()
 
 
+def test_v14_database_keeps_its_ai_calls_and_answers_and_takes_continues(tmp_path):
+    db = tmp_path / "v14.db"
+    init_db(db)
+    c = sqlite3.connect(db)
+    # As v14 made them: no 'continues'
+    c.executescript(
+        "DROP TABLE ai_calls; DROP TABLE ai_answers;"
+        "CREATE TABLE ai_calls (id INTEGER PRIMARY KEY, provider TEXT NOT NULL, purpose TEXT NOT"
+        " NULL CHECK (purpose IN ('vision', 'assemble', 'chat', 'embed')), automatic INTEGER NOT"
+        " NULL, page_id INTEGER, ok INTEGER NOT NULL DEFAULT 1, at TEXT NOT NULL DEFAULT"
+        " (datetime('now')), model TEXT, input_tokens INTEGER, output_tokens INTEGER,"
+        " cache_read_tokens INTEGER, cache_write_tokens INTEGER, cost_usd REAL);"
+        "CREATE INDEX idx_ai_calls_provider ON ai_calls(provider, at);"
+        "CREATE TABLE ai_answers (key TEXT PRIMARY KEY, purpose TEXT NOT NULL CHECK (purpose IN"
+        " ('assemble', 'name')), page_ids TEXT NOT NULL, reply TEXT NOT NULL, at TEXT NOT NULL"
+        " DEFAULT (datetime('now')));"
+        "INSERT INTO ai_calls (provider, purpose, automatic, model, cost_usd)"
+        " VALUES ('claude', 'vision', 0, 'claude-opus-5-5', 0.03);"
+        "INSERT INTO ai_answers (key, purpose, page_ids, reply) VALUES ('k', 'name', '[1]', 'x');"
+        "PRAGMA user_version = 14;"
+    )
+    c.close()
+    init_db(db)
+    c = connect(db)
+    assert c.execute("SELECT provider, model, cost_usd FROM ai_calls").fetchone()[:] == (
+        "claude",
+        "claude-opus-5-5",
+        0.03,
+    )
+    assert c.execute("SELECT reply FROM ai_answers WHERE key = 'k'").fetchone()[0] == "x"
+    c.execute("INSERT INTO ai_calls (provider, purpose, automatic) VALUES ('own', 'continues', 1)")
+    c.execute(
+        "INSERT INTO ai_answers (key, purpose, page_ids, reply)"
+        " VALUES ('j', 'continues', '[]', '0.9')"
+    )
+    names = {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
+    assert "idx_ai_calls_provider" in names and not {"ai_calls_v14", "ai_answers_v14"} & names
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    c.close()
+
+
 def test_suggestion_reasons_round_trip(conn):
     page = add_page(conn, add_scan(conn))
     doc = add_doc(conn)

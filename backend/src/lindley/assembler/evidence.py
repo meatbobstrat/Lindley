@@ -54,8 +54,11 @@ FEATURES = (
     "folder_shared",  # found in the same folder: up to 1 for a folder about one document's
     # size, less for a bigger one, nothing for a folder everything is scanned into (folder_says)
     "folder_differs",  # found in different folders
+    "lm_continues",  # a small local model's log-odds that the writing runs on (continues.py)
 )
 TOPIC_FROM, TOPIC_SPAN = 0.5, 0.3  # cosine 0.5 counts nothing, 0.8 counts fully
+LM_SURE = 0.99  # the model's chance is held within 1% of yes or no: its log-odds within ±4.6
+LM_SAYS = 0.8  # given as a reason (or against) from this sure
 PAUSE_S = 600  # a pause this long between two scans is a long one
 FOLDER_DOC = 8  # a folder of this many pages or fewer may well hold a single document
 SIZE_IN = 0.5  # sheets differing by more than this, in inches, are different sizes
@@ -221,6 +224,15 @@ def pair(a: Page, b: Page, is_adjacent: bool | None = None) -> Pair:
         f["a_ends_mid"] = 1.0
     elif cb.starts_mid:
         f["b_starts_mid"] = 1.0
+    if (chance := a.runs_into.get(b.id)) is not None:
+        c = min(max(chance, 1 - LM_SURE), LM_SURE)
+        f["lm_continues"] = math.log(c / (1 - c))
+        if chance >= LM_SAYS and counts("lm_continues"):
+            p.links.append(
+                Link("continues", round(chance, 2), "The writing carries straight on, page to page")
+            )
+        elif chance <= 1 - LM_SAYS and counts("lm_continues"):
+            p.breaks.append("the writing doesn't carry on from one to the other")
     if a.folder and b.folder and a.folder != b.folder:
         f["folder_differs"] = 1.0
     elif a.folder and not (cb.salutation or ca.signature):

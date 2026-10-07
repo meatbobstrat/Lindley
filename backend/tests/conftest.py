@@ -58,9 +58,10 @@ def settings(tmp_path: Path) -> Settings:
         library_dir=tmp_path / "library",
         db_path=tmp_path / "lindley.db",
         # One AI connection, the fake one, doing every job; it asks first, as out of the box.
+        # Not checking whether pages carry on (tests of that give it the job themselves).
         ai=AiSettings(
             providers={"local": ProviderConfig(type="fake")},
-            jobs={job: JobConfig(connection="local") for job in JOBS},
+            jobs={job: JobConfig(connection="local") for job in JOBS if job != "continues"},
             local=LocalAiSettings(models_dir=tmp_path / "models"),
         ),
     )

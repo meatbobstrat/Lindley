@@ -329,7 +329,7 @@ WHERE t.is_current = 1;
 CREATE TABLE IF NOT EXISTS ai_calls (
     id         INTEGER PRIMARY KEY,
     provider   TEXT NOT NULL,                       -- its name in settings.json
-    purpose    TEXT NOT NULL CHECK (purpose IN ('vision', 'assemble', 'chat', 'embed')),
+    purpose    TEXT NOT NULL CHECK (purpose IN ('vision', 'assemble', 'chat', 'embed', 'continues')),
     automatic  INTEGER NOT NULL CHECK (automatic IN (0, 1)),
     page_id    INTEGER REFERENCES pages(id),        -- the page it was about, if one
     ok         INTEGER NOT NULL DEFAULT 1 CHECK (ok IN (0, 1)),  -- 0: it failed
@@ -353,7 +353,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_calls_provider ON ai_calls(provider, at);
 -- reading and it's a new question.
 CREATE TABLE IF NOT EXISTS ai_answers (
     key        TEXT PRIMARY KEY,                    -- sha256 of the question
-    purpose    TEXT NOT NULL CHECK (purpose IN ('assemble', 'name')),
+    purpose    TEXT NOT NULL CHECK (purpose IN ('assemble', 'name', 'continues')),
     page_ids   TEXT NOT NULL,                       -- JSON list of the pages it was about
     reply      TEXT NOT NULL,                       -- as the AI gave it, checked again on use
     at         TEXT NOT NULL DEFAULT (datetime('now'))

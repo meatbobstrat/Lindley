@@ -182,5 +182,8 @@ class Guarded:
     def embed(self, texts: list[str]) -> list[list[float]]:
         return self.throttle.call(self.inner.embed, texts)
 
+    def p_yes(self, system: str, question: str) -> float:
+        return self.throttle.call(self.inner.p_yes, system, question)
+
     def check(self) -> str:
         return self.throttle.call(self.inner.check)

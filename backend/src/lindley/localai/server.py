@@ -12,8 +12,10 @@ or uvicorn's --reload), so it's never left running on its own.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -80,7 +82,8 @@ class LocalServer:
         self._command_loads = loads  # the command answers /models (tests)
         self._lock = threading.Lock()
         self._proc: subprocess.Popen | None = None
-        self._job = None  # Windows: the job that ends the server with Lindley
+        # What ends the server with Lindley: a Windows job, or elsewhere its process group
+        self._job = None
         self._models: set[str] = set()  # the models the running server knows
         self._loaded: set[str] = set()  # the models it has loaded, since it started
         # The graphics failed to load a model, so it runs on the processor alone (when no
@@ -192,8 +195,9 @@ class LocalServer:
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                start_new_session=sys.platform != "win32",  # a process group of its own
             )
-        self._job = _end_with_us(self._proc)
+        self._job = _end_with_us(self._proc, self.log.with_suffix(".pid"))
         self._models = {m.id for m in models}
         deadline = time.monotonic() + START_S
         with httpx2.Client(timeout=2) as client:
@@ -251,6 +255,7 @@ def use(local: LocalAiSettings) -> LocalServer:
         if _current is None or _current.local != local:
             if _current is not None:
                 _current.stop()
+            _end_orphans(local.folder() / "logs")
             _current = LocalServer(local)
         return _current
 
@@ -320,7 +325,7 @@ if sys.platform == "win32":
     _EXTENDED_INFO = 9  # JobObjectExtendedLimitInformation
     _KILL_ON_JOB_CLOSE = 0x2000
 
-    def _end_with_us(proc: subprocess.Popen):
+    def _end_with_us(proc: subprocess.Popen, mark: Path):
         """A job holding the server (and the model processes it starts), ended by Windows when
         its last handle closes: when Lindley stops, or ends any other way."""
         job = _k32.CreateJobObjectW(None, None)
@@ -337,6 +342,9 @@ if sys.platform == "win32":
     def _close(job) -> None:
         if job:
             _k32.CloseHandle(job)
+
+    def _end_orphans(logs: Path) -> None:
+        pass  # Windows ends a job's processes with Lindley, however it ends
 
     class _Pids(ctypes.Structure):
         _fields_ = [
@@ -387,13 +395,57 @@ if sys.platform == "win32":
             _k32.CloseHandle(h)
         return total
 
-else:  # the server is stopped with Lindley; a Mac build comes with the installer
+else:  # Ubuntu, Mac: the server and the model processes it starts are a process group
 
-    def _end_with_us(proc: subprocess.Popen):
-        return None
+    def _end_with_us(proc: subprocess.Popen, mark: Path):
+        """The server's group, noted in `mark` with the Lindley that started it: if that Lindley
+        ends without stopping it (killed, or a crash), the next one ends it (_end_orphans).
+        Linux's signal when a parent ends isn't used: it comes when the thread that started the
+        server ends, and Lindley's threads come and go."""
+        with contextlib.suppress(OSError):
+            mark.write_text(f"{os.getpid()} {proc.pid}", encoding="utf-8")
+        return proc.pid, mark
 
     def _close(job) -> None:
-        pass
+        if job:
+            group, mark = job
+            with contextlib.suppress(OSError):  # none left
+                os.killpg(group, signal.SIGKILL)
+            mark.unlink(missing_ok=True)
+
+    def _end_orphans(logs: Path) -> None:
+        """End the servers Lindleys left running when they ended without stopping them."""
+        for mark in logs.glob("server-*.pid"):
+            try:
+                owner, group = map(int, mark.read_text(encoding="utf-8").split())
+            except (OSError, ValueError):
+                continue
+            if _running(owner):
+                continue  # still its Lindley's (or a script's)
+            try:
+                command = subprocess.run(
+                    ["ps", "-o", "command=", "-p", str(group)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                ).stdout
+            except OSError:
+                continue
+            # Still that server, by its own preset file, not a new process with its number
+            if mark.with_suffix(".ini").name in command:
+                log.info("Stopping Lindley's own AI, left running by a Lindley that ended")
+                with contextlib.suppress(OSError):
+                    os.killpg(group, signal.SIGKILL)
+            mark.unlink(missing_ok=True)
+
+    def _running(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:  # running, as someone else
+            return True
+        return True
 
     def _peak(job) -> int | None:
         return None

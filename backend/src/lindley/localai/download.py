@@ -14,6 +14,7 @@ import logging
 import os
 import queue
 import shutil
+import tarfile
 import threading
 import zipfile
 from collections.abc import Callable
@@ -98,12 +99,18 @@ def fetch(
 
 
 def unpack(engine: Engine, root: Path, archive: Path) -> None:
-    """Put the engine's zip in its folder, then remove the zip."""
+    """Put the engine's zip (Windows) or .tar.gz (Ubuntu, Mac) in its folder, then remove it.
+    A .tar.gz keeps its links between libraries and which files are programs; the data filter
+    refuses anything that would land outside the folder."""
     into = engine.folder(root)
     tmp = into.with_name(into.name + ".tmp")
     shutil.rmtree(tmp, ignore_errors=True)
-    with zipfile.ZipFile(archive) as z:
-        z.extractall(tmp)
+    if engine.file.name.endswith(".tar.gz"):
+        with tarfile.open(archive) as t:
+            t.extractall(tmp, filter="data")
+    else:
+        with zipfile.ZipFile(archive) as z:
+            z.extractall(tmp)
     found = next(tmp.rglob(engine.program), None)
     if found is None:
         shutil.rmtree(tmp, ignore_errors=True)

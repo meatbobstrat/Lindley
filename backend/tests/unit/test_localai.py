@@ -6,7 +6,10 @@ Python script that answers /health, so nothing touches the network or needs llam
 
 import hashlib
 import io
+import os
+import subprocess
 import sys
+import tarfile
 import textwrap
 import threading
 import zipfile
@@ -273,8 +276,93 @@ def test_the_real_catalog_is_pinned():
             assert f.url.split("/resolve/")[1].split("/")[0] != "main"  # a fixed revision
         if "embed" in m.jobs:  # a page is embedded in one batch: it must hold the context
             assert int(m.preset["ubatch-size"]) >= m.context
-    e = catalog.ENGINES["win32"]
-    assert e.file.url.startswith("https://github.com/ggml-org/llama.cpp/releases/download/")
+    assert set(catalog.ENGINES) >= {"win32-x64", "linux-x64", "darwin-arm64", "darwin-x64"}
+    for e in catalog.ENGINES.values():
+        assert e.file.url.startswith("https://github.com/ggml-org/llama.cpp/releases/download/")
+        assert e.file.url.endswith("/" + e.file.name) and e.build in e.file.name
+        assert len(e.file.sha256) == 64 and e.file.size > 0
+        assert e.program == ("llama-server.exe" if e.file.name.endswith(".zip") else "llama-server")
+
+
+@pytest.mark.parametrize(
+    ("system", "machine", "named"),
+    [
+        ("win32", "AMD64", "win32-x64"),
+        ("linux", "x86_64", "linux-x64"),
+        ("linux", "aarch64", "linux-arm64"),
+        ("darwin", "arm64", "darwin-arm64"),
+        ("darwin", "x86_64", "darwin-x64"),
+    ],
+)
+def test_each_computer_gets_its_own_build(monkeypatch, system, machine, named):
+    monkeypatch.setattr(catalog.sys, "platform", system)
+    monkeypatch.setattr(catalog.platform, "machine", lambda: machine)
+    assert catalog.this_computer() == named and catalog.engine() is catalog.ENGINES[named]
+
+
+def test_a_tar_gz_build_is_unpacked_with_its_links(tmp_path: Path):
+    """Ubuntu's and the Mac's builds: a folder holding the program and its libraries, some of
+    them links to others."""
+    archive = tmp_path / "engine.tar.gz"
+    with tarfile.open(archive, "w:gz") as t:
+        for name, data, mode in (
+            ("llama-server", b"program", 0o755),
+            ("libggml.so.0", b"lib", 0o644),
+        ):
+            info = tarfile.TarInfo(f"llama-b1/{name}")
+            info.size, info.mode = len(data), mode
+            t.addfile(info, io.BytesIO(data))
+        link = tarfile.TarInfo("llama-b1/libggml.so")
+        link.type, link.linkname = tarfile.SYMTYPE, "libggml.so.0"
+        t.addfile(link)
+    eng = Engine("b1", file_of("engine.tar.gz", archive.read_bytes()), "llama-server")
+    download.unpack(eng, tmp_path, archive)
+    assert eng.installed(tmp_path) and not archive.exists()
+    assert (eng.folder(tmp_path) / "libggml.so").read_bytes() == b"lib"
+    if sys.platform != "win32":
+        assert os.access(eng.path(tmp_path), os.X_OK)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a Windows job ends it (_end_with_us)")
+def test_the_server_is_a_process_group_ended_with_lindley(tmp_path: Path, made_up, stub):
+    _, _, reader, _ = made_up
+    root = tmp_path / "models"
+    install(root, reader)
+    s = server.LocalServer(LocalAiSettings(models_dir=root), command=stub)
+    try:
+        s.url("reader")
+        pid, mark = s._proc.pid, s.log.with_suffix(".pid")
+        assert os.getpgid(pid) == pid  # its own group, model processes and all
+        assert mark.read_text() == f"{os.getpid()} {pid}"
+    finally:
+        s.stop()
+    assert not mark.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a Windows job ends it (_end_with_us)")
+def test_a_server_left_by_a_lindley_that_ended_is_stopped(tmp_path: Path):
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()  # a Lindley that has ended
+
+    def left(stamp: str, preset: str) -> tuple[subprocess.Popen, Path]:
+        sleeps = [sys.executable, "-c", "import time; time.sleep(60)", "--models-preset", preset]
+        proc = subprocess.Popen(sleeps, start_new_session=True)
+        mark = logs / f"server-{stamp}.pid"
+        mark.write_text(f"{gone.pid} {proc.pid}")
+        return proc, mark
+
+    ours, ours_mark = left("1", str(logs / "server-1.ini"))
+    other, other_mark = left("2", "something-else.ini")  # its number taken by something else
+    try:
+        server._end_orphans(logs)
+        assert ours.wait(10) != 0 and not ours_mark.exists()
+        assert other.poll() is None and not other_mark.exists()
+    finally:
+        for p in (ours, other):
+            p.kill()
+            p.wait()
 
 
 # ------------------------------------------------------------------ the API

@@ -12,6 +12,7 @@ model in a folder named by its id.
 
 from __future__ import annotations
 
+import platform
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -35,8 +36,8 @@ def _hf(repo: str, revision: str, name: str, size: int, sha256: str) -> File:
 @dataclass(frozen=True)
 class Engine:
     build: str  # llama.cpp's build number, e.g. "b11429"
-    file: File  # the zip
-    program: str  # the server, in the zip
+    file: File  # the zip, or the .tar.gz
+    program: str  # the server, in it
 
     def folder(self, root: Path) -> Path:
         return root / "engine" / self.build
@@ -70,26 +71,57 @@ class Model:
         return sum(f.size for f in self.files)
 
 
-# llama.cpp v0.6.0 (build b11429, 5 October 2026), the Vulkan build: it uses built-in graphics
-# and graphics cards of any make, and the processor alone when there are none
+# llama.cpp v0.6.0 (build b11429, 5 October 2026). On Windows and Ubuntu the Vulkan build: it
+# uses built-in graphics and graphics cards of any make, and the processor alone when there are
+# none. On a Mac, llama.cpp's own build, which uses Metal.
+_RELEASE = "https://github.com/ggml-org/llama.cpp/releases/download/b11429/"
+
+
+def _build(name: str, size: int, sha256: str, program: str = "llama-server") -> Engine:
+    return Engine("b11429", File(name, _RELEASE + name, size, sha256), program)
+
+
+# By system and processor (this_computer())
 ENGINES = {
-    "win32": Engine(
-        build="b11429",
-        file=File(
-            "llama-b11429-bin-win-vulkan-x64.zip",
-            "https://github.com/ggml-org/llama.cpp/releases/download/b11429/"
-            "llama-b11429-bin-win-vulkan-x64.zip",
-            33337769,
-            "1bfe78ad9168b79fa02bf67f6af9f5e17a966d824d77238517f7bef12ac73b36",
-        ),
-        program="llama-server.exe",
+    "win32-x64": _build(
+        "llama-b11429-bin-win-vulkan-x64.zip",
+        33337769,
+        "1bfe78ad9168b79fa02bf67f6af9f5e17a966d824d77238517f7bef12ac73b36",
+        "llama-server.exe",
+    ),
+    "linux-x64": _build(
+        "llama-b11429-bin-ubuntu-vulkan-x64.tar.gz",
+        31636673,
+        "632c4e98feba2b94407a2130e3133e0c3aefb0ea1ab41337e926d8bfafdd0b74",
+    ),
+    "linux-arm64": _build(
+        "llama-b11429-bin-ubuntu-vulkan-arm64.tar.gz",
+        24845090,
+        "702d99c4219b4314cc6d3b10fb41ae96cbfc68226305c2681269dfb51487af34",
+    ),
+    "darwin-arm64": _build(
+        "llama-b11429-bin-macos-arm64.tar.gz",
+        11971406,
+        "740288ec6887be94280a5dfa25b5e23a78285cab104519e6c7e218904ee82459",
+    ),
+    "darwin-x64": _build(
+        "llama-b11429-bin-macos-x64.tar.gz",
+        11487431,
+        "29ac3ea02be6bd143e824973f2cc5fa74bc4094393a9eaab0ff6814f19dd8522",
     ),
 }
 
 
+def this_computer() -> str:
+    """Its system and processor, as ENGINES names them: "win32-x64", "darwin-arm64"..."""
+    machine = platform.machine().lower()
+    arch = {"amd64": "x64", "x86_64": "x64", "aarch64": "arm64"}.get(machine, machine)
+    return f"{sys.platform}-{arch}"
+
+
 def engine() -> Engine | None:
-    """The build for this computer. None: there isn't one yet (the installer brings Mac's)."""
-    return ENGINES.get(sys.platform)
+    """The build for this computer. None: there isn't one (Windows on Arm, for one)."""
+    return ENGINES.get(this_computer())
 
 
 _READS = frozenset({"vision", "assemble", "chat", "continues"})

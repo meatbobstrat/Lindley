@@ -468,7 +468,13 @@ and you can ask it about them. All of it from a one-click install.
   61% rebuilt exactly, none wrong); its "no" split pages that do run on, so it isn't weighed
 - [ ] A look at the computer at first run (processor, memory, graphics card, free disk) that
   suggests a tier, with how long 100 pages would take
-- [ ] One-click installer (Windows/Mac), with Tesseract included
+- [ ] One-click installer (Windows/Mac/Linux), with Tesseract included (on Linux, installed with
+  it). Python 3.13 bundled, and the built app found wherever it's installed, not by the repo's
+  folders. Linux, Ubuntu to start: a `.deb` built on Ubuntu 22.04 that installs Tesseract,
+  Vulkan and its drivers with it, with a menu entry that starts Lindley and opens it in the
+  browser. Lindley's own AI gets llama.cpp's Ubuntu Vulkan build (a `.tar.gz`, like the Mac's),
+  and stops with Lindley as on Windows (a process group, and a signal if Lindley dies). Keys go
+  in the desktop's keyring, with plain words when there isn't one
 
 ### After the MVP
 

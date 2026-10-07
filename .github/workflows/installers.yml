@@ -1,0 +1,120 @@
+name: Installers
+
+# Lindley's installers, each built on its own system with Briefcase (backend/pyproject.toml,
+# [tool.briefcase]), then started and quit, before they're kept as the run's artifacts.
+# Run it from the Actions tab, or by pushing a tag v*.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+env:
+  BRIEFCASE: briefcase==0.4.5
+  PORT: "8797"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Build the frontend into the package
+        shell: bash
+        run: |
+          cd frontend && npm ci && npm run build && cd ..
+          cp -r frontend/dist backend/src/lindley/web
+      # UB-Mannheim's build: the version Lindley's review bars were measured with
+      - name: Install Tesseract to bundle
+        run: choco install tesseract --version 5.4.0.20240606 -y --no-progress
+      - run: pip install $env:BRIEFCASE pefile
+      - name: Create the app, with Tesseract in it
+        working-directory: backend
+        run: |
+          briefcase create windows app --no-input
+          python scripts/bundle_tesseract.py "C:\Program Files\Tesseract-OCR" build\lindley\windows\app\src\tesseract
+      - name: Build and package
+        working-directory: backend
+        run: |
+          briefcase build windows app --no-input
+          briefcase package windows app --adhoc-sign --no-input
+      - name: Start it, and quit it
+        shell: bash
+        working-directory: backend/build/lindley/windows/app/src
+        run: |
+          ./tesseract/tesseract.exe --version | head -1
+          "$GITHUB_WORKSPACE/.github/smoke.sh" ./Lindley.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lindley-windows
+          path: backend/dist/*.msi
+
+  ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Build the frontend into the package
+        run: |
+          cd frontend && npm ci && npm run build && cd ..
+          cp -r frontend/dist backend/src/lindley/web
+      - run: pip install "$BRIEFCASE"
+      # Built in Docker, on Ubuntu 26.04's own Python (3.14): Briefcase's .deb uses the system's
+      - name: Build the .deb for Ubuntu 26.04
+        working-directory: backend
+        run: briefcase package linux system --target ubuntu:26.04 --adhoc-sign --no-input
+      - name: Install it on a clean Ubuntu 26.04, start it, and quit it
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo ubuntu:26.04 bash -c '
+            set -e
+            apt-get update -qq
+            apt-get install -y -qq curl ./backend/dist/*.deb > /dev/null
+            tesseract --version | head -1
+            PORT=$0 .github/smoke.sh lindley
+          ' "$PORT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lindley-ubuntu
+          path: backend/dist/*.deb
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Build the frontend into the package
+        run: |
+          cd frontend && npm ci && npm run build && cd ..
+          cp -r frontend/dist backend/src/lindley/web
+      - run: pip install "$BRIEFCASE"
+      # Unsigned: there's no Apple developer account yet, so the Mac warns before it opens
+      - name: Build and package
+        working-directory: backend
+        run: briefcase package macOS app --adhoc-sign --no-input
+      - name: Start it, and quit it
+        working-directory: backend
+        run: ../.github/smoke.sh build/lindley/macos/app/Lindley.app/Contents/MacOS/Lindley
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lindley-mac
+          path: backend/dist/*.dmg

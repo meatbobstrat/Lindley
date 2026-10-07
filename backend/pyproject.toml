@@ -30,7 +30,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
+    "pytest>=9.1.1",
     "ruff>=0.6",
     "httpx>=0.27",  # FastAPI's TestClient, and the Google connector's made-up server
     "httpx2>=2.0",  # the Anthropic and OpenAI connectors' made-up servers

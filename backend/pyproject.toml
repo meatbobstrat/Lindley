@@ -62,6 +62,11 @@ license-files = ["../LICENSE"]
 
 [tool.briefcase.app.lindley]
 formal_name = "Lindley"
+long_description = """Lindley is a research partner for working through thousands of scanned
+pages: letters, deeds, receipts, diaries, books and manuscripts. Drop scans into a folder and
+Lindley reads them, sorts the pages into documents, and turns each document into a searchable
+PDF. You can also ask it questions about everything it has read. It runs on your own computer,
+and opens in your web browser."""
 sources = ["src/lindley"]
 icon = "icons/lindley"  # drawn by scripts/make_icons.py
 console_app = false  # no console window: the launcher opens the browser, and logs to a file

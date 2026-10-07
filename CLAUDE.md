@@ -14,14 +14,16 @@
     `_openai_chat.py` (Chat Completions, for OpenAI-compatible servers) and `_common.py` (errors
     in words, images) are shared helpers. A connector tells `on_usage` what each call used,
     before it checks the answer (a cut-off one is charged): `throttle.metered` collects it.
-    `keys.py`: API keys in the system credential store (keyring). `tiers.py`: performance tiers
-    (Basic to Cloud), each job's model by how much the computer can run; the UI sets
-    `ai.jobs` from the one chosen (`frontend/src/lib/tiers.ts`) and records it in `ai.tier`
+    `keys.py`: API keys in the system credential store (keyring). `tiers.py`: two choices,
+    what this computer runs (Low, Middle, High: each job's model on Lindley's own AI) and who
+    does the rest (none, server, cloud); the UI sets `ai.jobs` from them (`withTier` in
+    `frontend/src/lib/tiers.ts`) and records them in `ai.tier` and `ai.help`
   - `localai/`: Lindley's own AI, llama.cpp's `llama-server` (the Vulkan build). `catalog.py`
     (the pinned engine and models, with sizes and SHA-256), `download.py` (only when a person
     asks: resumable, checked), `server.py` (router mode on 127.0.0.1, `--offline`, started when a
     job first needs it; on Windows in a job that ends with Lindley). Files in `ai.local.models_dir`.
-    `scripts/local_ai.py` downloads and serves from the command line
+    `scripts/local_ai.py` downloads and serves from the command line. API in `api/local_ai.py`.
+    Test Lindley with its own engine and models, not Ollama
   - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
     `pipeline.py` (step records, Tesseract/vision reading; `read_turned_again`: pages a person
     turned since Tesseract read them, read again by the watcher), `ocr/` engines, `ai_work.py` (AI
@@ -30,7 +32,8 @@
   - `watcher/`: watchdog folder watcher, started by the app lifespan (`create_app(watch=False)` in tests)
   - `assembler/`: Inbox pages → documents. `clues.py` (rules per page), `evidence.py` (features
     for a page pair, scored with `weights.py`), `layout.py`, `terms.py`, `segment.py`, `learn.py`
-    (fitting the weights). Benches: `scripts/bench_assembler.py` (made-up, or `--real DB` with
+    (fitting the weights), `continues.py` (the `continues` job: a local model's p_yes that page B
+    carries on from A, asked about unsure pairs before grouping; `lm_continues` evidence). Benches: `scripts/bench_assembler.py` (made-up, or `--real DB` with
     assembled PDFs as the answer key; `--sweep`: groups by confidence, to check the bars) and
     `scripts/fit_assembler.py`. `search/fts.py`: FTS5 search (`search_pages`, every word;
     `search_any`, any word)

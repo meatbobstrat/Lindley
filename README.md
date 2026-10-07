@@ -30,7 +30,8 @@ questions about your documents isn't built yet.
 | Database | Schema v5 designed and tested ([design/database.md](design/database.md)) |
 | Assembler (Inbox pages → documents) | Built; scored on synthetic batches and on real assembled typescripts |
 | Intake (hash, EXIF, split) and Tesseract reading | Built; try it on your scans with `scripts/intake.py` |
-| AI connections (a local AI, Anthropic, OpenAI, Google) | Built: one file per connector, each calling its AI through the company's own library; a connection per job, limits and throttling, keys in Windows Credential Manager. Tried against made-up servers; not yet on real scans with each AI |
+| Lindley's own AI (llama.cpp's llama-server, with models downloaded when a tier is chosen) | Built: started when a job first needs it, offline, on this computer only; downloads resume and are checked |
+| AI connections (Lindley's own, a local AI, Anthropic, OpenAI, Google) | Built: one file per connector, each calling its AI through the company's own library; a connection per job, limits and throttling, keys in Windows Credential Manager. Tried against made-up servers; not yet on real scans with each AI |
 | Vision model reading (handwriting) | Built into intake, through any AI connection that can read pages |
 | Folder watcher | Built; runs with the backend |
 | Image checks (blank pages, rotation, handwriting or print) | Built, and tried on a first sample of real typewritten scans |
@@ -134,7 +135,9 @@ watched folders ─► watcher ─► intake ───────────�
   - Cloud AIs are asked not to keep what's sent (OpenAI and Google keep it unless asked).
 - **Runs on an ordinary laptop.** Matching pages uses rules and a small model in plain Python,
   with no graphics card and no heavy machine-learning packages. A local AI is optional.
-- **Private by default.** Lindley works with an AI on your own computer (Ollama, LM Studio).
+- **Private by default.** Lindley comes with its own AI, which runs on your computer:
+  llama.cpp's `llama-server`, with models it downloads when you choose a tier, once, and then
+  runs offline. It also works with an AI on another computer you own (Ollama, LM Studio).
   - Cloud AI (Anthropic, OpenAI, Google and others) is supported, but setup and Settings warn plainly
     that your scans are then sent to that company and are no longer private. You must
     acknowledge the warning before entering a key.
@@ -143,9 +146,10 @@ watched folders ─► watcher ─► intake ───────────�
     questions, and finding related pages. For example, reading on this computer and questions
     with a cloud AI.
   - With no AI connected, the rules and Tesseract still work, and you match pages to documents
-    by hand where the rules aren't sure. First-run setup asks how much AI the computer can run
-    (a performance tier, from Basic, with none, to Cloud) and gives each job an AI to suit it;
-    Settings can change the tier, or any job's AI.
+    by hand where the rules aren't sure. First-run setup asks two things: how much AI this
+    computer can run (Low, Middle or High), and who does the rest (nobody, your own AI server,
+    or a cloud AI). It gives each job an AI from the two; Settings can change either, or any
+    job's AI.
 
 ## UI design
 
@@ -171,7 +175,8 @@ Open it in a browser; it uses sample data and saves nothing. It covers:
 | `backend/` | Python 3.13 and FastAPI (`src/lindley/`) |
 | `backend/src/lindley/db/` | SQLite schema (with full-text search), migrations, document completeness |
 | `backend/src/lindley/assembler/` | Clues, evidence, grouping, AI refinement, test bench |
-| `backend/src/lindley/providers/` | AI connectors, one file each in `connectors/`: a local AI (Ollama, LM Studio, vLLM), Anthropic, OpenAI, Google, any OpenAI-compatible service, and a fake one for tests. Plus limits, throttling and keys |
+| `backend/src/lindley/localai/` | Lindley's own AI: the pinned llama.cpp build and models (`catalog.py`), downloading them when a person asks, and running `llama-server` |
+| `backend/src/lindley/providers/` | AI connectors, one file each in `connectors/`: Lindley's own AI, a local AI (Ollama, LM Studio, vLLM), Anthropic, OpenAI, Google, any OpenAI-compatible service, and a fake one for tests. Plus limits, throttling and keys |
 | `backend/src/lindley/worker/` | Intake (hash, EXIF, split) and reading (Tesseract, vision model) |
 | `backend/src/lindley/watcher/` | Folder watcher: new scans are imported, read and assembled |
 | `backend/src/lindley/duplicates/` | Duplicate detection (by text) and a person's decisions |
@@ -317,10 +322,11 @@ file in these places, in order:
 | `add_mode` | Files added with Add scans… in the Inbox: `ask` each time (the default), or always `copy` or `move` them |
 | `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this (20 to 95; 70), a page needs the vision model. `review_below`: a page whose reading falls below this (50 to 99; 80) waits for a person's review. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000). `workers`: scans read at once; Tesseract uses one core a page, so a few side by side finish sooner (`null`: one fewer than the computer's cores, at most 3) |
 | `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" or "Do these go together?" hint (45). `offer_at`: a group the AI checked, at or above this but below `group_at`, is offered for one-click accept (60). `ai_band`: which uncertain breaks may be sent to the AI. `ask_ai_after_days`: when the sorting AI may run on its own, how long pages wait for a person first (0: at once) |
-| `ai.providers` | Named AI connections. `type` is a connector (`local`, `anthropic`, `openai`, `google`, `openai_compat`), with `base_url` and `model` where needed. `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some). `daily_limit` and `monthly_limit` cap the calls it makes on its own. `per_minute` and `at_once` throttle every call |
+| `ai.providers` | Named AI connections. `type` is a connector (`builtin`, Lindley's own AI; `local`, `anthropic`, `openai`, `google`, `openai_compat`), with `base_url` and `model` where needed. `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some). `daily_limit` and `monthly_limit` cap the calls it makes on its own. `per_minute` and `at_once` throttle every call |
 | `ask` | Ask Lindley: `local_chars` and `cloud_chars`, how much page text goes with a question to an AI on your own computers (6000) or a cloud AI (40000); `history_turns`, how many earlier questions and answers go with it (6) |
-| `ai.jobs` | Which connection does each job: `vision` (reading hard pages), `assemble` (sorting pages into documents), `chat` (Ask Lindley) and `embed` (finding related pages), each with an optional `model` of its own. Out of the box there are none |
-| `ai.tier` | The performance tier the jobs were set from (`basic`, `light`, `full`, `power`, `server` or `cloud`; see `providers/tiers.py`). Setup and Settings set it; it's `null` once a person changes a job's AI |
+| `ai.jobs` | Which connection does each job: `vision` (reading hard pages), `assemble` (sorting pages into documents), `chat` (Ask Lindley), `embed` (finding related pages) and `continues` (whether a page carries on from the last: only an AI that gives token probabilities, such as Lindley's own), each with an optional `model` of its own. Out of the box there are none |
+| `ai.tier`, `ai.help` | How much AI this computer runs (`low`, `middle` or `high`; see `providers/tiers.py`), and the connection that does the jobs it leaves (`null`: nobody). Setup and Settings set them; `tier` is `null` once a person changes a job's AI |
+| `ai.local` | Lindley's own AI: `models_dir`, where its engine and models go (`null`: the per-user data folder); `server_path`, a `llama-server` of your own; `device`, the graphics it may use (`null`: any; `none`: the processor alone; or one from `llama-server --list-devices`) |
 
 **API keys never go in `settings.json`.** They're kept in Windows Credential Manager (the
 Keychain on a Mac), under "Lindley", with the connection's name. Settings › AI and privacy saves
@@ -354,6 +360,7 @@ its company's advice:
 | `anthropic` | `anthropic` | Messages, with refusal fallbacks on the models that have them |
 | `openai` | `openai` | Responses (embeddings: Embeddings), `store=False` |
 | `google` | `google-genai` | Interactions (embeddings: `embed_content`), `store=False` |
+| `builtin` | `openai`, at Lindley's own `llama-server` | Chat Completions, with thinking turned off through the chat template |
 | `local`, `openai_compat` | `openai`, at the server's address | Chat Completions, which Ollama, LM Studio and vLLM all support |
 
 A service that speaks the OpenAI API needs only `INFO` and a subclass of `OpenAIChat` (see
@@ -430,36 +437,37 @@ and you can ask it about them. All of it from a one-click install.
   app (or undoes either): before, its text stayed as read the wrong way up or from the mirror
   image. The new reading replaces Tesseract's own, never a person's text or an AI's better
   reading, the Inbox is sorted again with it, and the status bar says so while it's read
-- [x] Performance tiers: Lindley runs on anything from a 10-year-old laptop to a gaming PC with
-  32 GB of graphics memory. Setup and Settings ask how much AI the computer can run, and give
-  each job an AI to suit it (`providers/tiers.py`; design/database.md, "Local models on a
-  CPU"). The choice of AI for each job stays underneath, and changing one makes it your own:
-  - **Basic** (any computer): Tesseract and the rules. No AI; pages Tesseract can't read wait
-    for a person. A job can still be given to a cloud AI underneath
-  - **Light** (8 GB of memory): Gemma 4 E4B reads handwriting slowly, a few minutes a page, and
-    EmbeddingGemma finds what pages are about. The check whether a page carries on from the last
-    one comes with `lm_continues` (After the MVP)
-  - **Full local** (16 GB, a recent processor or built-in graphics): Gemma 4 E4B reads
-    handwriting, sorts pages and answers questions, at a minute or two a hard page
-  - **Power** (32 GB of memory, or a graphics card with 8 GB or more): Gemma 4 26B-A4B, quicker
-    and more accurate. Gemma 4 12B (an 8 GB card) or 31B (24 GB) can be set for each job
-  - **Your own AI server**: the local connection pointed at a computer on your network that has
-    the power
-  - **Cloud** (an API key): runs on anything, down to a Windows tablet. Pages leave the computer
-    and each one costs money
-
-  For now a tier on this computer runs on Ollama, and Settings says which models to pull. Gemma 4
-  26B hasn't been benched on Lindley's scans yet
-- [ ] A local AI that comes with Lindley: llama.cpp's `llama-server` (the Vulkan build, which also
-  uses built-in graphics), started and stopped by Lindley, with each tier's models downloaded when
-  chosen. Ollama and LM Studio stay supported through the local connection. First, bench
-  llama-server on a laptop processor, and on built-in graphics, with the candidates in
-  design/database.md
+- [x] Two AI choices in Setup and Settings, in place of a list of performance tiers: how much AI
+  this computer runs, and who does the rest (`providers/tiers.py`). Each job gets the tier's model
+  on Lindley's own AI, else the help if it can do the job, else nothing; the choice of AI for each
+  job stays underneath, and changing one makes it your own. Every job done on this computer is
+  one that isn't sent anywhere or paid for, so the cost of a page falls, and privacy rises, from
+  Low to High:
+  - **Low** (any computer, even an old one): no AI on this computer. Tesseract and the rules
+    read and sort; the help does the rest
+  - **Middle** (8 GB of memory): Gemma 4 E2B checks whether each page carries on from the last
+    (`lm_continues`), so sorting needs the help less. Reading handwriting, sorting the rest and
+    answering questions go to the help. Whether Middle should read handwriting itself needs
+    benches on more computers: on a 2019 desktop processor Gemma 4 E4B takes nearly 3 minutes
+    a hard page
+  - **High** (16 GB, or a graphics card): Gemma 4 E4B reads handwriting, sorts, answers and
+    checks pages, all on this computer (6 seconds a hard page on an 8 GB graphics card)
+  - **Who does the rest**: nobody (what this computer doesn't do waits for you), your own AI
+    server (Ollama, LM Studio or llama-server on another computer), or a cloud AI with a key
+- [x] A local AI that comes with Lindley: llama.cpp's `llama-server` (v0.6.0, the Vulkan build),
+  started by Lindley when a job first needs it and stopped with it, offline, on this computer
+  only (`localai/`). Choosing a tier downloads its model and the engine, once, from Hugging
+  Face and GitHub, each file pinned and checked, with progress and Cancel in Settings and the
+  status bar. If the graphics can't load a model it runs on the processor alone. Ollama and LM
+  Studio stay supported through the local connection. Benched on a 2019 desktop processor and an
+  8 GB graphics card (design/database.md, "Lindley's own AI, measured"); this computer's built-in
+  graphics have too old a driver to bench
+- [x] Whether a page carries straight on from the last, checked by a small local model
+  (`lm_continues`, the `continues` job): asked only about pairs the rules may get wrong, its
+  "yes" weighed as evidence. On the 23 documents it lifted the groups proposed a little (57% to
+  61% rebuilt exactly, none wrong); its "no" split pages that do run on, so it isn't weighed
 - [ ] A look at the computer at first run (processor, memory, graphics card, free disk) that
-  suggests a tier for each job, with how long 100 pages would take
-- [ ] Simple AI choices in Setup and Settings: Private, Balanced or Most capable, each explained
-  in plain words (where your pages go, what it costs, how fast and how good it is). The choice of
-  AI for each job stays underneath, for people who want it
+  suggests a tier, with how long 100 pages would take
 - [ ] One-click installer (Windows/Mac), with Tesseract included
 
 ### After the MVP
@@ -471,7 +479,7 @@ and you can ask it about them. All of it from a one-click install.
   - for a cloud AI that handles them well, tools over the read-only views, so it can look
     further itself
   - "Ask Lindley about this page" in the toolbars and right-click menus, as in the mockup
-  - a local model benched for answering questions, for each performance tier
+  - a local model benched for answering questions, for High
 - [ ] Searchable text for every alphabet: ship a glyphless font, so text outside Windows-1252
   (Greek, Cyrillic, Hebrew and so on) goes into the PDF as it was read
 - [ ] Details view: everything Lindley found about a page or document
@@ -482,12 +490,10 @@ and you can ask it about them. All of it from a one-click install.
   Settings. Claude's, OpenAI's and Google's calls are priced from their list prices
   (`providers/prices.py`); a local AI's calls count tokens, at no cost
 - [ ] Suggest groups of pages Lindley isn't sure of (typescripts, notes) for a person to confirm
-- [ ] Local AI models for intake, tuned on real scans, for each performance tier. Small models
-  were measured on real scans (design/database.md, "Local models" and "Local models on a CPU"):
-  none makes intake quicker, and Tesseract stays for typed pages. Next:
-  - a local model asked whether one page carries straight on from another (`lm_continues`):
-    with the rules it scored 0.94 where they alone scored 0.82, at about 7 seconds a pair on a
-    2019 desktop processor
-  - Gemma 4 E4B for handwriting Tesseract can't read (about a minute a page on that processor)
-  - EmbeddingGemma for what pages are about, if it helps build documents (it's the local
-    connection's default now, in place of nomic-embed-text)
+- [ ] Local AI models for intake, tuned on real scans, on more computers. Measured so far
+  (design/database.md, "Local models" and "Lindley's own AI, measured"): none makes intake
+  quicker, and Tesseract stays for typed pages. Next:
+  - laptops, and built-in graphics with a current driver, before the first-run look at the
+    computer suggests tiers from them
+  - EmbeddingGemma for what pages are about, if it helps build documents (no tier downloads it
+    until something uses it)

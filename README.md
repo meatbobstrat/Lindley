@@ -19,9 +19,9 @@ anything it isn't sure of, and never changes or deletes your original scans.
 
 ## Status
 
-Lindley is in early development. The app now works end to end, from scans dropped in a folder
-to searchable PDFs, but it has only been tried on a handful of made-up scans, and asking
-questions about your documents isn't built yet.
+Lindley is in early development. The app works end to end, from scans dropped in a folder to
+searchable PDFs and questions answered about them, and has been tried on a first batch of real
+scans. What's left for the MVP is the one-click installer (see the Roadmap).
 
 | Part | State |
 | --- | --- |
@@ -181,7 +181,8 @@ Open it in a browser; it uses sample data and saves nothing. It covers:
 | `backend/src/lindley/watcher/` | Folder watcher: new scans are imported, read and assembled |
 | `backend/src/lindley/duplicates/` | Duplicate detection (by text) and a person's decisions |
 | `backend/src/lindley/export/` | Searchable PDFs: word positions for each reading, the PDF, and exporting a document |
-| `backend/src/lindley/search/` | Stub for the next phase |
+| `backend/src/lindley/search/` | Full-text search over every page's reading in use (SQLite FTS5) |
+| `backend/src/lindley/ask/` | Ask Lindley: the words to search for, the pages found, and the answer, kept as conversations |
 | `frontend/` | The app: React, TypeScript and Vite (`views/` per screen, `components/`, `ui/` for tooltips, toolbar, menus and dialogs) |
 | `design/` | UI mockup and database design |
 | `scripts/dev.ps1` | Runs both dev servers |
@@ -311,13 +312,17 @@ file in these places, in order:
 3. `settings.json` in the current directory
 4. the per-user config folder
 
+Out of the box, scans and PDFs go in `Lindley` in your Documents folder, and the database and
+work in progress in your user data folder (`%LOCALAPPDATA%\Lindley` on Windows), never beside
+the program.
+
 | Key | Meaning |
 | --- | --- |
-| `watch_folders` | Folders to watch for new scans |
-| `processing_dir` | Working area for files being processed |
-| `quarantine_dir` | Where files that fail processing are put |
-| `library_dir` | Lindley's library: its copies of scans (in `scans`), each page as an image (in `pages`), and exported PDFs (in `Exports`) |
-| `db_path` | SQLite database location. It's kept outside the library, so back up both |
+| `watch_folders` | Folders to watch for new scans (`Documents/Lindley/Inbox`) |
+| `processing_dir` | Working area for files being processed (`processing` in the data folder) |
+| `quarantine_dir` | Where files that fail processing are put (`quarantine` in the data folder) |
+| `library_dir` | Lindley's library (`Documents/Lindley/Library`): its copies of scans (in `scans`), each page as an image (in `pages`), and exported PDFs (in `Exports`) |
+| `db_path` | SQLite database location (`lindley.db` in the data folder). It's kept outside the library, which is often in a synced folder, where SQLite isn't safe. Back up both |
 | `move_files` | `true` moves scans out of watched folders; `false` copies them and leaves the originals |
 | `add_mode` | Files added with Add scans… in the Inbox: `ask` each time (the default), or always `copy` or `move` them |
 | `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this (20 to 95; 70), a page needs the vision model. `review_below`: a page whose reading falls below this (50 to 99; 80) waits for a person's review. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000). `workers`: scans read at once; Tesseract uses one core a page, so a few side by side finish sooner (`null`: one fewer than the computer's cores, at most 3) |

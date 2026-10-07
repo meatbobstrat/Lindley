@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-from platformdirs import user_config_dir, user_data_dir
+from platformdirs import user_config_dir, user_data_dir, user_documents_dir
 from pydantic import BaseModel, Field, model_validator
 
 from lindley.providers.base import JOBS, Job
@@ -17,6 +17,16 @@ APP_NAME = "Lindley"
 SETTINGS_ENV_VAR = "LINDLEY_SETTINGS"
 SETTINGS_FILENAME = "settings.json"
 REVIEW_BELOW = 80  # ocr.review_below out of the box: see design/database.md, "Confidence bars"
+
+
+def data_folder() -> Path:
+    """This user's folder for Lindley's own files: the database, work in progress, its AI."""
+    return Path(user_data_dir(APP_NAME, appauthor=False))
+
+
+def documents_folder() -> Path:
+    """Where a person finds Lindley's scans and PDFs: Lindley in their Documents."""
+    return Path(user_documents_dir()) / APP_NAME
 
 
 class OcrSettings(BaseModel):
@@ -105,7 +115,7 @@ class LocalAiSettings(BaseModel):
     device: str | None = None
 
     def folder(self) -> Path:
-        return self.models_dir or Path(user_data_dir(APP_NAME, appauthor=False)) / "models"
+        return self.models_dir or data_folder() / "models"
 
 
 class AiSettings(BaseModel):
@@ -162,11 +172,15 @@ class AskSettings(BaseModel):
 
 
 class Settings(BaseModel):
-    watch_folders: list[Path] = Field(default_factory=lambda: [Path("data/inbox")])
-    processing_dir: Path = Path("data/processing")
-    quarantine_dir: Path = Path("data/quarantine")
-    library_dir: Path = Path("data/library")
-    db_path: Path = Path("data/lindley.db")
+    # Out of the box, never beside the program (an installed Lindley may not write there): scans
+    # and PDFs in the person's Documents, the database and work in progress in this user's data
+    # folder. The database stays out of Documents, which is often synced, and SQLite isn't safe
+    # in a synced folder.
+    watch_folders: list[Path] = Field(default_factory=lambda: [documents_folder() / "Inbox"])
+    processing_dir: Path = Field(default_factory=lambda: data_folder() / "processing")
+    quarantine_dir: Path = Field(default_factory=lambda: data_folder() / "quarantine")
+    library_dir: Path = Field(default_factory=lambda: documents_folder() / "Library")
+    db_path: Path = Field(default_factory=lambda: data_folder() / "lindley.db")
     # Files arriving in a watched folder are moved into the library, or else copied.
     move_files: bool = False
     # Files a person adds with Add scans… in the Inbox: "ask" each time, or always "copy" or

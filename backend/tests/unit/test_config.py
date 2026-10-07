@@ -6,6 +6,8 @@ from lindley.config import (
     SETTINGS_ENV_VAR,
     ProviderConfig,
     Settings,
+    data_folder,
+    documents_folder,
     load_settings,
     resolve_settings_path,
     save_settings,
@@ -20,6 +22,17 @@ def test_missing_file_gives_defaults(tmp_path: Path):
     assert s == Settings()
     assert s.move_files is False
     assert s.ocr.engine == "hybrid"
+
+
+def test_out_of_the_box_folders_are_the_persons_own():
+    """An installed Lindley may not write beside the program, so it never uses the current
+    folder: scans and PDFs go in Documents, the database stays out of it (often synced)."""
+    s = Settings()
+    docs, data = documents_folder(), data_folder()
+    assert s.watch_folders == [docs / "Inbox"] and s.library_dir == docs / "Library"
+    assert s.db_path.parent == s.processing_dir.parent == s.quarantine_dir.parent == data
+    assert s.ai.local.folder() == data / "models"
+    assert all(p.is_absolute() for p in (*s.watch_folders, s.library_dir, s.db_path))
 
 
 def test_out_of_the_box_there_is_no_ai():

@@ -424,7 +424,7 @@ else:  # Ubuntu, Mac: the server and the model processes it starts are a process
                 continue  # still its Lindley's (or a script's)
             try:
                 command = subprocess.run(
-                    ["ps", "-o", "command=", "-p", str(group)],
+                    ["ps", "-ww", "-o", "command=", "-p", str(group)],  # -ww: all of it
                     capture_output=True,
                     text=True,
                     check=False,

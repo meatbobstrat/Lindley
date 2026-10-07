@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-from platformdirs import user_config_dir
+from platformdirs import user_config_dir, user_data_dir
 from pydantic import BaseModel, Field, model_validator
 
 from lindley.providers.base import JOBS, Job
@@ -93,11 +93,27 @@ def _no_jobs() -> dict[Job, JobConfig]:
     return {job: JobConfig() for job in JOBS}
 
 
+class LocalAiSettings(BaseModel):
+    """Lindley's own AI (lindley.localai): llama.cpp's llama-server, and its models."""
+
+    # Where its engine and models are kept. None: Lindley's folder for this user's data.
+    models_dir: Path | None = None
+    # The llama-server to run. None: the one Lindley downloaded (or its installer put) there.
+    server_path: Path | None = None
+    # Which graphics llama.cpp may use. None: any it can (built-in graphics too); "none": the
+    # processor alone; or one device, such as "Vulkan1", from `llama-server --list-devices`.
+    device: str | None = None
+
+    def folder(self) -> Path:
+        return self.models_dir or Path(user_data_dir(APP_NAME, appauthor=False)) / "models"
+
+
 class AiSettings(BaseModel):
     """AI connections, and which one does each job. Out of the box there are none: Lindley
     works with its rules and Tesseract, and a person matches pages to documents by hand."""
 
     providers: dict[str, ProviderConfig] = Field(default_factory=dict)
+    local: LocalAiSettings = Field(default_factory=LocalAiSettings)
     # vision: reading hard pages; assemble: sorting pages into documents; chat: Ask Lindley;
     # embed: finding related pages.
     jobs: dict[Job, JobConfig] = Field(default_factory=_no_jobs)

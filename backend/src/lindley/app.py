@@ -37,6 +37,7 @@ from lindley.api import history as history_api
 from lindley.api import settings as settings_api
 from lindley.config import Settings, load_settings
 from lindley.db.database import connect, init_db
+from lindley.localai import server as local_server
 from lindley.watcher.watcher import FolderWatcher
 from lindley.worker.ai_work import AiWork
 from lindley.worker.intake import absolute_paths
@@ -133,6 +134,7 @@ def create_app(
         if watcher:
             watcher.start()
         app.state.watcher = watcher
+        local_server.use(settings.ai.local)  # started when a job first needs it
         try:
             yield
         finally:
@@ -141,6 +143,7 @@ def create_app(
                 if app.state.watcher:
                     app.state.watcher.stop()
             app.state.ai_work.stop()
+            local_server.stop()
 
     app = FastAPI(title="Lindley", version=__version__, lifespan=lifespan)
     app.state.settings = settings

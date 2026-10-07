@@ -7,7 +7,7 @@ from keyring.backend import KeyringBackend
 from keyring.errors import PasswordDeleteError
 
 from lindley.app import create_app
-from lindley.config import AiSettings, JobConfig, ProviderConfig, Settings
+from lindley.config import AiSettings, JobConfig, LocalAiSettings, ProviderConfig, Settings
 from lindley.providers.base import JOBS
 
 
@@ -61,6 +61,7 @@ def settings(tmp_path: Path) -> Settings:
         ai=AiSettings(
             providers={"local": ProviderConfig(type="fake")},
             jobs={job: JobConfig(connection="local") for job in JOBS},
+            local=LocalAiSettings(models_dir=tmp_path / "models"),
         ),
     )
 

@@ -17,6 +17,11 @@
     `keys.py`: API keys in the system credential store (keyring). `tiers.py`: performance tiers
     (Basic to Cloud), each job's model by how much the computer can run; the UI sets
     `ai.jobs` from the one chosen (`frontend/src/lib/tiers.ts`) and records it in `ai.tier`
+  - `localai/`: Lindley's own AI, llama.cpp's `llama-server` (the Vulkan build). `catalog.py`
+    (the pinned engine and models, with sizes and SHA-256), `download.py` (only when a person
+    asks: resumable, checked), `server.py` (router mode on 127.0.0.1, `--offline`, started when a
+    job first needs it; on Windows in a job that ends with Lindley). Files in `ai.local.models_dir`.
+    `scripts/local_ai.py` downloads and serves from the command line
   - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
     `pipeline.py` (step records, Tesseract/vision reading; `read_turned_again`: pages a person
     turned since Tesseract read them, read again by the watcher), `ocr/` engines, `ai_work.py` (AI

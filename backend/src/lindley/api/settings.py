@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from lindley.api.deps import Conn
 from lindley.config import Settings, save_settings
+from lindley.localai import server as local_server
 from lindley.providers import allowance, keys
 from lindley.providers.registry import connectors
 from lindley.providers.tiers import TIER_IDS
@@ -53,6 +54,7 @@ def put_settings(new: Settings, request: Request, conn: Conn) -> Settings:
             watcher.stop(wait=False)
             request.app.state.watcher = FolderWatcher(new)
             request.app.state.watcher.start()
+    local_server.use(new.ai.local)  # a new folder or device stops the one running
     for name in set(old.ai.providers) - set(new.ai.providers):
         keys.delete_key(name)  # a connection removed takes its key with it
     return new

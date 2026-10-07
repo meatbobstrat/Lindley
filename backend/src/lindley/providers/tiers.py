@@ -42,9 +42,12 @@ class Help:
     does: str  # where pages go, and what it costs
 
 
-# Qwen3.5 4B saw best whether a page runs on (0.92 where the rules can't tell, 0.94 with them)
-CONTINUES = "qwen3.5-4b"
-# Gemma 4 E4B reads handwriting nearly as Claude does (CER 0.15 against it), and sorts
+# Whether a page runs on: Gemma 4 E2B, 3 GB and 1.75 s a pair on a 2019 desktop processor. Qwen3.5
+# 4B sees it better (0.93 against 0.86 where the rules see a sentence run on) but takes 4.9 GB
+# and 4.7 s, and as evidence all three sorted the 23 documents alike (design/database.md)
+CONTINUES = "gemma-4-e2b"
+# Gemma 4 E4B reads handwriting nearly as Claude does (CER 0.15 against it), and sorts; on High
+# it checks whether pages run on too (0.89), so one model is all High downloads
 READS = "gemma-4-e4b"
 
 TIERS: tuple[Tier, ...] = (
@@ -70,7 +73,7 @@ TIERS: tuple[Tier, ...] = (
         needs="16 GB of memory, or a graphics card.",
         does="Gemma 4 on this computer reads handwriting, sorts pages and answers your questions, "
         "at a minute or two a hard page without a graphics card. Nothing needs to leave it.",
-        local={"vision": READS, "assemble": READS, "chat": READS, "continues": CONTINUES},
+        local={"vision": READS, "assemble": READS, "chat": READS, "continues": READS},
     ),
 )
 

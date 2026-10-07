@@ -3,10 +3,10 @@
 
 The rules' runs_on only sees that A stops mid-sentence and B starts mid-sentence, which in a
 typescript is nearly every page. A model shown A's last lines and B's first lines can tell
-whether the sentence really runs on: on the 23 documents of the dev library, Qwen3.5 4B with the
-rules ranked the pairs that go together 0.94 (AUC) where runs_on fires, against 0.77-0.82 for the
-rules alone (design/database.md, "Local models"). Its answer is its chance of saying yes, read
-from its token probabilities (p_yes), so only an AI that gives those can do this job.
+whether the sentence really runs on: on the 23 documents of the dev library, where runs_on fires,
+Gemma 4 E2B ranked the pairs that go together 0.86 (AUC), E4B 0.89 and Qwen3.5 4B 0.93, against
+0.77 for the rules (design/database.md, "Local models"). Its answer is its chance of saying yes,
+read from its token probabilities (p_yes), so only an AI that gives those can do this job.
 
 It's asked about the pairs the rules are unsure of, and at most MOST a run: each takes a few
 seconds on a laptop. Answers are kept by the text asked about (Answers.chance), so a pair is

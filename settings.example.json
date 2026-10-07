@@ -56,7 +56,7 @@
       },
       "continues": {
         "connection": "own",
-        "model": "qwen3.5-4b"
+        "model": "gemma-4-e2b"
       }
     },
     "providers": {

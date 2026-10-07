@@ -27,7 +27,7 @@ INFO = ConnectorInfo(
         "assemble": "gemma-4-e4b",
         "chat": "gemma-4-e4b",
         "embed": "embeddinggemma",
-        "continues": "qwen3.5-4b",
+        "continues": "gemma-4-e2b",
     },
     # A laptop with no graphics card may take minutes over a page, and loading a model the
     # first time it's asked for takes a while too

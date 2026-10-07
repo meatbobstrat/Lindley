@@ -7,6 +7,7 @@ server's address is only known once it's running, so it's started when the first
 
 from __future__ import annotations
 
+import httpx2
 import openai
 
 from lindley.localai import server as local_server
@@ -34,6 +35,13 @@ INFO = ConnectorInfo(
 )
 
 
+def _fresh_connections() -> httpx2.Client:
+    """A connection for each call. llama-server closes one it has kept open after a while, and a
+    call sent on it just then is lost ("Server disconnected without sending a response"): on
+    the bench, about one call in 400. On this computer a new connection costs nothing."""
+    return httpx2.Client(limits=httpx2.Limits(max_keepalive_connections=0))
+
+
 class Provider(OpenAIChat):
     info = INFO
     # Reading a page, or answering a sorting question in JSON, needs no thinking (a thinking
@@ -58,7 +66,7 @@ class Provider(OpenAIChat):
                 base_url=self.base_url,
                 timeout=self._timeout,
                 max_retries=0,  # see _common: a busy AI is tried again by the throttle
-                http_client=self._http,
+                http_client=self._http or _fresh_connections(),
             )
         return self._client
 

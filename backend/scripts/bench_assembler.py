@@ -36,7 +36,8 @@ import argparse
 import tempfile
 from pathlib import Path
 
-from lindley.assembler import assemble
+from lindley.assembler import assemble, continues
+from lindley.assembler.answers import Answers
 from lindley.assembler.bench import (
     BANDS,
     HABITS,
@@ -54,6 +55,7 @@ from lindley.assembler.bench import (
     score,
     score_groups,
 )
+from lindley.assembler.model import weigh_terms
 from lindley.assembler.run import load_inbox
 from lindley.assembler.segment import segment
 from lindley.config import ProviderConfig, load_settings
@@ -98,7 +100,16 @@ def run(
         else:
             batch = make_batch(seed)
             truth = load(conn, batch.pages, habit=habit, seed=seed)
-        proposal = score_groups(segment(load_inbox(conn))[0], truth)
+        judge = None
+        if JUDGE:
+            server.use(settings.ai.local.model_copy(update={"device": DEVICE}))
+            judge = build_provider(ProviderConfig(type="builtin"), "continues", JUDGE)
+        inbox = load_inbox(conn)
+        if judge or ANSWERS:  # the groups proposed with what the judge says, as Lindley would
+            weigh_terms(inbox)
+            with kept_answers(conn, ANSWERS):
+                continues.judge(inbox, judge, Answers(conn), None)
+        proposal = score_groups(segment(inbox)[0], truth)
         chat = None
         if ai == "oracle":
             chat = OracleChat(truth)
@@ -107,10 +118,6 @@ def run(
         elif ai in MODELS:
             server.use(settings.ai.local.model_copy(update={"device": DEVICE}))
             chat = build_provider(ProviderConfig(type="builtin"), "assemble", ai)
-        judge = None
-        if JUDGE:
-            server.use(settings.ai.local.model_copy(update={"device": DEVICE}))
-            judge = build_provider(ProviderConfig(type="builtin"), "continues", JUDGE)
         with kept_answers(conn, ANSWERS):
             r = assemble(conn, settings.assembler, chat, judge=judge, max_judged=None)
         calls, asks = r.ai_calls, (r.ai_windows, r.ai_pages)

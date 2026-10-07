@@ -59,19 +59,20 @@ class Judge:
         return 0.95 if any(q in question for q in self.yes) else 0.05
 
 
-def test_only_the_pairs_the_rules_are_unsure_of_are_asked_about():
+def test_the_pairs_the_rules_may_get_wrong_are_asked_about():
     in_order = scanned(["Image (1)", "Image (2)", "Image (3)", "Image (4)"])
     # Scanned one after the other and running on, the rules are sure: not asked
     assert pair(in_order[0], in_order[1]).score > continues.UNSURE[1]
-    asked = {(a.id, b.id) for a, b in continues.unsure_pairs(in_order)}
+    asked = [(a.id, b.id) for a, b in continues.unsure_pairs(in_order)]
     assert (1, 2) not in asked and (2, 3) not in asked
-    assert (3, 4) in asked  # the typescript then a letter: unsure
-    # Scanned apart, a sentence that might run on from one to another is worth asking about
+    assert asked[0] == (3, 4)  # the typescript then a letter: unsure, and first
+    # Scanned apart, each page's best few candidates near the bar for joining
     apart = scanned(["a", "q", "c", "z"])
     asked = continues.unsure_pairs(apart)
     assert {(1, 2), (1, 3), (2, 3), (3, 2)} <= {(a.id, b.id) for a, b in asked}
     for a, b in asked:
-        assert continues.UNSURE[0] <= pair(a, b).score <= continues.UNSURE[1]
+        assert pair(a, b).score >= continues.NEAR_JOIN
+    assert len([a for a, _ in asked if a.id == 1]) <= continues.APART
 
 
 def test_the_question_shows_the_end_of_one_and_the_start_of_the_next():
@@ -81,7 +82,7 @@ def test_the_question_shows_the_end_of_one_and_the_start_of_the_next():
     assert "THE OLD MILL" in q  # all of a short page
 
 
-def test_the_answer_weighs_in_and_is_given_as_a_reason():
+def test_a_yes_weighs_in_and_is_given_as_a_reason():
     a, b, *_ = scanned(["a", "q"])
     before = pair(a, b)
     assert before.features["lm_continues"] == 0 and "lm_continues" in FEATURES
@@ -89,12 +90,14 @@ def test_the_answer_weighs_in_and_is_given_as_a_reason():
     yes = pair(a, b)
     assert yes.score > before.score and yes.features["lm_continues"] == pytest.approx(2.944, 0.01)
     assert "The writing carries straight on, page to page" in [k.note for k in yes.links]
-    a.runs_into[b.id] = 0.05
-    no = pair(a, b)
-    assert no.score < before.score
-    assert "the writing doesn't carry on from one to the other" in no.breaks
     a.runs_into[b.id] = 1.0  # held within 1% of sure
     assert pair(a, b).features["lm_continues"] == pytest.approx(4.595, 0.01)
+    # Its no is measured apart, and weighed at nothing: it split too many pages that run on
+    a.runs_into[b.id] = 0.05
+    no = pair(a, b)
+    assert no.features["lm_breaks"] == pytest.approx(2.944, 0.01)
+    assert no.features["lm_continues"] == 0 and no.score == pytest.approx(before.score)
+    assert "the writing doesn't carry on from one to the other" not in no.breaks
 
 
 def test_answers_are_kept_and_never_asked_twice(conn):

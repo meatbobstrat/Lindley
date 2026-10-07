@@ -229,12 +229,12 @@ def test_the_server_starts_when_a_model_is_needed(tmp_path: Path, made_up, stub)
     try:
         url = s.url("reader")
         assert url == f"http://127.0.0.1:{s.port}/v1" and s.running()
-        assert "--offline" in (root / "server.log").read_text()
+        assert "--offline" in s.log.read_text() and s.log.parent == root / "logs"
         assert s.url("reader") == url  # running: the same one
         # A model downloaded since: started again, knowing it
         install(root, small)
         s.url("small")
-        assert "[small]" in (root / "server.ini").read_text()
+        assert "[small]" in s.log.with_suffix(".ini").read_text()
         with pytest.raises(ProviderError, match="no model called 'other'"):
             s.url("other")
     finally:

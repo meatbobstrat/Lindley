@@ -13,6 +13,7 @@ or uvicorn's --reload), so it's never left running on its own.
 from __future__ import annotations
 
 import logging
+import os
 import socket
 import subprocess
 import sys
@@ -31,6 +32,7 @@ log = logging.getLogger(__name__)
 HOST = "127.0.0.1"
 MODELS_MAX = 2  # models kept loaded at once
 START_S = 60  # seconds to wait for it to start (models load later, when asked for)
+KEEP_LOGS = 10  # its logs kept, in the models folder's logs/
 
 NOT_DOWNLOADED = "Lindley's own AI isn't downloaded yet. Download it in Settings › AI."
 
@@ -75,6 +77,7 @@ class LocalServer:
         self._job = None  # Windows: the job that ends the server with Lindley
         self._models: set[str] = set()  # the models the running server knows
         self.port: int | None = None
+        self.log: Path | None = None  # what the server wrote, since it last started
 
     def program(self) -> Path | None:
         if self.local.server_path:
@@ -111,8 +114,15 @@ class LocalServer:
         root = self.local.folder()
         if self._command is None and not ((p := self.program()) and p.is_file()):
             raise ProviderError(NOT_DOWNLOADED)
-        root.mkdir(parents=True, exist_ok=True)
-        ini = root / "server.ini"
+        logs = root / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        # Each server its own files: Lindley and a script may each run one on the same models
+        for old in sorted(logs.glob("server-*.log"), key=lambda f: f.stat().st_mtime)[:-KEEP_LOGS]:
+            old.unlink(missing_ok=True)
+            old.with_suffix(".ini").unlink(missing_ok=True)
+        stamp = f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
+        ini = logs / f"server-{stamp}.ini"
+        self.log = logs / f"server-{stamp}.log"
         ini.write_text(preset(self.local, models), encoding="utf-8")
         self.port = _free_port()
         args = [
@@ -129,7 +139,7 @@ class LocalServer:
         ]
         command = [*(self._command or [str(self.program())]), *args]
         log.info("Starting Lindley's own AI: %s", " ".join(command))
-        with (root / "server.log").open("wb") as out:
+        with self.log.open("wb") as out:
             self._proc = subprocess.Popen(
                 command,
                 stdout=out,
@@ -156,8 +166,8 @@ class LocalServer:
     def _said(self) -> str:
         """The last thing the server wrote, for an error."""
         try:
-            lines = (self.local.folder() / "server.log").read_text("utf-8", "replace").split("\n")
-        except OSError:
+            lines = self.log.read_text("utf-8", "replace").split("\n")
+        except (OSError, AttributeError):
             return "it said nothing"
         return next((x.strip() for x in reversed(lines) if x.strip()), "it said nothing")
 

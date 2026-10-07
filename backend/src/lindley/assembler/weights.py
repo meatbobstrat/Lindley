@@ -45,10 +45,13 @@ WEIGHTS = {
     "topic_alike": 0.0,
     "folder_shared": 2.0,
     "folder_differs": -3.0,
-    # A local model's log-odds that the writing runs on, asked only about pairs the rules are
-    # unsure of (continues.py). Its chance is fairly well calibrated, so near 1: on the bench,
-    # the rules' log-odds and the model's added ranked pairs best (design/database.md)
-    "lm_continues": 0.8,
+    # A local model's log-odds that the writing runs on, or doesn't, asked about pairs the rules
+    # may get wrong (continues.py). Set by hand on the 23 documents (Qwen3.5 4B): its yes helps
+    # a little (proposed F1 0.862 to 0.868, rebuilt exactly 57% to 61%, the same from 0.3 to
+    # 0.8), but its no splits too many pages that do run on (12% of them it gives under 0.1),
+    # so that's weighed at nothing (design/database.md, "Does page B carry on")
+    "lm_continues": 0.5,
+    "lm_breaks": 0.0,
 }
 
 # A group's confidence, in log-odds, over segment.GROUP_FEATURES. Empty: the hand-made rule in

@@ -41,6 +41,7 @@ from lindley.assembler.run import library_terms, load_inbox
 from lindley.config import ProviderConfig, load_settings
 from lindley.db.database import connect, init_db
 from lindley.localai import server
+from lindley.providers.base import ProviderError
 from lindley.providers.registry import build_provider
 
 
@@ -131,8 +132,15 @@ def main() -> None:
         ai = build_provider(ProviderConfig(type="builtin"), "chat", model)
         own = server.use(local)
 
-        def ask(x: Page, y: Page, ai=ai) -> float:
-            return ai.p_yes(SYSTEM, question(x, y, a.lines))
+        def ask(x: Page, y: Page, ai=ai, own=own) -> float:
+            """Asked once more if the call fails, so one lost call doesn't lose the run: the
+            server is started again if it stopped (Lindley itself never asks twice)."""
+            try:
+                return ai.p_yes(SYSTEM, question(x, y, a.lines))
+            except ProviderError as e:
+                print(f"  asking again after: {e} (the server's log: {own.log})", flush=True)
+                ai._client = None  # its address, afresh
+                return ai.p_yes(SYSTEM, question(x, y, a.lines))
 
         loading = time.monotonic()
         ask(todo[0][0], todo[0][1])  # load it
@@ -155,10 +163,11 @@ def main() -> None:
             f" where runs_on fires {auc([(r[model], r['together']) for r in runs]):.3f},"
             f" with the rules {auc([(mixed(r), r['together']) for r in rows]):.3f};"
             f" right at 0.5 {right}/{len(rows)}; {each:.2f} s a pair{where}; loaded in"
-            f" {loaded:.0f} s" + (f"; most memory {peak / 1e9:.1f} GB" if peak else "")
+            f" {loaded:.0f} s" + (f"; most memory {peak / 1e9:.1f} GB" if peak else ""),
+            flush=True,
         )
-    if a.out:
-        a.out.write_text(json.dumps(rows, indent=1), encoding="utf-8")
+        if a.out:  # after each model, so a run cut short keeps what it measured
+            a.out.write_text(json.dumps(rows, indent=1), encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ from lindley.assembler.answers import Answers
 from lindley.assembler.clues import parse_marker, text_lines, trim_noise
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Page
-from lindley.assembler.segment import rescans, scan_order
+from lindley.assembler.segment import JOIN_AT, rescans, scan_order
 from lindley.providers.base import ProviderError
 
 log = logging.getLogger(__name__)
@@ -33,7 +33,9 @@ SYSTEM = (
     "starts something else or belongs somewhere else. Answer with one word: yes or no."
 )
 LINES = 4  # lines shown from each page (more didn't help on the bench)
-UNSURE = (0.15, 0.85)  # pairs the rules score in here are asked about
+UNSURE = (0.15, 0.85)  # neighbours the rules score in here are asked about
+NEAR_JOIN = JOIN_AT - 0.15  # pages scanned apart are asked about from this score
+APART = 3  # ... each page's best few
 MOST = 40  # questions a run at most
 
 
@@ -52,28 +54,37 @@ def question(a: Page, b: Page, n: int = LINES) -> str:
 
 
 def unsure_pairs(pages: list[Page]) -> list[tuple[Page, Page]]:
-    """Pairs worth asking about, the least sure first: pages scanned one after the other that
-    the rules can't call, and pages scanned apart that the rules might join because one stops
-    mid-sentence and the other starts mid-sentence."""
+    """Pairs worth asking about, in the order to ask: pages scanned one after the other that the
+    rules can't call, then pages scanned apart that they might join, each page's best few that
+    come near the bar (segment.JOIN_AT). Not every pair that might run on: in a typescript
+    nearly every page stops and starts mid-sentence, so that would be most of them. Nor pages
+    the rules already link: only the model's yes is weighed (its no split too many pages that do
+    run on), so asking about them changed nothing on the bench."""
     ordered = scan_order(pages)
     again = rescans(ordered)
     stream = [p for p in ordered if p.id not in again and body(p)]
-    found: dict[tuple[int, int], tuple[float, Page, Page]] = {}
+    out: list[tuple[Page, Page]] = []
     for a, b in zip(stream, stream[1:], strict=False):
-        score = pair(a, b).score
-        if UNSURE[0] <= score <= UNSURE[1]:
-            found[(a.id, b.id)] = (score, a, b)
+        if UNSURE[0] <= pair(a, b).score <= UNSURE[1]:
+            out.append((a, b))
+    neighbours = {(a.id, b.id) for a, b in zip(stream, stream[1:], strict=False)}
     ends = [p for p in stream if p.clues.ends_mid and not p.clues.ends_doc]
     starts = [p for p in stream if p.clues.starts_mid and not p.clues.starts_doc]
+    apart = []
     for a in ends:
-        for b in starts:
-            if a is b or (a.id, b.id) in found:
-                continue
-            score = pair(a, b).score
-            if UNSURE[0] <= score <= UNSURE[1]:
-                found[(a.id, b.id)] = (score, a, b)
-    ranked = sorted(found.values(), key=lambda x: (abs(x[0] - 0.5), x[1].id, x[2].id))
-    return [(a, b) for _, a, b in ranked]
+        near = sorted(
+            (
+                (score, b.id, b)
+                for b in starts
+                if b is not a
+                and (a.id, b.id) not in neighbours
+                and (score := pair(a, b).score) >= NEAR_JOIN
+            ),
+            key=lambda x: (-x[0], x[1]),
+        )
+        apart += [(score, a, b) for score, _, b in near[:APART]]
+    out += [(a, b) for _, a, b in sorted(apart, key=lambda x: (-x[0], x[1].id, x[2].id))]
+    return out
 
 
 def judge(pages: list[Page], judge, answers: Answers, most: int | None = MOST) -> int:

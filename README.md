@@ -334,10 +334,11 @@ the program.
 | `ai.local` | Lindley's own AI: `models_dir`, where its engine and models go (`null`: the per-user data folder); `server_path`, a `llama-server` of your own; `device`, the graphics it may use (`null`: any; `none`: the processor alone; or one from `llama-server --list-devices`) |
 
 **API keys never go in `settings.json`.** They're kept in Windows Credential Manager (the
-Keychain on a Mac), under "Lindley", with the connection's name. Settings › AI and privacy saves
-it there for you (through `PUT /api/connections/<name>/key`). A connection can
-instead name an environment variable that holds its key (`api_key_env`, for example
-`OPENAI_API_KEY`).
+Keychain on a Mac, the desktop's keyring on Linux), under "Lindley", with the connection's name.
+Settings › AI and privacy saves it there for you (through `PUT /api/connections/<name>/key`). A
+connection can instead name an environment variable that holds its key (`api_key_env`, for
+example `OPENAI_API_KEY`). A Linux desktop with no keyring running gets that advice in words:
+Lindley never keeps a key in a plain file.
 
 ### Adding an AI connector
 

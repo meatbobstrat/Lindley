@@ -194,7 +194,7 @@ export function ConnEditor({
           <p className="fld-note" id={`${ctx}-keyh`}>
             {cloud && !e.ack
               ? 'Read the warning and check the box above before you enter a key.'
-              : 'Lindley keeps your key in Windows Credential Manager (the Keychain on a Mac), never in its settings file, and never shows it again after you save it.'}
+              : 'Lindley keeps your key in this computer’s credential store (Windows Credential Manager, the Keychain on a Mac, the keyring on Linux), never in its settings file, and never shows it again after you save it.'}
             {c?.key_url && (
               <>
                 {' '}
@@ -1065,7 +1065,7 @@ function SetAi({
         })}
       </div>
       <p className="fld-note">
-        <Icon name="lock" /> API keys are kept in Windows Credential Manager. They are never written to Lindley’s settings file or your library, and never shown
+        <Icon name="lock" /> API keys are kept in this computer’s credential store (Windows Credential Manager, the Keychain on a Mac, the keyring on Linux). They are never written to Lindley’s settings file or your library, and never shown
         again once saved.
       </p>
     </>

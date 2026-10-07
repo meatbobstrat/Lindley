@@ -1,6 +1,8 @@
 """The API for AI connectors and connections: what can be connected, keys, setup, checks."""
 
+import keyring
 import pytest
+from keyring.backends import fail
 
 from lindley.providers.base import ProviderError
 from lindley.providers.connectors import fake
@@ -41,6 +43,16 @@ def test_keys_go_in_the_credential_store_and_never_come_back(client, keys):
     assert (SERVICE, "local") not in keys.keys
     assert client.put("/api/connections/nobody/key", json={"key": "x"}).status_code == 404
     assert client.put("/api/connections/local/key", json={"key": ""}).status_code == 422
+
+
+def test_no_keyring_is_said_in_words(client, monkeypatch):
+    """A Linux desktop with no keyring running: no key is kept, and none is put in a file."""
+    monkeypatch.setattr(keyring.core, "_keyring_backend", fail.Keyring())
+    r = client.put("/api/connections/local/key", json={"key": "sk-secret-abcd"})
+    assert r.status_code == 500 and "no keyring" in r.json()["detail"]
+    assert "api_key_env" in r.json()["detail"]
+    assert client.get("/api/settings/ai-calls").json()["providers"]["local"]["key_hint"] is None
+    assert client.delete("/api/connections/local/key").json() == {"key_hint": None}
 
 
 def test_a_connection_removed_takes_its_key_with_it(client, keys):

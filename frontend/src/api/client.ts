@@ -9,6 +9,8 @@ export interface Health {
   ocr_engine: string
   // The AI connection doing each job, or null when none is set up.
   ai: Record<Job, string | null>
+  // Quit Lindley is offered: started from the menu or `python -m lindley`, not with --reload
+  can_quit: boolean
 }
 
 // What the UI shows beside a page (lindley.browse.state).
@@ -425,6 +427,7 @@ export const api = {
   computer: () => get<Computer>('/local-ai/computer'),
   aiCalls: () => get<AiCalls>('/settings/ai-calls'),
   setupNeeded: () => get<{ needed: boolean }>('/setup'),
+  quit: () => send<{ stopping: boolean }>('POST', '/quit'),
 
   movePages: (page_ids: number[], to: Where, document_id?: number) =>
     send<Change>('POST', '/pages/move', { page_ids, to, document_id }),

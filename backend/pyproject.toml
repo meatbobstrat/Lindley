@@ -23,6 +23,9 @@ dependencies = [
     "openai>=3.24,<4",
     "google-genai>=2.28,<3",
     "httpx2>=2.0",  # downloading Lindley's own AI, when a person asks; and starting it
+    # Lindley's icon in the tray. On Ubuntu it's the system's python3-pystray, which works with
+    # its AppIndicators (through python3-gi): the .deb asks for both
+    "pystray>=0.19.5; sys_platform != 'linux'",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +44,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 # web: the built frontend, copied in by the installer (see app.FRONTEND_DIRS)
-lindley = ["db/schema.sql", "web/**/*"]
+lindley = ["db/schema.sql", "icon.png", "web/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

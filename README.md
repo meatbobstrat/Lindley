@@ -214,6 +214,11 @@ To run both dev servers:
 
 This starts the backend on http://127.0.0.1:8765 and the UI on http://localhost:5173.
 To run only the backend: `python -m lindley [--settings PATH] [--host HOST] [--port PORT]`.
+Started that way (or from the menu, once installed), Lindley serves the built UI, opens it in
+the browser and puts its icon in the tray, with Open and Quit; started again, it opens the one
+already running. `--no-browser` and `--no-tray` leave those out. Quit Lindley (the power button
+in the app) stops it; closing the tab leaves it running. Its log is kept beside the database
+(`logs/lindley.log`), since an app started from the menu has no console.
 Lindley has no login, so it answers only to `127.0.0.1` and `localhost`, and only its own pages
 may change anything; other web pages can't reach it. Started with `--host` on a network
 address, it answers to any name: only do that on a network you trust.

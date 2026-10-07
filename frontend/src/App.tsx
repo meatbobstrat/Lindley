@@ -53,6 +53,8 @@ export default function App() {
   const [q, setQ] = useState(params.get('q') ?? '')
   const main = useRef<HTMLElement>(null)
   const setup = useApi('setup', api.setupNeeded)
+  const health = useApi('health', api.health)
+  const [stopped, setStopped] = useState(false)
 
   // The theme: as the computer has it, or chosen here
   useEffect(() => {
@@ -105,6 +107,8 @@ export default function App() {
     }
   }, [undo, acts])
 
+  if (stopped) return <Stopped />
+
   return (
     <>
       <MarkDefs />
@@ -155,6 +159,16 @@ export default function App() {
           >
             <Icon name={dark ? 'sun' : 'moon'} />
           </button>
+          {health.data?.can_quit && (
+            <button
+              className="icon-btn"
+              aria-label="Quit Lindley"
+              data-tip="Quit Lindley: it stops reading and watching your folders until you start it again. Closing this tab leaves it running."
+              onClick={() => api.quit().then(() => setStopped(true))}
+            >
+              <Icon name="power" />
+            </button>
+          )}
           <button
             className="icon-btn mobile-only"
             aria-label="Ask Lindley"
@@ -206,5 +220,21 @@ export default function App() {
       {setup.data?.needed && settings && connectors.length > 0 && tiers.length > 0 && <Setup settings={settings} connectors={connectors} tiers={tiers} helps={helps} />}
       <TooltipLayer />
     </>
+  )
+}
+
+/** After Quit Lindley: nothing here works until it's started again. */
+function Stopped() {
+  return (
+    <main className="stopped">
+      <MarkDefs />
+      <Mark />
+      <h1>Lindley has stopped</h1>
+      <p>
+        It isn’t reading scans or watching your folders now. To use it again, start Lindley from the Start menu, Applications or your
+        app menu. Work it was part way through carries on then.
+      </p>
+      <p>You can close this tab.</p>
+    </main>
   )
 }

@@ -308,6 +308,9 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .pg-hints .pg-hint.more { flex: none; width: 28px; justify-content: center; padding: 0; }
 .pg-hint.more .ic { width: 14px; height: 14px; }
 .empty { padding: 48px 20px; text-align: center; color: var(--muted); }
+.stopped { max-width: 32rem; margin: 15vh auto 0; padding: 0 16px; text-align: center; color: var(--ink); }
+.stopped svg { width: 48px; height: 48px; }
+.stopped p { color: var(--muted); }
 
 /* Reader */
 .reader { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; }

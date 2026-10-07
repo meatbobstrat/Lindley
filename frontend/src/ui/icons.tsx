@@ -42,6 +42,7 @@ const PATHS = {
   search: 'M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14zM16 16l5 5',
   history: 'M4.6 9.5A8 8 0 1 1 4 13M4 4.5v5h5M12 8v4.5l3 2',
   stop: 'M7 7h10v10H7z',
+  power: 'M12 3.5v8M7.2 6.3a7.5 7.5 0 1 0 9.6 0',
 } as const
 
 export type IconName = keyof typeof PATHS | 'lindley'

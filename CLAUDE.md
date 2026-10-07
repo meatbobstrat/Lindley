@@ -4,6 +4,10 @@
 - `backend/`: Python 3.13 FastAPI app, `src/lindley/`, setuptools, pytest and ruff
   - `config.py`: Pydantic `Settings`, plus the settings.json lookup and load/save
   - `app.py`: `create_app(settings)` factory; routers live in `api/`
+  - `__main__.py` and `launcher.py`: Lindley as an app. One running at a time (a second start
+    opens it), the browser opened once it's up, a tray icon (pystray; on Ubuntu the system's)
+    and Quit Lindley (`POST /api/quit`, offered when `/api/health` says `can_quit`). The icons
+    are drawn by `scripts/make_icons.py` into `backend/icons/` (installers) and `icon.png` (tray)
   - `db/`: plain `sqlite3` with FTS5; `schema.sql` is applied idempotently by `init_db`
   - `providers/`: the AI abstraction (`ChatProvider`, `VisionProvider`, `EmbeddingProvider`).
     `registry.get_provider(ai, job)` builds the one settings give a job (`vision`, `assemble`,

@@ -271,6 +271,8 @@ def test_the_real_catalog_is_pinned():
             assert f.url.startswith("https://huggingface.co/") and "/resolve/" in f.url
             assert len(f.sha256) == 64 and f.size > 0
             assert f.url.split("/resolve/")[1].split("/")[0] != "main"  # a fixed revision
+        if "embed" in m.jobs:  # a page is embedded in one batch: it must hold the context
+            assert int(m.preset["ubatch-size"]) >= m.context
     e = catalog.ENGINES["win32"]
     assert e.file.url.startswith("https://github.com/ggml-org/llama.cpp/releases/download/")
 

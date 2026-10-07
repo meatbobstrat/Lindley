@@ -23,7 +23,8 @@
     asks: resumable, checked), `server.py` (router mode on 127.0.0.1, `--offline`, started when a
     job first needs it; on Windows in a job that ends with Lindley). Files in `ai.local.models_dir`.
     `scripts/local_ai.py` downloads and serves from the command line. API in `api/local_ai.py`.
-    Test Lindley with its own engine and models, not Ollama
+    Test Lindley with its own engine and models, not Ollama. How to bench them, where the kept
+    answers and Claude's reference readings are, and what was learned: design/benches.md
   - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
     `pipeline.py` (step records, Tesseract/vision reading; `read_turned_again`: pages a person
     turned since Tesseract read them, read again by the watcher), `ocr/` engines, `ai_work.py` (AI

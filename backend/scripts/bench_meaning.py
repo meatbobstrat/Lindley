@@ -2,11 +2,13 @@
 
 python scripts/bench_meaning.py --real lindley.db
 python scripts/bench_meaning.py --real lindley.db --models embeddinggemma
+python scripts/bench_meaning.py --real lindley.db --models nomic-embed-text --url http://localhost:11434/v1
 
 For each page of a real answer key (lindley.assembler.bench.real_answers), the page most like it
 among the others is found, and the report says how often that page is from its own document:
 by rare words (lindley.assembler.terms), and by each embedding model named, called through the
-local connector's `embed` (an Ollama on this computer by default).
+`embed`: Lindley's own AI's (lindley.localai.catalog, downloaded with scripts/local_ai.py), or
+with --url the local connector's, at another server such as Ollama.
 Also, how far apart the scores are: the average of each page's best score from its own
 document less its best from any other (higher separates better; scores differ in scale from
 one way to another, so compare the counts first).
@@ -24,8 +26,9 @@ from lindley.assembler.bench import arrange, load_real, real_answers
 from lindley.assembler.model import weigh_terms
 from lindley.assembler.run import library_terms, load_inbox
 from lindley.assembler.terms import overlap
-from lindley.config import ProviderConfig
+from lindley.config import ProviderConfig, load_settings
 from lindley.db.database import connect, init_db
+from lindley.localai import server
 from lindley.providers.registry import build_provider
 
 
@@ -48,8 +51,8 @@ def judge(label: str, n: int, doc: list[str], alike: Callable[[int, int], float]
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--real", type=Path, required=True)
-    ap.add_argument("--models", default="nomic-embed-text,embeddinggemma")
-    ap.add_argument("--url", default="http://localhost:11434/v1")
+    ap.add_argument("--models", default="embeddinggemma")
+    ap.add_argument("--url", help="another OpenAI-compatible server (else Lindley's own AI)")
     a = ap.parse_args()
 
     src = connect(a.real)
@@ -70,7 +73,11 @@ def main() -> None:
     print(f"{len(set(doc))} documents, {n} pages")
     judge("rare words", n, doc, lambda i, j: overlap(pages[i].terms, pages[j].terms)[0], took)
     for model in a.models.split(","):
-        embedder = build_provider(ProviderConfig(type="local", base_url=a.url), "embed", model)
+        if a.url:
+            embedder = build_provider(ProviderConfig(type="local", base_url=a.url), "embed", model)
+        else:
+            server.use(load_settings().ai.local)
+            embedder = build_provider(ProviderConfig(type="builtin"), "embed", model)
         embedder.embed([pages[0].text])  # load it
         started = time.monotonic()
         vectors = embedder.embed([p.text for p in pages])

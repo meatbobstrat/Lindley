@@ -192,7 +192,9 @@ MODELS: dict[str, Model] = {
             jobs=frozenset({"embed"}),
             context=2048,
             memory_gb=0.6,
-            preset={"embeddings": "true"},
+            # A text is embedded in one batch, which out of the box holds 512 tokens: a page
+            # can be longer
+            preset={"embeddings": "true", "batch-size": "2048", "ubatch-size": "2048"},
         ),
     )
 }

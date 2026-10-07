@@ -443,6 +443,8 @@ Sources: [OCR models in llama.cpp](https://huggingface.co/blog/ggml-org/using-oc
 
 ### Lindley's own AI, measured
 
+How these were run, and what to know before running them again: [benches.md](benches.md).
+
 Lindley now runs llama.cpp's `llama-server` itself (`lindley.localai`): v0.6.0, build b11429, the Vulkan build, with Google's Q4_0 conversions of Gemma 4 from ggml-org and Unsloth's Q4_K_M of Qwen3.5 4B, each file pinned by size and SHA-256 (`localai/catalog.py`). Measured in October 2026 on the same i5-9400 with 32 GB of DDR4, through Lindley's own code (`bench_continues.py`, `bench_reading.py`, `bench_assembler.py`), "the CPU" being `--device none`. "Most memory" is the server's processes' peak working set, the model's weights read from disk included.
 
 **Does B carry on from A?** The same 424 pairs as above (124 that go together, 150 of one document's last page and another's first, 150 of different documents where `runs_on` fires), 4 lines from each page, on the CPU:
@@ -464,6 +466,8 @@ The same models as on Ollama, and the same scores, but quicker: Qwen3.5 4B took 
 **Sorting** (`bench_assembler.py --real --ai`, the 23 documents in scan order, on the graphics card). Gemma 4 E4B: 30 questions, 8 documents made, 2 wrong, 13% rebuilt exactly (the rules alone made 3, none wrong). It still makes wrong documents, so a local sorting AI stays at "ask first". Gemma 4 26B-A4B: 35 questions, 22 documents made, 1 wrong, 52% rebuilt exactly, at 16.6 GB, about 20 minutes on the 8 GB card with most of it on the processor. It sorts far better than E4B: the one clear case for it.
 
 **Built-in graphics.** This computer's Intel UHD 630 has a 2021 driver, and llama.cpp can't open it (`vk::PhysicalDevice::createDevice: ErrorDeviceLost`), so it wasn't measured. A laptop with only such graphics would have had no AI at all, so Lindley loads each model as its server starts, and when the graphics can't load it and no device is set, starts again on the processor alone, and Settings says so. With no device set, llama.cpp chose the graphics card over the built-in graphics here.
+
+**What pages are about** (`bench_meaning.py`): EmbeddingGemma on Lindley's own AI finds a page's own document for 122 of 147 pages (125 on Ollama; rare words 117), all 147 in 10 s on the graphics card. A page is embedded in one batch, so its batch is set as large as its context (2,048 tokens): out of the box llama-server's holds 512, and refused longer pages.
 
 **Two things learned running it.** llama-server keeps up to 8 GB of earlier prompts in memory out of the box (`--cache-ram`); Lindley turns that off, and Qwen3.5 4B then takes 4.4 GB in place of 9.8. And llama-server closes a kept-open connection after a while: a call sent on it just then was lost, about one in 400, which looked like the server dying. Lindley makes a new connection for each call.
 

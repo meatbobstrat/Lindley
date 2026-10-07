@@ -114,6 +114,14 @@ def test_unsupported_files_and_lindleys_own_folders_are_ignored(settings, inbox)
 def test_a_missing_watch_folder_is_skipped(settings, tmp_path):
     settings.watch_folders = [tmp_path / "nowhere"]
     assert make_watcher(settings).folders() == []
+    assert not (tmp_path / "nowhere").exists()
+
+
+def test_lindleys_own_inbox_is_made_the_first_time(settings, tmp_path, monkeypatch):
+    monkeypatch.setattr("lindley.config.user_documents_dir", lambda: str(tmp_path / "Docs"))
+    settings.watch_folders = [Settings().watch_folders[0], tmp_path / "unplugged"]
+    inbox = tmp_path / "Docs" / "Lindley" / "Inbox"
+    assert make_watcher(settings).folders() == [inbox] and inbox.is_dir()
 
 
 def test_the_background_watcher_picks_up_a_dropped_file(settings, inbox):

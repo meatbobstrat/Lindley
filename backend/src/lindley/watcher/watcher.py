@@ -24,7 +24,7 @@ from watchdog.observers import Observer
 
 from lindley.assembler.auto import chat_on_its_own, read_on_its_own, sort_on_its_own
 from lindley.assembler.relearn import relearn
-from lindley.config import Settings
+from lindley.config import Settings, default_inbox
 from lindley.db.database import connect
 from lindley.duplicates import find_duplicates
 from lindley.providers.base import ChatProvider
@@ -110,6 +110,13 @@ class FolderWatcher:
     # --------------------------------------------------------------- lifecycle
 
     def folders(self) -> list[Path]:
+        # Lindley's own Inbox is made the first time, so a new install watches something. A
+        # folder a person chose isn't: if it's gone (a drive unplugged), it waits until it's back.
+        if (inbox := default_inbox()) in self.settings.watch_folders:
+            try:
+                inbox.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                log.warning("Couldn't make the Inbox folder %s: %s", inbox, e)
         found = [f for f in self.settings.watch_folders if f.is_dir()]
         for f in set(self.settings.watch_folders) - set(found):
             log.warning("Watched folder %s doesn't exist; skipping it", f)

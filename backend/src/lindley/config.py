@@ -29,6 +29,11 @@ def documents_folder() -> Path:
     return Path(user_documents_dir()) / APP_NAME
 
 
+def default_inbox() -> Path:
+    """The folder watched out of the box. Unlike one a person chose, it's made if it's missing."""
+    return documents_folder() / "Inbox"
+
+
 class OcrSettings(BaseModel):
     engine: Literal["hybrid", "tesseract", "vision"] = "hybrid"
     tesseract_path: Path | None = None
@@ -176,7 +181,7 @@ class Settings(BaseModel):
     # and PDFs in the person's Documents, the database and work in progress in this user's data
     # folder. The database stays out of Documents, which is often synced, and SQLite isn't safe
     # in a synced folder.
-    watch_folders: list[Path] = Field(default_factory=lambda: [documents_folder() / "Inbox"])
+    watch_folders: list[Path] = Field(default_factory=lambda: [default_inbox()])
     processing_dir: Path = Field(default_factory=lambda: data_folder() / "processing")
     quarantine_dir: Path = Field(default_factory=lambda: data_folder() / "quarantine")
     library_dir: Path = Field(default_factory=lambda: documents_folder() / "Library")

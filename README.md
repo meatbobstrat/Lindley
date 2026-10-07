@@ -466,8 +466,14 @@ and you can ask it about them. All of it from a one-click install.
   (`lm_continues`, the `continues` job): asked only about pairs the rules may get wrong, its
   "yes" weighed as evidence. On the 23 documents it lifted the groups proposed a little (57% to
   61% rebuilt exactly, none wrong); its "no" split pages that do run on, so it isn't weighed
-- [ ] A look at the computer at first run (processor, memory, graphics card, free disk) that
-  suggests a tier, with how long 100 pages would take
+- [x] A look at the computer at first run (processor, memory, graphics card, free disk) that
+  suggests a tier, with how long 100 pages would take (`localai/computer.py`, `tiers.suggest`).
+  Setup starts on the highest tier the memory or graphics card can run, a step lower when its
+  download wouldn't fit on the disk, and says why. Each tier gives its time for 100 typed and
+  100 handwritten pages, from speeds measured on one 2019 desktop: on it, High takes about 6
+  minutes for typed pages on the graphics card, and nearly 2 hours on the processor alone,
+  most of it sorting (116 s a question, against 2.8 s on the card). Benches on more computers
+  wait for the installer
 - [ ] One-click installer (Windows/Mac/Linux), with Tesseract included (on Linux, installed with
   it). Python 3.13 bundled, and the built app found wherever it's installed, not by the repo's
   folders. Linux, Ubuntu to start: a `.deb` built on Ubuntu 22.04 that installs Tesseract,

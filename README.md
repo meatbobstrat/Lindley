@@ -187,11 +187,21 @@ Open it in a browser; it uses sample data and saves nothing. It covers:
 | `design/` | UI mockup and database design |
 | `scripts/dev.ps1` | Runs both dev servers |
 
-## Setup (Windows)
+## Installing
+
+The [Installers workflow](.github/workflows/installers.yml) builds Lindley for Windows (an MSI),
+Ubuntu 26.04 (a `.deb`) and the Mac (an app), kept as each run's artifacts. None is signed yet:
+- **Windows** may warn that it's from an unknown publisher (More info › Run anyway).
+- **Ubuntu:** `sudo apt install ./lindley_0.1.0-1~ubuntu-resolute_amd64.deb`, which brings
+  Tesseract with it.
+- **Mac:** install Tesseract first (`brew install tesseract`), then right-click Lindley ›
+  Open the first time, past the warning that it's from an unidentified developer.
+
+## Setup for development (Windows)
 
 Prerequisites: Python 3.13 and Node 22+. Reading scans needs
 [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
-(`winget install UB-Mannheim.TesseractOCR`). The installer will include it, so it's only a
+(`winget install UB-Mannheim.TesseractOCR`). The Windows installer includes it, so it's only a
 step for development.
 
 ```powershell
@@ -485,13 +495,24 @@ and you can ask it about them. All of it from a one-click install.
   minutes for typed pages on the graphics card, and nearly 2 hours on the processor alone,
   most of it sorting (116 s a question, against 2.8 s on the card). Benches on more computers
   wait for the installer
-- [ ] One-click installer (Windows/Mac/Linux), with Tesseract included (on Linux, installed with
-  it). Python 3.13 bundled, and the built app found wherever it's installed, not by the repo's
-  folders. Linux, Ubuntu to start: a `.deb` built on Ubuntu 22.04 that installs Tesseract,
-  Vulkan and its drivers with it, with a menu entry that starts Lindley and opens it in the
-  browser. Lindley's own AI gets llama.cpp's Ubuntu Vulkan build (a `.tar.gz`, like the Mac's),
-  and stops with Lindley as on Windows (a process group, and a signal if Lindley dies). Keys go
-  in the desktop's keyring, with plain words when there isn't one
+- [x] Installers, built with BeeWare's Briefcase by `.github/workflows/installers.yml` (from the
+  Actions tab, or a `v*` tag), each started and quit on a clean machine before it's kept:
+  - **Windows:** an MSI (68 MB) with Python 3.13 and Tesseract 5.4.0 in it (only what reading
+    needs: `scripts/bundle_tesseract.py`)
+  - **Ubuntu 26.04:** a `.deb` (28 MB) on the system's Python 3.14, which brings Tesseract,
+    Vulkan and the tray's packages with it
+  - **Mac (Apple processors):** an app, unsigned. Tesseract comes from Homebrew (`brew install
+    tesseract`)
+  - Each starts from the menu without a window: it opens Lindley in the browser, puts its icon
+    in the tray, and is one Lindley however often it's started. Quit Lindley is in the app's
+    header. Out of the box, scans and PDFs go in Documents/Lindley, and the database in the user
+    data folder. Lindley's own AI gets llama.cpp's build for each system and processor, and stops
+    with Lindley everywhere (on Ubuntu and the Mac, a process group; one left by a Lindley that
+    was killed is ended at the next start). Keys go in the desktop's keyring, with plain words
+    when there isn't one
+- [ ] Tried by hand on a clean computer of each kind: install, first-run setup, scans read and
+  sorted, a PDF made, a question answered, then uninstall. Until then the installers have only
+  been started and quit by CI
 
 ### After the MVP
 

@@ -83,5 +83,9 @@ def get_provider(ai: AiSettings, job: Job) -> Guarded:
     if name not in ai.providers:
         raise ProviderError(f"Provider '{name}' is not configured")
     config = ai.providers[name]
+    if config.type == "builtin":  # Lindley's own AI runs from the folder in these settings
+        from lindley.localai import server
+
+        server.use(ai.local)
     provider = build_provider(config, job, ai.jobs[job].model, name)
     return Guarded(provider, name, throttle_for(name, config))

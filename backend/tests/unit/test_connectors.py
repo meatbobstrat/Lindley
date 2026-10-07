@@ -778,3 +778,114 @@ def test_google_errors_in_words_for_a_person(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "from-the-environment")
     with pytest.raises(ProviderError, match="No API key"):
         gemini(Server(lib=httpx), key=None).chat(TALK)
+
+
+# Lindley's own AI: llama-server, started when it's first needed
+
+
+class Running:
+    """Stands in for the local server: says its address, and which models it was asked for."""
+
+    def __init__(self, root) -> None:
+        from lindley.config import LocalAiSettings
+
+        self.local = LocalAiSettings(models_dir=root)
+        self.asked: list[str] = []
+
+    def url(self, model: str) -> str:
+        self.asked.append(model)
+        return "http://127.0.0.1:5555/v1"
+
+
+@pytest.fixture
+def running(monkeypatch, tmp_path):
+    from lindley.localai import server
+
+    r = Running(tmp_path)
+    monkeypatch.setattr(server, "current", lambda: r)
+    return r
+
+
+def test_builtin_starts_the_server_and_turns_thinking_off(running):
+    from lindley.providers.connectors import builtin
+
+    server = Server(completion("Will Branson."), completion("Dear Sister,"))
+    p = make(builtin, server, key=None)
+    assert running.asked == []  # not started until a call needs it
+    assert p.chat(TALK) == "Will Branson."
+    assert running.asked == ["gemma-4-e4b"]
+    assert str(server.requests[0].url) == "http://127.0.0.1:5555/v1/chat/completions"
+    assert server.body["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "reasoning_effort" not in server.body
+    p.transcribe(PNG)
+    assert server.body["chat_template_kwargs"] == {"enable_thinking": False}
+    assert running.asked == ["gemma-4-e4b"]  # the address is kept
+    assert p.client.timeout == 600
+
+
+def test_builtin_streams_with_thinking_on(running):
+    from lindley.providers.connectors import builtin
+
+    chunk = {"id": "c", "object": "chat.completion.chunk", "created": 0, "model": "m"}
+    server = Server(
+        sse(
+            {**chunk, "choices": [{"index": 0, "delta": {"content": "Yes."}}]},
+            "[DONE]",
+            key="object",
+        )
+    )
+    assert list(make(builtin, server, key=None).chat_stream(TALK)) == ["Yes."]
+    assert "chat_template_kwargs" not in server.body
+
+
+def logprobs_reply(*tops: tuple[str, float]):
+    reply = json.loads(completion("yes", finish="length").content)
+    first = {"token": tops[0][0], "logprob": tops[0][1], "bytes": None}
+    reply["choices"][0]["logprobs"] = {
+        "content": [
+            first | {"top_logprobs": [{"token": t, "logprob": lp, "bytes": None} for t, lp in tops]}
+        ]
+    }
+    return httpx2.Response(200, json=reply)
+
+
+def test_p_yes_reads_the_first_tokens_chances(running):
+    import math
+
+    from lindley.providers.connectors import builtin
+
+    server = Server(
+        logprobs_reply(("yes", math.log(0.5)), ("Yes", math.log(0.2)), ("no", math.log(0.1))),
+        logprobs_reply(("Page", math.log(0.9))),
+    )
+    p = make(builtin, server, key=None, model="qwen3.5-4b")
+    assert p.p_yes("Answer yes or no.", "Does B carry on from A?") == pytest.approx(0.875)
+    body = server.body
+    assert body["max_tokens"] == 1 and body["logprobs"] is True and body["top_logprobs"] == 10
+    assert body["messages"][0] == {"role": "system", "content": "Answer yes or no."}
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+    assert running.asked == ["qwen3.5-4b"]
+    assert p.p_yes("s", "q") == 0.5  # neither yes nor no among its likely first words
+
+
+def test_p_yes_needs_the_tokens_chances():
+    """Ollama's OpenAI-compatible address doesn't send them back."""
+    with pytest.raises(ProviderError, match="doesn't say how sure it is"):
+        make(local, Server(completion("yes"))).p_yes("s", "q")
+
+
+def test_builtin_check_looks_for_the_files_without_starting_anything(running, monkeypatch):
+    from lindley.localai import catalog
+    from lindley.providers.connectors import builtin
+
+    p = make(builtin, Server(), key=None, model="qwen3.5-4b")
+    with pytest.raises(ProviderError, match="Qwen3.5 4B isn't downloaded yet"):
+        p.check()
+    monkeypatch.setattr(builtin, "engine", lambda: None)
+    m = catalog.MODELS["qwen3.5-4b"]
+    m.folder(running.local.folder()).mkdir(parents=True)
+    (m.folder(running.local.folder()) / m.files[0].name).write_bytes(b"x")
+    assert p.check().startswith("Ready. Qwen3.5 4B is downloaded")
+    with pytest.raises(ProviderError, match="no model called 'gemma4:e4b'"):
+        make(builtin, Server(), key=None, model="gemma4:e4b").check()
+    assert running.asked == []

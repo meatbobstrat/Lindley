@@ -195,6 +195,14 @@ def use(local: LocalAiSettings) -> LocalServer:
         return _current
 
 
+def current() -> LocalServer:
+    """The server for the settings last used (out of the box, if none were)."""
+    with _current_lock:
+        if _current is not None:
+            return _current
+    return use(LocalAiSettings())
+
+
 def stop() -> None:
     with _current_lock:
         if _current is not None:

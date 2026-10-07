@@ -190,6 +190,23 @@ def test_an_ai_on_this_computer_gets_less_text(settings):
     assert budget(settings) == settings.ask.local_chars
 
 
+def test_lindleys_own_ai_gets_text_for_its_models_context(settings):
+    """Its context is known: half of it goes to the pages. Not downloaded, it can't answer."""
+    settings.ai = AiSettings(
+        providers={"own": ProviderConfig(type="builtin")},
+        jobs={"chat": JobConfig(connection="own")},
+        local=settings.ai.local,
+    )
+    assert budget(settings) == 16384 // 2 * 3  # Gemma 4 E4B, out of the box
+    settings.ai.jobs["chat"].model = "qwen3.5-4b"
+    assert budget(settings) == 8192 // 2 * 3
+    from lindley.localai import server
+
+    server.use(settings.ai.local)
+    st = chat_status(settings)
+    assert st["state"] == "broken" and "Qwen3.5 4B isn't downloaded yet" in st["reason"]
+
+
 # ---------------------------------------------------------------- Answering
 
 

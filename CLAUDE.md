@@ -8,8 +8,8 @@
   - `providers/`: the AI abstraction (`ChatProvider`, `VisionProvider`, `EmbeddingProvider`).
     `registry.get_provider(ai, job)` builds the one settings give a job (`vision`, `assemble`,
     `chat`, `embed`), wrapped in its connection's throttle (`throttle.py`). Connectors are files
-    in `providers/connectors/`, found at start-up: `local`, `anthropic`, `openai`, `google`,
-    `openai_compat` and `fake` (for tests). Each calls its AI through the company's own library
+    in `providers/connectors/`, found at start-up: `builtin` (Lindley's own AI, `localai/`), `local`,
+    `anthropic`, `openai`, `google`, `openai_compat` and `fake` (for tests). Each calls its AI through the company's own library
     (`anthropic`, `openai`, `google-genai`), as its docs recommend: never hand-written HTTP.
     `_openai_chat.py` (Chat Completions, for OpenAI-compatible servers) and `_common.py` (errors
     in words, images) are shared helpers. A connector tells `on_usage` what each call used,

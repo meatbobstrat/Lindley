@@ -9,7 +9,8 @@ from lindley.providers.keys import SERVICE
 
 def test_connectors_offered(client):
     found = {c["id"]: c for c in client.get("/api/connectors").json()}
-    assert {"local", "anthropic", "openai", "google", "openai_compat"} == set(found)
+    assert {"builtin", "local", "anthropic", "openai", "google", "openai_compat"} == set(found)
+    assert found["builtin"]["where"] == "local" and found["builtin"]["default_base_url"] is None
     assert found["anthropic"]["jobs"] == ["vision", "assemble", "chat"]
     assert found["anthropic"]["needs_key"] and found["anthropic"]["where"] == "cloud"
     assert found["local"]["where"] == "local" and not found["local"]["needs_key"]

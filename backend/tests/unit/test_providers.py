@@ -36,7 +36,9 @@ def package(tmp_path, monkeypatch):
 
 def test_the_built_in_connectors_are_found():
     found = connectors()
-    assert {"local", "anthropic", "openai", "google", "openai_compat", "fake"} <= set(found)
+    assert {"builtin", "local", "anthropic", "openai", "google", "openai_compat", "fake"} <= set(
+        found
+    )
     assert found["fake"].info.hidden
     assert "embed" not in found["anthropic"].info.jobs
     assert all(c.info.id == k for k, c in found.items())
@@ -118,3 +120,17 @@ def test_get_provider_errors():
         get_provider(ai, "chat")
     with pytest.raises(ProviderError, match="Anthropic can't"):
         get_provider(ai, "embed")
+
+
+def test_lindleys_own_ai_runs_from_the_folder_in_the_settings(tmp_path):
+    from lindley.config import LocalAiSettings
+    from lindley.localai import server
+
+    ai = AiSettings(
+        providers={"own": ProviderConfig(type="builtin")},
+        jobs={"chat": JobConfig(connection="own")},
+        local=LocalAiSettings(models_dir=tmp_path),
+    )
+    get_provider(ai, "chat")  # not started: no call yet
+    assert server.current().local.models_dir == tmp_path
+    assert not server.current().running()

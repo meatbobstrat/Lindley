@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Literal, TypedDict
 
 from lindley.config import ProviderConfig, Settings
+from lindley.localai.catalog import MODELS
 from lindley.providers.base import ProviderError
 from lindley.providers.registry import build_provider, connectors
 
@@ -38,7 +39,7 @@ def _about(name: str, cfg: ProviderConfig) -> dict:
     }
 
 
-def _problem(name: str, cfg: ProviderConfig) -> str | None:
+def _problem(name: str, cfg: ProviderConfig, model: str | None = None) -> str | None:
     """Why this connection can't answer questions now, or None if it can."""
     c = connectors().get(cfg.type)
     if c is None:
@@ -48,7 +49,9 @@ def _problem(name: str, cfg: ProviderConfig) -> str | None:
     if c.info.needs_key and not cfg.api_key(name):
         return f"No API key is saved for {c.info.company or c.info.label}"
     try:
-        build_provider(cfg, "chat", name=name)
+        p = build_provider(cfg, "chat", model, name=name)
+        if cfg.type == "builtin":  # whether its model is downloaded: nothing is sent
+            p.check()
     except ProviderError as e:
         return str(e)
     return None
@@ -66,7 +69,7 @@ def chat_status(settings: Settings) -> Status:
                 reason=f"The connection {name!r} chosen for Ask Lindley is gone",
                 offers=[],
             )
-        problem = _problem(name, cfg)
+        problem = _problem(name, cfg, ai.jobs["chat"].model if "chat" in ai.jobs else None)
         return Status(
             state="broken" if problem else "ready",
             connection=_about(name, cfg),
@@ -91,5 +94,12 @@ def budget(settings: Settings) -> int:
     name = settings.ai.connection_for("chat")
     cfg = settings.ai.providers.get(name) if name else None
     c = connectors().get(cfg.type) if cfg else None
+    if cfg is not None and cfg.type == "builtin":
+        # Lindley's own AI: the model's context is known. Half of it for the pages, at about
+        # 3 characters a token; the rest for the question, earlier turns and the answer.
+        job = settings.ai.jobs.get("chat")
+        model = MODELS.get((job and job.model) or c.info.default_models["chat"])
+        if model is not None:
+            return min(settings.ask.cloud_chars, model.context // 2 * 3)
     local = c is not None and c.info.where == "local"
     return settings.ask.local_chars if local else settings.ask.cloud_chars

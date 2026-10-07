@@ -8,6 +8,7 @@ newer Responses API for chat, and this class for embeddings.)
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Iterator
 from urllib.parse import urlparse
 
@@ -87,23 +88,49 @@ class OpenAIChat:
             details = getattr(usage, "prompt_tokens_details", None)
             self._used(usage.prompt_tokens, usage.completion_tokens, details)
 
-    def _complete(self, messages: list[dict], **options) -> str:
+    def _quick(self, messages: list[dict], **options):
+        """A completion with the quick options too, or without them if they're refused."""
         with self._errors():
             try:
                 r = self.client.chat.completions.create(
-                    model=self.model, messages=messages, **options
+                    model=self.model, messages=messages, **options, **self.quick_options
                 )
             except (openai.BadRequestError, openai.UnprocessableEntityError):
-                if not options:
+                if not self.quick_options:
                     raise
                 # Refused before the AI did any work, so this isn't repeating a failed call
                 self.quick_options = {}
-                r = self.client.chat.completions.create(model=self.model, messages=messages)
+                r = self.client.chat.completions.create(
+                    model=self.model, messages=messages, **options
+                )
         self._completed(r.usage)
         if not r.choices:
             raise ProviderError(f"{self.who} sent back an answer with no text")
+        return r
+
+    def _complete(self, messages: list[dict]) -> str:
+        r = self._quick(messages)
         self._finished(r.choices[0].finish_reason)
         return r.choices[0].message.content or ""
+
+    def p_yes(self, system: str, question: str) -> float:
+        """The model's chance of answering yes rather than no, read from the probabilities of
+        the first token it would write: so it writes one. For a question asked many times over,
+        such as whether page B carries straight on from page A."""
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": question}]
+        r = self._quick(messages, max_tokens=1, temperature=0, logprobs=True, top_logprobs=10)
+        lp = r.choices[0].logprobs
+        first = lp.content[0] if lp and lp.content else None
+        if first is None:
+            raise ProviderError(f"{self.who} doesn't say how sure it is, so it can't do this")
+        yes = no = 0.0
+        for t in first.top_logprobs or [first]:
+            word = t.token.strip().lower()
+            if word in ("yes", "y"):
+                yes += math.exp(t.logprob)
+            elif word in ("no", "n"):
+                no += math.exp(t.logprob)
+        return yes / (yes + no) if yes + no else 0.5
 
     def _finished(self, reason: str | None) -> None:
         """An answer cut off, or held back, is a failed call. An empty one that finished is an
@@ -114,9 +141,7 @@ class OpenAIChat:
             raise ProviderError(f"{self.who} declined to answer this")
 
     def chat(self, messages: list[ChatMessage]) -> str:
-        return self._complete(
-            [{"role": m.role, "content": m.content} for m in messages], **self.quick_options
-        )
+        return self._complete([{"role": m.role, "content": m.content} for m in messages])
 
     def chat_stream(self, messages: list[ChatMessage]) -> Iterator[str]:
         sent = [{"role": m.role, "content": m.content} for m in messages]
@@ -149,7 +174,7 @@ class OpenAIChat:
             {"type": "text", "text": transcribe_prompt(hints)},
             {"type": "image_url", "image_url": {"url": url}},
         ]
-        text = self._complete([{"role": "user", "content": content}], **self.quick_options)
+        text = self._complete([{"role": "user", "content": content}])
         return Transcription(text=text.strip(), metadata={"model": self.model})
 
     def embed(self, texts: list[str]) -> list[list[float]]:

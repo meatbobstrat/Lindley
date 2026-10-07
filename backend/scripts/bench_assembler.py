@@ -19,6 +19,9 @@ HABITS in lindley.assembler.bench). Each is reported apart; the default is all o
 --ai with a model's id (lindley.localai.catalog) sorts with Lindley's own AI, as the builtin
 connector does, from the folder in settings; --device none keeps it on the processor.
 
+Each call to the sorting AI is timed, and the seconds a call printed at the end; --max-calls N
+fails every call after the Nth, for a timing on the processor without the whole run.
+
 --judge asks a model of Lindley's own AI whether the pages the rules are unsure of carry on from
 one another, as the continues job does (lindley.assembler.continues). Its answers are kept in
 --answers across runs, so each pair is asked once.
@@ -33,7 +36,9 @@ filed by each habit, once per seed.
 from __future__ import annotations
 
 import argparse
+import statistics
 import tempfile
+import time
 from pathlib import Path
 
 from lindley.assembler import assemble, continues
@@ -62,6 +67,7 @@ from lindley.config import ProviderConfig, load_settings
 from lindley.db.database import connect, init_db
 from lindley.localai import server
 from lindley.localai.catalog import MODELS
+from lindley.providers.base import ChatMessage, ProviderError
 from lindley.providers.registry import build_provider, get_provider
 
 
@@ -81,6 +87,28 @@ def show(conn, truth, s: Score, label: str, calls: int, asks: tuple[int, int]) -
 DEVICE: str | None = None  # --device, for Lindley's own AI
 JUDGE: str | None = None  # --judge: the model asked whether pages carry on
 ANSWERS: Path | None = None  # --answers: where its answers are kept across runs
+MAX_CALLS: int | None = None  # --max-calls: calls to the sorting AI after this many fail
+
+
+class Timed:
+    """The sorting AI, each call timed. After MAX_CALLS calls, the rest fail."""
+
+    seconds: list[float] = []  # every call's, across runs
+
+    def __init__(self, inner) -> None:
+        self.inner = inner
+
+    def __getattr__(self, name: str):
+        return getattr(self.inner, name)
+
+    def chat(self, messages: list[ChatMessage]) -> str:
+        if MAX_CALLS is not None and len(Timed.seconds) >= MAX_CALLS:
+            raise ProviderError(f"--max-calls {MAX_CALLS}: not asked")
+        start = time.monotonic()
+        try:
+            return self.inner.chat(messages)
+        finally:
+            Timed.seconds.append(time.monotonic() - start)
 
 
 def run(
@@ -118,6 +146,8 @@ def run(
         elif ai in MODELS:
             server.use(settings.ai.local.model_copy(update={"device": DEVICE}))
             chat = build_provider(ProviderConfig(type="builtin"), "assemble", ai)
+        if chat is not None and not isinstance(chat, OracleChat):
+            chat = Timed(chat)
         with kept_answers(conn, ANSWERS):
             r = assemble(conn, settings.assembler, chat, judge=judge, max_judged=None)
         calls, asks = r.ai_calls, (r.ai_windows, r.ai_pages)
@@ -196,6 +226,7 @@ def main() -> None:
         help="no AI, one always right, settings.json's, or a model of Lindley's own AI",
     )
     ap.add_argument("--device", help="for Lindley's own AI: none, the processor alone")
+    ap.add_argument("--max-calls", type=int, help="calls to the sorting AI after this many fail")
     ap.add_argument("--judge", choices=list(MODELS), help="asked whether pages carry on")
     ap.add_argument("--answers", type=Path, help="a database to keep the judge's answers in")
     ap.add_argument(
@@ -206,11 +237,16 @@ def main() -> None:
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--sweep", action="store_true", help="groups by confidence band")
     a = ap.parse_args()
-    global DEVICE, JUDGE, ANSWERS
-    DEVICE, JUDGE, ANSWERS = a.device, a.judge, a.answers
+    global DEVICE, JUDGE, ANSWERS, MAX_CALLS
+    DEVICE, JUDGE, ANSWERS, MAX_CALLS = a.device, a.judge, a.answers, a.max_calls
     try:
         bench(a)
     finally:
+        if took := Timed.seconds:
+            print(
+                f"Sorting AI calls {len(took)}, {statistics.median(took):.1f} s each (median,"
+                f" {min(took):.1f}-{max(took):.1f}), {sum(took):.0f} s in all"
+            )
         running = server.current()
         if peak := running.peak_memory():
             print(f"Lindley's own AI took {peak / 1e9:.1f} GB at most")

@@ -10,9 +10,13 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, runtime_checkable
 
-# The jobs Lindley gives an AI. They match ai_calls.purpose in the database.
-Job = Literal["vision", "assemble", "chat", "embed"]
-JOBS: tuple[Job, ...] = ("vision", "assemble", "chat", "embed")
+# The jobs Lindley gives an AI. They match ai_calls.purpose in the database. "continues": whether
+# one page carries straight on from another, a yes or no read from the chance of each (p_yes),
+# which only an AI that says how sure it is can do.
+Job = Literal["vision", "assemble", "chat", "embed", "continues"]
+JOBS: tuple[Job, ...] = ("vision", "assemble", "chat", "embed", "continues")
+# The jobs of an AI that doesn't say how sure it is
+NOT_CONTINUES: frozenset[Job] = frozenset(JOBS) - {"continues"}
 
 
 @dataclass(frozen=True)

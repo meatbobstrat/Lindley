@@ -16,6 +16,7 @@ import httpx2
 import pytest
 
 from lindley import activity
+from lindley.api import local_ai as local_ai_api
 from lindley.config import LocalAiSettings
 from lindley.localai import catalog, download, server
 from lindley.localai.catalog import Engine, File, Model
@@ -127,6 +128,8 @@ def made_up(monkeypatch):
     monkeypatch.setattr(catalog, "MODELS", models)
     monkeypatch.setattr(download, "MODELS", models)
     monkeypatch.setattr(server, "MODELS", models)
+    monkeypatch.setattr(local_ai_api, "MODELS", models)
+    monkeypatch.setattr(local_ai_api, "engine", lambda: eng)
     files = {f.name: data for f, data in ((eng.file, zipped),)}
     files |= {"r.gguf": b"r" * 5000, "mmproj-r.gguf": b"p" * 300, "s.gguf": b"s" * 700}
     return Files(files), eng, reader, small
@@ -270,3 +273,46 @@ def test_the_real_catalog_is_pinned():
             assert f.url.split("/resolve/")[1].split("/")[0] != "main"  # a fixed revision
     e = catalog.ENGINES["win32"]
     assert e.file.url.startswith("https://github.com/ggml-org/llama.cpp/releases/download/")
+
+
+# ------------------------------------------------------------------ the API
+
+
+def test_the_app_says_whats_downloaded(client, settings, made_up):
+    _, eng, reader, _ = made_up
+    s = client.get("/api/local-ai").json()
+    assert s["folder"] == str(settings.ai.local.folder())
+    assert s["engine"] == {"build": "b1", "size": eng.file.size, "ready": False}
+    assert {m["id"]: m["state"] for m in s["models"]} == {"reader": "missing", "small": "missing"}
+    assert s["free"] > 0 and s["downloading"] is None and s["running"] is False
+    install(settings.ai.local.folder(), reader)
+    s = client.get("/api/local-ai").json()
+    assert s["models"][0]["state"] == "ready"
+
+
+def test_downloads_are_asked_for_in_the_app(client, made_up):
+    files, *_ = made_up
+    client.app.state.downloads._transport = httpx2.MockTransport(files)
+    r = client.post("/api/local-ai/download", json={"models": ["small"]})
+    assert r.json() == {"queued": ["small"]}
+    assert client.app.state.downloads.idle.wait(10)
+    s = client.get("/api/local-ai").json()
+    assert s["engine"]["ready"] and s["models"][1]["state"] == "ready"
+    assert client.post("/api/local-ai/download", json={"models": ["huge"]}).status_code == 404
+    assert client.post("/api/local-ai/cancel").json() == {"ok": True}
+
+
+def test_a_model_in_use_isnt_removed(client, settings, made_up):
+    _, _, reader, small = made_up
+    root = settings.ai.local.folder()
+    install(root, reader)
+    install(root, small)
+    current = client.get("/api/settings").json()
+    current["ai"]["providers"]["own"] = {"type": "builtin"}
+    current["ai"]["jobs"]["chat"] = {"connection": "own", "model": "reader"}
+    client.put("/api/settings", json=current)
+    r = client.delete("/api/local-ai/models/reader")
+    assert r.status_code == 409 and "Reader is in use (chat)" in r.text
+    assert client.delete("/api/local-ai/models/small").json() == {"removed": "small"}
+    assert not small.folder(root).exists() and reader.installed(root)
+    assert client.delete("/api/local-ai/models/nothing").status_code == 404

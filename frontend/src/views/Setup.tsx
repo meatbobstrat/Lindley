@@ -1,8 +1,8 @@
-// First-run setup: where scans come from, whether they're copied or moved, and how much AI this
-// computer runs (a performance tier). Shown until there's a settings file.
+// First-run setup: where scans come from, whether they're copied or moved, how much AI this
+// computer runs, and who does the rest. Shown until there's a settings file.
 
 import { useEffect, useRef, useState } from 'react'
-import { api, type Connector, JOBS, type Settings, type Tier } from '../api/client'
+import { api, type Connector, type Help, type HelpKind, JOBS, type Settings, type Tier } from '../api/client'
 import { invalidate } from '../api/store'
 import { cloudInUse } from '../lib/ai'
 import { plural } from '../lib/words'
@@ -10,22 +10,24 @@ import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
 import { cfgOf, type Edit, editReady, newEdit, newId } from '../lib/connEdit'
 import { withTier } from '../lib/tiers'
-import { ConnEditor, FoldersEditor, ModeChoices, TierChoices, TierModels } from './Settings'
+import { ConnEditor, FoldersEditor, HelpChoices, LocalModels, ModeChoices, TierChoices } from './Settings'
 
-/** The connection a tier elsewhere starts from: a server on your network, or a cloud AI. */
-const editFor = (t: Tier, connectors: Connector[]): Edit =>
-  t.runs === 'cloud'
-    ? newEdit(connectors.find((c) => c.where === 'cloud'))
-    : { ...newEdit(connectors.find((c) => c.id === 'local')), label: 'Your AI server', base_url: '' }
+/** The connection the help starts from: a server on your network, or a cloud AI. */
+const editFor = (h: HelpKind, connectors: Connector[]): Edit =>
+  h === 'cloud'
+    ? { ...newEdit(connectors.find((c) => c.where === 'cloud')), help: h }
+    : { ...newEdit(connectors.find((c) => c.id === 'local')), label: 'Your AI server', base_url: '', help: h }
 
-export function Setup({ settings, connectors, tiers }: { settings: Settings; connectors: Connector[]; tiers: Tier[] }) {
+export function Setup({ settings, connectors, tiers, helps }: { settings: Settings; connectors: Connector[]; tiers: Tier[]; helps: Help[] }) {
   const { toast } = useFeedback()
   const ref = useRef<HTMLDialogElement>(null)
   const [folders, setFolders] = useState<string[]>([])
   const [move, setMove] = useState(settings.move_files)
-  // Until Lindley can look at the computer itself, an AI on it, as before tiers
-  const [tier, setTier] = useState<Tier>(() => tiers.find((t) => t.id === 'full') ?? tiers[0])
-  const [edit, setEdit] = useState<Edit>(() => editFor(tier, connectors))
+  // Until Lindley can look at the computer itself, the tier most computers suit
+  const [tier, setTier] = useState<Tier>(() => tiers.find((t) => t.id === 'middle') ?? tiers[0])
+  const [help, setHelp] = useState<HelpKind>('none')
+  const [edit, setEdit] = useState<Edit>(() => editFor('cloud', connectors))
+  const [download, setDownload] = useState(true)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -33,10 +35,9 @@ export function Setup({ settings, connectors, tiers }: { settings: Settings; con
     if (d && !d.open) d.showModal()
   }, [])
   const c = connectors.find((x) => x.id === edit.type)
-  const elsewhere = tier.runs === 'network' || tier.runs === 'cloud'
-  const choose = (t: Tier) => {
-    if (t.runs !== tier.runs && (t.runs === 'network' || t.runs === 'cloud')) setEdit(editFor(t, connectors))
-    setTier(t)
+  const chooseHelp = (h: Help) => {
+    if (h.id !== 'none' && h.id !== help) setEdit(editFor(h.id, connectors))
+    setHelp(h.id)
   }
 
   const save = async () => {
@@ -51,41 +52,39 @@ export function Setup({ settings, connectors, tiers }: { settings: Settings; con
     next.ai.providers = {}
     JOBS.forEach((j) => (next.ai.jobs[j] = { connection: null, model: null }))
     let key: [string, string] | null = null
-    let ready: Settings | null
-    if (elsewhere) {
+    let helper: string | null = null
+    if (help !== 'none') {
       if (c?.needs_key && !edit.ack) {
-        toast('Read the warning and check the box to use a cloud AI, or choose an AI on a computer you own.')
+        toast('Read the warning and check the box to use a cloud AI, or choose another.')
         return
       }
       if (!editReady(edit, c)) {
-        toast('Paste your API key, or choose another tier.')
+        toast('Paste your API key, or choose another.')
         document.getElementById('su-key')?.focus()
         return
       }
-      if (tier.runs === 'network' && !edit.base_url.trim()) {
+      if (help === 'server' && !edit.base_url.trim()) {
         toast('Type your AI server’s address, for example http://192.168.1.20:11434/v1.')
         document.getElementById('su-url')?.focus()
         return
       }
-      const id = newId(edit.label || c?.short || 'ai', [])
-      next.ai.providers[id] = cfgOf(edit, c)
-      ready = withTier(next, connectors, tier, id)
-      if (edit.key.trim()) key = [id, edit.key.trim()]
-    } else ready = withTier(next, connectors, tier)
-    if (!ready) {
-      toast('Lindley can’t set that up. Choose another tier.')
-      return
+      helper = newId(edit.label || c?.short || 'ai', [])
+      next.ai.providers[helper] = cfgOf(edit, c)
+      if (edit.key.trim()) key = [helper, edit.key.trim()]
     }
+    const ready = withTier(next, connectors, tier, helper)
     setSaving(true)
     try {
       const saved = await api.saveSettings(ready)
       if (key) await api.saveKey(...key)
+      const fetching = download && tier.downloads.length > 0
+      if (fetching) await api.downloadModels(tier.downloads)
       const cloud = cloudInUse(saved, connectors)
       invalidate()
       toast(
         `Lindley is watching ${plural(folders.length, 'folder')} and will ${move ? 'move new scans into its library' : 'copy new scans, leaving your folders untouched'}.${
           cloud.length ? ` Your scans will be sent to ${cloud.join(' and ')}.` : ''
-        }`,
+        }${fetching ? ' Its own AI is downloading: the status bar shows how far it’s got.' : ''}`,
       )
     } catch (e) {
       toast((e as Error).message)
@@ -123,14 +122,20 @@ export function Setup({ settings, connectors, tiers }: { settings: Settings; con
         <section aria-labelledby="su-4">
           <h3 id="su-4">4. How much AI can this computer run?</h3>
           <p>
-            An AI reads handwriting, helps sort pages into documents, and answers your questions. The more memory this computer has, the more it can do itself. Where
-            the AI runs decides who else sees your scans.
+            An AI reads handwriting, helps sort pages into documents, and answers your questions. The more this computer can do itself, the more private your
+            scans stay and the less each page costs.
           </p>
-          <TierChoices ctx="su" tiers={tiers} value={tier.id} onChoose={choose} />
-          {elsewhere ? <ConnEditor e={edit} set={(e) => setEdit(e)} connectors={connectors} inSetup saved={false} /> : <TierModels tier={tier} />}
+          <TierChoices ctx="su" tiers={tiers} value={tier.id} onChoose={setTier} />
+          <LocalModels tier={tier} now={download} setNow={setDownload} />
+        </section>
+        <section aria-labelledby="su-5">
+          <h3 id="su-5">5. Who does the rest?</h3>
+          <p>What this computer doesn’t do itself can go to another computer you own, or to a cloud AI, or wait for you.</p>
+          <HelpChoices ctx="su" helps={helps} value={help} onChoose={chooseHelp} />
+          {help !== 'none' && <ConnEditor e={edit} set={(e) => setEdit(e)} connectors={connectors} inSetup saved={false} />}
           <p className="fld-note">
-            <Icon name="plus" /> You can change this in Settings at any time, and give each job its own AI: for example, reading on this computer and questions with
-            a cloud AI.
+            <Icon name="plus" /> You can change these in Settings at any time, and give each job its own AI: for example, reading on this computer and questions
+            with a cloud AI.
           </p>
         </section>
         <div className="actions">

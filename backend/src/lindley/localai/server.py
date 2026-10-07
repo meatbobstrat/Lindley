@@ -45,6 +45,10 @@ def preset(local: LocalAiSettings, models: list[Model]) -> str:
             lines.append(f"mmproj = {(m.folder(root) / m.files[1].name).resolve()}")
         lines.append(f"ctx-size = {m.context}")
         lines.append("parallel = 1")  # all its context for one question at a time
+        # No store of earlier prompts in memory (8 GB out of the box): on a laptop that's
+        # memory a model needs. The last prompt is still reused, which is what a run of
+        # questions with the same instructions wants.
+        lines.append("cache-ram = 0")
         if local.device:
             lines.append(f"device = {local.device}")
         if local.device == "none":

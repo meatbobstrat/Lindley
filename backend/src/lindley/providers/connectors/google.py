@@ -13,7 +13,7 @@ from google.genai import types
 from google.genai._gaos.utils.retries import BackoffStrategy, RetryConfig
 
 from lindley.providers.base import (
-    JOBS,
+    NOT_CONTINUES,
     ChatMessage,
     ConnectorInfo,
     ProviderError,
@@ -36,7 +36,7 @@ INFO = ConnectorInfo(
     short="Gemini",
     where="cloud",
     company="Google",
-    jobs=frozenset(JOBS),
+    jobs=NOT_CONTINUES,
     default_models={
         "vision": "gemini-3.8-flash",
         "assemble": "gemini-3.8-flash",

@@ -10,7 +10,7 @@ from lindley.config import ProviderConfig, Settings, resolve_settings_path
 from lindley.providers import keys
 from lindley.providers.base import JOBS, Job, ProviderError
 from lindley.providers.registry import connectors
-from lindley.providers.tiers import TIERS
+from lindley.providers.tiers import HELPS, TIERS
 
 router = APIRouter(tags=["connections"])
 
@@ -42,20 +42,23 @@ def list_connectors() -> list[dict]:
 
 
 @router.get("/tiers")
-def list_tiers() -> list[dict]:
-    """The performance tiers a person can choose from, in providers/tiers.py. The UI sets each
-    job's AI from the one chosen."""
-    return [
-        {
-            "id": t.id,
-            "label": t.label,
-            "needs": t.needs,
-            "does": t.does,
-            "runs": t.runs,
-            "models": dict(t.models),
-        }
-        for t in TIERS
-    ]
+def list_tiers() -> dict:
+    """The two choices: how much AI this computer runs, and who does the rest
+    (providers/tiers.py). The UI sets each job's AI from them."""
+    return {
+        "tiers": [
+            {
+                "id": t.id,
+                "label": t.label,
+                "needs": t.needs,
+                "does": t.does,
+                "local": dict(t.local),
+                "downloads": t.downloads(),
+            }
+            for t in TIERS
+        ],
+        "helps": [{"id": h.id, "label": h.label, "does": h.does} for h in HELPS],
+    }
 
 
 @router.get("/setup")

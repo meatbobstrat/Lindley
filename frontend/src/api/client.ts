@@ -1,7 +1,7 @@
 // Typed wrapper around the Lindley backend API (proxied to /api in dev).
 
-export type Job = 'vision' | 'assemble' | 'chat' | 'embed'
-export const JOBS: Job[] = ['vision', 'assemble', 'chat', 'embed']
+export type Job = 'vision' | 'assemble' | 'chat' | 'embed' | 'continues'
+export const JOBS: Job[] = ['vision', 'assemble', 'chat', 'embed', 'continues']
 
 export interface Health {
   status: string
@@ -97,12 +97,21 @@ export interface Counts {
   failed: number
 }
 
-/** AI work in hand: reading hard pages, or sorting pages; `asked`: a person sent it. `done` of
- *  `of` counts pages when reading, and questions asked of the AI when sorting; `pages`: how many
- *  pages it's about (0: not known). */
-export interface AiWorking { kind: 'read' | 'sort'; done: number; of: number; pages: number; asked: boolean; connection: string | null }
+/** AI work in hand: reading hard pages, sorting pages, or downloading Lindley's own AI; `asked`: a
+ *  person sent it. `done` of `of` counts pages when reading, questions asked of the AI when
+ *  sorting, and bytes when downloading (`label` says what); `pages`: how many pages it's about
+ *  (0: not known). */
+export interface AiWorking {
+  kind: 'read' | 'sort' | 'download'
+  done: number
+  of: number
+  pages: number
+  asked: boolean
+  connection: string | null
+  label: string | null
+}
 /** What came of AI work a person asked for; ids grow, so a newer one is higher. */
-export interface AiFinished { id: number; kind: 'read' | 'sort'; message: string; ok: boolean }
+export interface AiFinished { id: number; kind: 'read' | 'sort' | 'download'; message: string; ok: boolean }
 
 export interface Overview {
   version: string
@@ -260,7 +269,9 @@ export interface Settings {
   ai: {
     providers: Record<string, ProviderConfig>
     jobs: Record<Job, { connection: string | null; model: string | null }>
-    tier: string | null // the performance tier the jobs were set from; null once a person changes one
+    tier: string | null // how much AI this computer runs; null once a person changes a job
+    help: string | null // the connection that does what the tier leaves; null: nobody
+    local: { models_dir: string | null; server_path: string | null; device: string | null }
   }
   assembler: Record<string, unknown>
   ask: { local_chars: number; cloud_chars: number; history_turns: number }
@@ -279,14 +290,33 @@ export interface Connector {
   key_url: string | null
 }
 
-/** A performance tier (backend providers/tiers.py): how much AI the computer can run. */
+/** How much AI this computer runs (backend providers/tiers.py): the jobs Lindley's own AI does
+ *  here, each with its model. */
 export interface Tier {
   id: string
   label: string
   needs: string
   does: string
-  runs: 'none' | 'this' | 'network' | 'cloud'
-  models: Partial<Record<Job, string>> // for a tier on this computer: each job's model
+  local: Partial<Record<Job, string>>
+  downloads: string[] // the models it needs, each once
+}
+
+/** Who does the jobs the tier leaves: nobody, your own AI server, or a cloud AI. */
+export type HelpKind = 'none' | 'server' | 'cloud'
+export interface Help {
+  id: HelpKind
+  label: string
+  does: string
+}
+
+/** Lindley's own AI: its engine and models, and what's downloaded. */
+export interface LocalAi {
+  folder: string
+  free: number | null // bytes free on that disk
+  engine: { build: string | null; size: number; ready: boolean }
+  models: { id: string; label: string; size: number; memory_gb: number; jobs: Job[]; state: 'ready' | 'downloading' | 'missing' }[]
+  downloading: { label: string; done: number; of: number } | null
+  running: boolean
 }
 
 export interface AiCalls {
@@ -374,7 +404,8 @@ export const api = {
   search: (q: string) => get<{ query: string; results: SearchResult[] }>(`/search?q=${encodeURIComponent(q)}`),
   settings: () => get<Settings>('/settings'),
   connectors: () => get<Connector[]>('/connectors'),
-  tiers: () => get<Tier[]>('/tiers'),
+  tiers: () => get<{ tiers: Tier[]; helps: Help[] }>('/tiers'),
+  localAi: () => get<LocalAi>('/local-ai'),
   aiCalls: () => get<AiCalls>('/settings/ai-calls'),
   setupNeeded: () => get<{ needed: boolean }>('/setup'),
 
@@ -403,6 +434,9 @@ export const api = {
   notDuplicates: (setId: number) => send<Change>('POST', `/duplicates/${setId}/not-duplicates`),
   undo: (batch?: number | null) => send<{ undone: number }>('POST', batch ? `/undo/${batch}` : '/undo'),
   saveSettings: (s: Settings) => send<Settings>('PUT', '/settings', s),
+  downloadModels: (models: string[]) => send<{ queued: string[] }>('POST', '/local-ai/download', { models }),
+  cancelDownload: () => send<{ ok: boolean }>('POST', '/local-ai/cancel'),
+  removeModel: (id: string) => send<{ removed: string }>('DELETE', `/local-ai/models/${encodeURIComponent(id)}`),
   saveKey: (name: string, key: string) => send<{ key_hint: string }>('PUT', `/connections/${encodeURIComponent(name)}/key`, { key }),
   testConnection: (connection: ProviderConfig, name: string | null, key: string | null) =>
     send<{ ok: boolean; message: string }>('POST', '/connections/test', { connection, name, key }),

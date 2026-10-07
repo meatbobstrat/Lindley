@@ -7,7 +7,13 @@ from collections.abc import Iterator
 
 import openai
 
-from lindley.providers.base import JOBS, ChatMessage, ConnectorInfo, ProviderError, Transcription
+from lindley.providers.base import (
+    NOT_CONTINUES,
+    ChatMessage,
+    ConnectorInfo,
+    ProviderError,
+    Transcription,
+)
 from lindley.providers.connectors._common import b64, cut_off, image_type
 from lindley.providers.connectors._openai_chat import OpenAIChat
 from lindley.providers.prompts import transcribe_prompt
@@ -18,7 +24,7 @@ INFO = ConnectorInfo(
     short="OpenAI",
     where="cloud",
     company="OpenAI",
-    jobs=frozenset(JOBS),
+    jobs=NOT_CONTINUES,
     default_models={
         "vision": "gpt-6.1-sol",
         "assemble": "gpt-6.1-sol",

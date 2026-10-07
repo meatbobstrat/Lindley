@@ -2,17 +2,17 @@
 // looks. Changes are a draft until you save them. API keys never go in settings.json: they're
 // saved in the system's credential store, after the settings that name their connection.
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker, useNavigate, useParams } from 'react-router'
-import { api, type AiCalls, type Connector, JOBS, type Settings, type Tier } from '../api/client'
+import { api, type AiCalls, type Connector, type Help, type HelpKind, JOBS, type Settings, type Tier } from '../api/client'
 import { invalidate, useApi } from '../api/store'
-import { Banner, LimitsTag, Loading, PrivTag } from '../components/bits'
+import { Banner, LimitsTag, Loading, Meter, PrivTag } from '../components/bits'
 import { cloudInUse, companyOf, connection, hostOf, JOB_WORDS, reachOf } from '../lib/ai'
 import { useApp, useLooking } from '../lib/appContext'
 import { cfgOf, type Edit, editOf, editReady, LANGS, newEdit, newId } from '../lib/connEdit'
-import { fitting, tierModels, withTier } from '../lib/tiers'
+import { helpKind, helpsOf, withTier } from '../lib/tiers'
 import { useDockPos, useTheme } from '../lib/view'
-import { dollars, plural } from '../lib/words'
+import { dollars, plural, size } from '../lib/words'
 import { DBtn, Dock, DockText } from '../ui/Dock'
 import { Modal } from '../ui/feedback'
 import { useFeedback } from '../ui/feedbackContext'
@@ -105,10 +105,11 @@ export function ConnEditor({
         id={`${ctx}-vendor`}
         value={e.type}
         aria-describedby={`${ctx}-vendorh`}
-        onChange={(ev) => set({ ...newEdit(connectors.find((x) => x.id === ev.target.value)), id: e.id, tier: e.tier })}
+        onChange={(ev) => set({ ...newEdit(connectors.find((x) => x.id === ev.target.value)), id: e.id, help: e.help })}
         data-tip="Which AI service to connect to. Each is one connector file in Lindley’s providers folder."
       >
-        {connectors.map((x) => (
+        {/* Lindley's own AI comes with a tier, not from here */}
+        {connectors.filter((x) => x.id !== 'builtin' || x.id === e.type).map((x) => (
           <option key={x.id} value={x.id}>
             {x.label}
           </option>
@@ -160,7 +161,7 @@ export function ConnEditor({
               Don’t use a cloud AI for scans with private information: medical, legal or financial records, adoption papers, or anything about living people who
               haven’t agreed to it.
             </li>
-            <li>To keep your scans private, use an AI on a computer you own instead, such as Ollama or LM Studio.</li>
+            <li>To keep your scans private, use an AI on a computer you own instead: Lindley’s own (a Middle or High tier), or Ollama or LM Studio.</li>
           </ul>
           <label className="ack">
             <input type="checkbox" checked={e.ack} onChange={(ev) => up({ ack: ev.target.checked })} />
@@ -386,7 +387,7 @@ export function ModeChoices({ ctx, move, set }: { ctx: string; move: boolean; se
   )
 }
 
-/** The performance tiers: how much AI this computer runs. */
+/** How much AI this computer runs: Low, Middle or High. */
 export function TierChoices({ ctx, tiers, value, onChoose }: { ctx: string; tiers: Tier[]; value: string | null; onChoose: (t: Tier) => void }) {
   return (
     <fieldset className="choices">
@@ -395,11 +396,7 @@ export function TierChoices({ ctx, tiers, value, onChoose }: { ctx: string; tier
         <label className="choice" key={t.id}>
           <input type="radio" name={`${ctx}-tier`} checked={value === t.id} onChange={() => onChoose(t)} />
           <span>
-            <b>
-              <Icon name={t.runs === 'cloud' ? 'cloud' : 'lock'} />
-              {t.label}.
-            </b>{' '}
-            {t.needs} {t.does}
+            <b>{t.label}.</b> {t.needs} {t.does}
           </span>
         </label>
       ))}
@@ -407,24 +404,91 @@ export function TierChoices({ ctx, tiers, value, onChoose }: { ctx: string; tier
   )
 }
 
-/** What a tier on this computer needs installed: for now, Ollama and its models. */
-export function TierModels({ tier }: { tier: Tier }) {
-  if (tier.runs !== 'this') return null
+/** Who does the jobs the tier leaves: nobody, your own AI server, or a cloud AI. */
+export function HelpChoices({ ctx, helps, value, onChoose }: { ctx: string; helps: Help[]; value: HelpKind | null; onChoose: (h: Help) => void }) {
   return (
-    <p className="fld-note">
-      <Icon name="lock" /> For now Lindley uses Ollama on this computer, from{' '}
-      <a href="https://ollama.com/download" target="_blank" rel="noreferrer" data-tip="Opens Ollama’s download page in your browser">
-        ollama.com
-      </a>
-      . Once it’s installed, get the {tierModels(tier).length === 1 ? 'model' : 'models'} with{' '}
-      {tierModels(tier).map((m, i) => (
-        <Fragment key={m}>
-          {i ? ' and ' : ''}
-          <span className="mono">ollama pull {m}</span>
-        </Fragment>
+    <fieldset className="choices">
+      <legend className="sr-only">Who does the rest</legend>
+      {helps.map((h) => (
+        <label className="choice" key={h.id}>
+          <input type="radio" name={`${ctx}-help`} checked={value === h.id} onChange={() => onChoose(h)} />
+          <span>
+            <b>
+              {h.id !== 'none' && <Icon name={h.id === 'cloud' ? 'cloud' : 'lock'} />}
+              {h.label}.
+            </b>{' '}
+            {h.does}
+          </span>
+        </label>
       ))}
-      .
-    </p>
+    </fieldset>
+  )
+}
+
+/** What Lindley's own AI needs downloaded for a tier, and downloading it. With `setNow` (first-run
+ * setup), a box says whether to download it once setup is saved. */
+export function LocalModels({ tier, now, setNow }: { tier: Tier; now?: boolean; setNow?: (v: boolean) => void }) {
+  const { toast } = useFeedback()
+  const s = useApi(tier.downloads.length ? 'local-ai' : null, api.localAi).data
+  if (!tier.downloads.length || !s) return null
+  const models = tier.downloads.flatMap((id) => s.models.filter((m) => m.id === id))
+  const names = models.map((m) => m.label).join(' and ')
+  const left = models.filter((m) => m.state !== 'ready')
+  const need = left.reduce((n, m) => n + m.size, 0) + (s.engine.ready ? 0 : s.engine.size)
+  if (!need)
+    return (
+      <p className="fld-note">
+        <Icon name="lock" /> {names} {models.length === 1 ? 'is' : 'are'} downloaded, and run on this computer.
+      </p>
+    )
+  const room = s.free === null || s.free > need
+  const d = s.downloading
+  const what = left.map((m) => `${m.label} (${size(m.size)})`).join(' and ') + (s.engine.ready ? '' : ` and Lindley’s AI engine (${size(s.engine.size)})`)
+  const get = async () => {
+    try {
+      await api.downloadModels(tier.downloads)
+      invalidate()
+      toast(`Downloading ${names}. The status bar shows how far it’s got, and you can keep working.`)
+    } catch (e) {
+      toast((e as Error).message)
+    }
+  }
+  return (
+    <div className="fld-note">
+      <p>
+        <Icon name="lock" /> {tier.label} runs Lindley’s own AI on this computer. It needs {what}, downloaded once from Hugging Face and GitHub; then it works
+        offline.{s.free !== null && ` ${size(s.free)} is free on that disk.`}
+      </p>
+      {!room && (
+        <p>
+          <Icon name="warn" /> There isn’t room for it. Free up {size(need - (s.free ?? 0))} first.
+        </p>
+      )}
+      {d ? (
+        <p>
+          <Meter value={Math.floor((d.done * 100) / Math.max(1, d.of))} label={`Downloading ${d.label}`} tip={`${size(d.done)} of ${size(d.of)}`} />{' '}
+          <button
+            className="btn ghost"
+            onClick={async () => {
+              await api.cancelDownload()
+              invalidate()
+            }}
+            data-tip="Stop downloading. What came down so far is kept, and the next download goes on from there"
+          >
+            Cancel
+          </button>
+        </p>
+      ) : setNow ? (
+        <label className="limit-check">
+          <input type="checkbox" checked={!!now} onChange={(e) => setNow(e.target.checked)} />
+          <span>Download {size(need)} when I start using Lindley</span>
+        </label>
+      ) : (
+        <button className="btn" onClick={get} disabled={!room} data-tip={`Download ${size(need)} now. You can keep working while it does`}>
+          <Icon name="plus" /> Download {size(need)}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -632,40 +696,55 @@ function SetAi({
   calls: AiCalls | undefined
   saved: Settings
 }) {
-  const { connectors, tiers } = useApp()
+  const { connectors, tiers, helps } = useApp()
   const { toast } = useFeedback()
   const cloud = cloudInUse(d, connectors)
   const names = Object.keys(d.ai.providers)
   const conns = names.map((n) => connection(d, connectors, n)!).filter(Boolean)
   const jobsOf = (n: string) => JOBS.filter((j) => d.ai.jobs[j]?.connection === n).map((j) => JOB_WORDS[j].short)
   const any = JOBS.some((j) => connection(d, connectors, d.ai.jobs[j]?.connection))
+  // Lindley's own AI's models: their names, and which can do each job
+  const own = useApi('local-ai', api.localAi).data
+  const ownModel = (id: string) => own?.models.find((m) => m.id === id)
+  const modelsOf = (n: string) =>
+    [...new Set(JOBS.filter((j) => d.ai.jobs[j]?.connection === n).map((j) => d.ai.jobs[j]?.model || connection(d, connectors, n)?.connector?.default_models[j] || ''))]
+      .filter(Boolean)
+      .map((id) => ownModel(id)?.label ?? id)
+      .join(' and ')
 
-  // The tier shown chosen: one waiting for its connection to be added, else the one saved (with
-  // no AI at all, that's Basic). None once a person has changed a job's AI.
-  const tierNow = tiers.find((t) => t.id === (edit?.tier ?? d.ai.tier ?? (any ? null : 'basic')))
+  // The two choices shown chosen: the tier saved (with no AI at all, that's Low), and the help:
+  // one waiting for its connection to be added, else the saved one. Neither once a person has
+  // changed a job's AI.
+  const tierNow = tiers.find((t) => t.id === (d.ai.tier ?? (any ? null : 'low')))
+  const helpNow: HelpKind | null = edit?.help ?? (d.ai.help ? helpKind(d, connectors, d.ai.help) : d.ai.tier || !any ? 'none' : null)
+  const helpers = helpNow && helpNow !== 'none' ? helpsOf(d, connectors, helpNow) : []
+  const base = tierNow ?? tiers[0] // a help chosen before a tier goes with Low
   const chooseTier = (t: Tier) => {
-    if (edit && !edit.tier) {
+    set(withTier(d, connectors, t, d.ai.help))
+    toast(`${t.label}: each job’s AI is set below. Save your changes to use it.`)
+  }
+  const chooseHelp = (h: Help) => {
+    if (edit && !edit.help) {
       toast('Finish the connection you’re adding first: add it or cancel it.')
       document.getElementById('st-ed')?.scrollIntoView({ block: 'center' })
       return
     }
-    const next = withTier(d, connectors, t)
-    if (next) {
-      set(next)
+    const fit = h.id === 'none' ? [] : helpsOf(d, connectors, h.id)
+    if (h.id === 'none' || fit.length) {
+      set(withTier(d, connectors, base, fit[0] ?? null))
       setEdit(null)
-      toast(`${t.label}: each job’s AI is set below. Save your changes to use it.`)
+      toast(`${h.id === 'none' ? 'Nobody else does the rest' : `${connection(d, connectors, fit[0])?.label} does the rest`}: each job’s AI is set below. Save your changes to use it.`)
       return
     }
-    // A server or a cloud AI must be added first: the tier is set once it is
-    const c = t.runs === 'cloud' ? connectors.find((x) => x.where === 'cloud') : connectors.find((x) => x.id === 'local')
-    setEdit({ ...newEdit(c), ...(t.runs === 'network' ? { label: 'Your AI server', base_url: '' } : {}), tier: t.id })
-    toast(t.runs === 'cloud' ? 'Add a cloud AI below, with its key, to use it.' : 'Add your AI server below: type its address.')
+    // A server or a cloud AI must be added first: it's the help once it is
+    const c = h.id === 'cloud' ? connectors.find((x) => x.where === 'cloud') : connectors.find((x) => x.id === 'local')
+    setEdit({ ...newEdit(c), ...(h.id === 'server' ? { label: 'Your AI server', base_url: '' } : {}), help: h.id })
+    toast(h.id === 'cloud' ? 'Add a cloud AI below, with its key, to use it.' : 'Add your AI server below: type its address.')
   }
 
   const commitEdit = () => {
     if (!edit) return
-    const tier = tiers.find((t) => t.id === edit.tier)
-    if (tier?.runs === 'network' && !edit.base_url.trim()) {
+    if (edit.help === 'server' && !edit.base_url.trim()) {
       toast('Type your AI server’s address, for example http://192.168.1.20:11434/v1.')
       document.getElementById('st-url')?.focus()
       return
@@ -674,11 +753,11 @@ function SetAi({
     const id = edit.id ?? newId(edit.label || c?.short || 'ai', names)
     let next = clone(d)
     next.ai.providers[id] = cfgOf(edit, c)
-    if (tier) next = withTier(next, connectors, tier, id) ?? next
+    if (edit.help) next = withTier(next, connectors, base, id)
     else if (!edit.id)
       // A first connection takes on every job that had nothing
       JOBS.forEach((j) => {
-        if (!next.ai.jobs[j]?.connection && c?.jobs.includes(j)) {
+        if (!next.ai.jobs[j]?.connection && c?.jobs.includes(j) && j !== 'continues') {
           next.ai.jobs[j] = { connection: id, model: null }
           next.ai.tier = null
         }
@@ -687,14 +766,15 @@ function SetAi({
     if (edit.key.trim()) setKeys({ ...keys, [id]: edit.key.trim() })
     setEdit(null)
     toast(
-      tier
-        ? `Added ${edit.label}, for ${tier.label}. Save your changes to use it.`
+      edit.help
+        ? `Added ${edit.label}, to do the rest. Save your changes to use it.`
         : `${edit.id ? 'Updated' : 'Added'} ${edit.label}. Choose which jobs it does, then save your changes.`,
     )
   }
   const remove = (n: string) => {
     const next = clone(d)
     delete next.ai.providers[n]
+    if (next.ai.help === n) next.ai.help = null
     JOBS.forEach((j) => {
       if (next.ai.jobs[j]?.connection !== n) return
       next.ai.jobs[j] = { connection: null, model: null }
@@ -729,42 +809,45 @@ function SetAi({
         </Banner>
       )}
       <p className="set-p">
-        Lindley uses an AI to read handwriting, sort pages into documents, answer your questions and find related pages. Where that AI runs decides who else sees
-        your scans. An AI on a computer you own keeps them private. A cloud AI company sees every page it’s asked to read.
+        Lindley uses an AI to read handwriting, sort pages into documents and answer your questions. Where that AI runs decides who else sees your scans, and what
+        each page costs. An AI on this computer, or on another computer you own, keeps them private and costs nothing. A cloud AI company sees every page it’s
+        asked to read, and charges for it.
       </p>
       <h3>How much AI this computer runs</h3>
-      <p className="set-p">Choose what suits this computer, and Lindley gives each job an AI to match. You can still change any job below.</p>
+      <p className="set-p">The more this computer does itself, the less goes to the help below. You can still change any job further down.</p>
       <TierChoices ctx="st" tiers={tiers} value={tierNow?.id ?? null} onChoose={chooseTier} />
-      {edit?.tier ? (
-        <p className="fld-note">
-          <Icon name="plus" /> Add {tierNow?.runs === 'cloud' ? 'the cloud AI' : 'your server'} below to finish.
-        </p>
-      ) : tierNow ? (
-        <>
-          <TierModels tier={tierNow} />
-          {(tierNow.runs === 'network' || tierNow.runs === 'cloud') && fitting(d, connectors, tierNow).length > 1 && (
-            <>
-              <label className="fld" htmlFor="st-tier-on">
-                {tierNow.runs === 'cloud' ? 'Cloud AI' : 'AI server'}
-              </label>
-              <select
-                className="fld-in"
-                id="st-tier-on"
-                value={fitting(d, connectors, tierNow)[0]}
-                onChange={(e) => set(withTier(d, connectors, tierNow, e.target.value) ?? d)}
-                data-tip={`Which connection does every job for ${tierNow.label}`}
-              >
-                {fitting(d, connectors, tierNow).map((n) => (
-                  <option key={n} value={n}>
-                    {connection(d, connectors, n)?.label ?? n}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-        </>
+      {tierNow ? (
+        <LocalModels tier={tierNow} />
       ) : (
         any && <p className="fld-note">You’ve chosen the AI for each job yourself, below. Choose one of these to set them all again.</p>
+      )}
+      <h3>Who does the rest</h3>
+      <HelpChoices ctx="st" helps={helps} value={helpNow} onChoose={chooseHelp} />
+      {edit?.help ? (
+        <p className="fld-note">
+          <Icon name="plus" /> Add {edit.help === 'cloud' ? 'the cloud AI' : 'your server'} below to finish.
+        </p>
+      ) : (
+        helpers.length > 1 && (
+          <>
+            <label className="fld" htmlFor="st-help-on">
+              {helpNow === 'cloud' ? 'Cloud AI' : 'AI server'}
+            </label>
+            <select
+              className="fld-in"
+              id="st-help-on"
+              value={helpers[0]}
+              onChange={(e) => set(withTier(d, connectors, base, e.target.value))}
+              data-tip="Which connection does the jobs this computer doesn’t"
+            >
+              {helpers.map((n) => (
+                <option key={n} value={n}>
+                  {connection(d, connectors, n)?.label ?? n}
+                </option>
+              ))}
+            </select>
+          </>
+        )
       )}
       <h3>AI connections</h3>
       {conns.length ? (
@@ -779,8 +862,16 @@ function SetAi({
                   <b>{c.label}</b>
                   <PrivTag c={c} />
                   <span className="conn-where">
-                    {c.cloud ? `${c.company}’s cloud` : <span className="mono">{c.cfg.base_url || c.connector?.default_base_url}</span>} · model{' '}
-                    <span className="mono">{c.cfg.model || c.connector?.default_models.chat || 'the usual one'}</span>
+                    {c.cfg.type === 'builtin' ? (
+                      <>
+                        On this computer · {modelsOf(c.name) || 'no models in use'}
+                      </>
+                    ) : (
+                      <>
+                        {c.cloud ? `${c.company}’s cloud` : <span className="mono">{c.cfg.base_url || c.connector?.default_base_url}</span>} · model{' '}
+                        <span className="mono">{c.cfg.model || c.connector?.default_models.chat || 'the usual one'}</span>
+                      </>
+                    )}
                     {(c.cloud || hint) && ` · ${hint ? `key saved ${hint}` : c.cfg.api_key_env ? `key from ${c.cfg.api_key_env}` : 'no key'}`}
                   </span>
                   <span className="conn-uses">
@@ -878,24 +969,49 @@ function SetAi({
                   <label className="fld" htmlFor={`st-model-${j}`}>
                     Model for this job
                   </label>
-                  <input
-                    className="fld-in"
-                    id={`st-model-${j}`}
-                    value={d.ai.jobs[j]?.model ?? ''}
-                    placeholder={usual}
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-describedby={`st-modelh-${j}`}
-                    onChange={(e) => {
-                      const next = clone(d)
-                      next.ai.jobs[j] = { connection: next.ai.jobs[j]?.connection ?? null, model: e.target.value || null }
-                      next.ai.tier = null
-                      set(next)
-                    }}
-                  />
-                  <p className="fld-note" id={`st-modelh-${j}`}>
-                    Leave it empty to use {usual ? <span className="mono">{usual}</span> : 'the connection’s model'}.
-                  </p>
+                  {c.cfg.type === 'builtin' && own ? (
+                    <select
+                      className="fld-in"
+                      id={`st-model-${j}`}
+                      value={d.ai.jobs[j]?.model || usual}
+                      onChange={(e) => {
+                        const next = clone(d)
+                        next.ai.jobs[j] = { connection: next.ai.jobs[j]?.connection ?? null, model: e.target.value }
+                        next.ai.tier = null
+                        set(next)
+                      }}
+                      data-tip="Which of Lindley’s own models does this job. One not downloaded yet is downloaded from the tier above, or with Download."
+                    >
+                      {own.models
+                        .filter((m) => m.jobs.includes(j))
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label} ({size(m.size)}){m.state === 'ready' ? '' : ', not downloaded'}
+                          </option>
+                        ))}
+                    </select>
+                  ) : (
+                    <>
+                      <input
+                        className="fld-in"
+                        id={`st-model-${j}`}
+                        value={d.ai.jobs[j]?.model ?? ''}
+                        placeholder={usual}
+                        autoComplete="off"
+                        spellCheck={false}
+                        aria-describedby={`st-modelh-${j}`}
+                        onChange={(e) => {
+                          const next = clone(d)
+                          next.ai.jobs[j] = { connection: next.ai.jobs[j]?.connection ?? null, model: e.target.value || null }
+                          next.ai.tier = null
+                          set(next)
+                        }}
+                      />
+                      <p className="fld-note" id={`st-modelh-${j}`}>
+                        Leave it empty to use {usual ? <span className="mono">{usual}</span> : 'the connection’s model'}.
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
             </div>

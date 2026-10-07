@@ -33,6 +33,8 @@ def _problems(new: Settings) -> list[str]:
             out.append(f"{info.company or info.label} can't do the job {job!r}")
     if new.ai.tier is not None and new.ai.tier not in TIER_IDS:
         out.append(f"There's no performance tier called {new.ai.tier!r}")
+    if new.ai.help is not None and new.ai.help not in new.ai.providers:
+        out.append(f"The help, {new.ai.help!r}, isn't an AI connection that's set up")
     return out
 
 

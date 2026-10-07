@@ -66,7 +66,9 @@ def test_saving_never_leaves_half_a_file(tmp_path: Path, monkeypatch):
 
 def test_example_settings_file_is_valid():
     s = load_settings(REPO_ROOT / "settings.example.json")
-    assert all(s.ai.connection_for(job) in s.ai.providers for job in JOBS)
+    used = [s.ai.connection_for(job) for job in JOBS]
+    assert all(c in s.ai.providers for c in used if c) and any(used)
+    assert s.ai.tier == "middle" and s.ai.help in s.ai.providers
 
 
 def test_env_var_overrides_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

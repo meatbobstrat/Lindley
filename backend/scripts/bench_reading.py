@@ -1,10 +1,9 @@
 """How well, and how fast, vision models read the pages Tesseract finds hard: small local ones,
 and a cloud AI such as Claude, which can also stand in for the right answer.
 
-python scripts/bench_reading.py --db lindley.db --models gemma4:e2b,gemma4:e4b
-python scripts/bench_reading.py --db lindley.db --pages 17,45 --models gemma4:e4b --cpu
-python scripts/bench_reading.py --db lindley.db --reference gemma4:12b --out readings/
-python scripts/bench_reading.py --db lindley.db --reference anthropic --models gemma4:e4b --out r/
+python scripts/bench_reading.py --db lindley.db --models gemma-4-e4b
+python scripts/bench_reading.py --db lindley.db --pages 17,45 --models gemma-4-e4b --device none
+python scripts/bench_reading.py --db lindley.db --reference anthropic --models gemma-4-e4b --out r/
 python scripts/bench_reading.py --db lindley.db --connections anthropic --effort low --models ""
 
 Pages are those whose text a person checked or corrected, if any (but not with --hard): their
@@ -16,9 +15,11 @@ characters; lower is better), on text with spacing and line breaks evened out. -
 every reading, to be judged by eye.
 
 Each page is turned upright as Lindley reads it and sent as Lindley's vision job sends it
-(lindley.worker.ocr.vision.image_bytes, with Lindley's prompt). --models are called through
-Ollama's own API (/api/chat), not the OpenAI-compatible one Lindley's local connector uses, so
-that --cpu can keep the model off the graphics card, as on a laptop. --connections are AI
+(lindley.worker.ocr.vision.image_bytes, with Lindley's prompt). --models are Lindley's own AI's
+(ids in lindley.localai.catalog, downloaded with scripts/local_ai.py), read with as Lindley
+reads, on a server of their own so the most memory each took can be said; --device none keeps
+them on the processor, as on a laptop with no graphics, and --device Vulkan1 (say) picks one
+graphics device. A reading that runs on past what a page needs is cut off. --connections are AI
 connections in settings.json (e.g. "anthropic", for Claude), called just as Lindley calls them,
 with --effort if they take it; --reference may be one. What a paid AI used and cost is printed.
 With --out, every reading is kept there, and one already there is used again, not paid for
@@ -28,25 +29,21 @@ twice. Nothing is written to the database.
 from __future__ import annotations
 
 import argparse
-import base64
 import re
 import sqlite3
 import tempfile
 import time
 from pathlib import Path
 
-import httpx
-
-from lindley.config import load_settings
-from lindley.providers.base import Usage
+from lindley.config import ProviderConfig, load_settings
+from lindley.localai import server
+from lindley.providers.base import ProviderError, Usage
 from lindley.providers.prices import cost
-from lindley.providers.prompts import transcribe_prompt
 from lindley.providers.registry import build_provider
 from lindley.worker.image import upright_copy
 from lindley.worker.ocr.vision import image_bytes
 
 THRESHOLD = 70
-MOST_TOKENS = 2048  # a full typed page is about 600; a model repeating itself is stopped
 
 
 def even(text: str) -> str:
@@ -92,31 +89,15 @@ def choose(
     return rows, False
 
 
-def read(client: httpx.Client, model: str, image: bytes, cpu: bool) -> str:
-    """The model's reading, marked [cut off] if it ran on to MOST_TOKENS. One Ollama stopped
-    because it kept repeating itself (since Ollama 0.35) is [repeated itself], with no text."""
-    r = client.post(
-        "/api/chat",
-        json={
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": transcribe_prompt(),
-                    "images": [base64.b64encode(image).decode()],
-                }
-            ],
-            "stream": False,
-            "think": False,
-            "options": {"temperature": 0, "num_ctx": 8192, "num_predict": MOST_TOKENS}
-            | ({"num_gpu": 0} if cpu else {}),
-        },
-    )
-    if r.status_code == 500 and "repeat" in r.text:
-        return "[repeated itself]"
-    r.raise_for_status()
-    text = r.json()["message"]["content"].strip()
-    return text + " [cut off]" if r.json().get("done_reason") == "length" else text
+def read(provider, image: bytes) -> str:
+    """The reading, or [cut off] if it ran on past what a page needs (a model repeating itself
+    runs on until it's stopped)."""
+    try:
+        return provider.transcribe(image).text.strip()
+    except ProviderError as e:
+        if "part way" in str(e):
+            return "[cut off]"
+        raise
 
 
 def connection(settings_path: Path | None, name: str, effort: str | None, used: list[Usage]):
@@ -135,17 +116,16 @@ def connection(settings_path: Path | None, name: str, effort: str | None, used: 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", type=Path, required=True)
-    ap.add_argument("--models", default="gemma4:e2b,gemma4:e4b", help="Ollama models")
+    ap.add_argument("--models", default="gemma-4-e4b", help="ids in lindley.localai.catalog")
     ap.add_argument("--connections", default="", help="AI connections in settings.json")
     ap.add_argument("--settings", type=Path, help="settings.json (else Lindley's own)")
     ap.add_argument("--effort", help="for connections that take it: low, medium, high...")
-    ap.add_argument("--reference", default="gemma4:12b", help="when no text was checked")
+    ap.add_argument("--reference", default="anthropic", help="when no text was checked")
     ap.add_argument("--pages", help="page ids, e.g. 17,45")
     ap.add_argument("--hard", action="store_true", help="hard pages, even with some checked")
     ap.add_argument("--limit", type=int, default=8)
     ap.add_argument("--max-side", type=int, default=2000)
-    ap.add_argument("--cpu", action="store_true", help="keep the models off the graphics card")
-    ap.add_argument("--url", default="http://localhost:11434")
+    ap.add_argument("--device", help='"none": the processor alone; or e.g. Vulkan1')
     ap.add_argument("--out", type=Path, help="a folder for every reading, kept to use again")
     a = ap.parse_args()
 
@@ -159,8 +139,10 @@ def main() -> None:
     if not checked and a.reference not in models + conns:
         is_conn = a.reference in load_settings(a.settings).ai.providers
         (conns if is_conn else models).append(a.reference)
-    # A connection's readings are known by its name, and the effort asked for
-    label = {m: m for m in models} | {c: f"{c}@{a.effort}" if a.effort else c for c in conns}
+    # A model's readings are known by its id and where it ran; a connection's by its name, and
+    # the effort asked for
+    on = {None: "", "none": "@cpu"}.get(a.device, f"@{a.device}")
+    label = {m: m + on for m in models} | {c: f"{c}@{a.effort}" if a.effort else c for c in conns}
     reference = label[a.reference] if not checked else None
     print(
         f"{len(rows)} pages ({', '.join(str(r['id']) for r in rows)}); answer: "
@@ -176,7 +158,9 @@ def main() -> None:
     def kept_file(name: str, page_id: int) -> Path | None:
         return a.out / f"page-{page_id}.{re.sub(r'[^\w.@-]', '-', name)}.txt" if a.out else None
 
-    with tempfile.TemporaryDirectory() as tmp, httpx.Client(base_url=a.url, timeout=1800) as c:
+    local = load_settings(a.settings).ai.local.model_copy(update={"device": a.device})
+    peaks: dict[str, int] = {}
+    with tempfile.TemporaryDirectory() as tmp:
         images = {}
         for r in rows:
             path = Path(r["image_path"])
@@ -186,9 +170,11 @@ def main() -> None:
                 )
             images[r["id"]] = image_bytes(path, a.max_side)
         for model in models + conns:
-            name, local = label[model], model in models
-            cpu = a.cpu and local and model != a.reference
-            if not local:
+            name, own = label[model], model in models
+            if own:
+                provider = build_provider(ProviderConfig(type="builtin"), "vision", model)
+                running = server.use(local)
+            else:
                 used[name] = []
                 provider = connection(a.settings, model, a.effort, used[name])
             readings[name] = {}
@@ -199,14 +185,11 @@ def main() -> None:
                     readings[name][r["id"]] = f.read_text(encoding="utf-8")
                     kept += 1
                     continue
-                if local and not loaded:
-                    read(c, model, images[r["id"]], cpu)  # load it
+                if own and not loaded:
+                    read(provider, images[r["id"]])  # load it
                     loaded = True
                 began = time.monotonic()
-                if local:
-                    text = read(c, model, images[r["id"]], cpu)
-                else:
-                    text = provider.transcribe(images[r["id"]]).text.strip()
+                text = read(provider, images[r["id"]])
                 readings[name][r["id"]] = text
                 took.append(time.monotonic() - began)
                 if f:
@@ -216,6 +199,10 @@ def main() -> None:
                 print(f"  {name} page {r['id']}: {took[-1]:.0f} s{cut}", flush=True)
             if took:
                 seconds[name] = sum(took) / len(took)
+            if own:
+                if peak := running.peak_memory():
+                    peaks[name] = peak
+                running.stop()
     if kept:
         print(f"{kept} readings used again from {a.out}")
     answer = {r["id"]: r["text"] or "" for r in rows} if checked else readings[reference]
@@ -225,8 +212,8 @@ def main() -> None:
         rates = [cer(texts[r["id"]], answer[r["id"]]) for r in rows]
         each = " ".join(f"{x:.2f}" for x in rates)
         took = f"; {seconds[name]:.0f} s a page" if name in seconds else ""
-        on = " on the CPU" if a.cpu and name in seconds and name in models else ""
-        print(f"{name:>14}: CER {sum(rates) / len(rates):.2f} (pages: {each}){took}{on}")
+        held = f"; most memory {peaks[name] / 1e9:.1f} GB" if name in peaks else ""
+        print(f"{name:>14}: CER {sum(rates) / len(rates):.2f} (pages: {each}){took}{held}")
     for name, calls in used.items():
         if calls:
             sent = sum(u.input_tokens + u.cache_read_tokens + u.cache_write_tokens for u in calls)

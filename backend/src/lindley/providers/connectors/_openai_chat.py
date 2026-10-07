@@ -34,6 +34,9 @@ class OpenAIChat:
     # A server that doesn't take them is asked again without them, once, and isn't sent them
     # again. A streamed answer (Ask Lindley) is sent without them.
     quick_options: dict = {}
+    # The most a page's reading may be, in tokens (None: the server's own limit). A model that
+    # repeats itself runs on until it's stopped, which on a laptop takes minutes.
+    read_most: int | None = None
     # Told what each call used, even one that then fails (it's charged): set by throttle.Guarded.
     on_usage: Callable[[Usage], None] | None = None
 
@@ -108,8 +111,8 @@ class OpenAIChat:
             raise ProviderError(f"{self.who} sent back an answer with no text")
         return r
 
-    def _complete(self, messages: list[dict]) -> str:
-        r = self._quick(messages)
+    def _complete(self, messages: list[dict], **options) -> str:
+        r = self._quick(messages, **options)
         self._finished(r.choices[0].finish_reason)
         return r.choices[0].message.content or ""
 
@@ -174,7 +177,8 @@ class OpenAIChat:
             {"type": "text", "text": transcribe_prompt(hints)},
             {"type": "image_url", "image_url": {"url": url}},
         ]
-        text = self._complete([{"role": "user", "content": content}])
+        most = {"max_tokens": self.read_most} if self.read_most else {}
+        text = self._complete([{"role": "user", "content": content}], **most)
         return Transcription(text=text.strip(), metadata={"model": self.model})
 
     def embed(self, texts: list[str]) -> list[list[float]]:

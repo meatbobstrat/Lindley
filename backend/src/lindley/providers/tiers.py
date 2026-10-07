@@ -1,9 +1,15 @@
-"""Performance tiers: how much AI a computer can run, and so which AI each job uses.
+"""How much AI this computer runs, and who does the rest: the two choices Setup and Settings ask.
 
-A person picks one in Setup or Settings, and the UI gives each job its connection and model from
-it (ai.tier records which). The choice of AI for each job stays underneath: changing one makes
-the settings a person's own. Models are Ollama's names for now, on the local connection; the
-measurements behind them are in design/database.md, "Local models on a CPU".
+A tier says which jobs Lindley's own AI does on this computer, and with which model. Help is a
+connection that does the jobs the tier leaves: your own AI server, or a cloud AI with a key, or
+nobody. Every job done on this computer is one that isn't sent anywhere or paid for, so the cost
+of each page falls, and privacy rises, from Low to High.
+
+The UI gives each job its AI from the two (frontend lib/tiers.ts, withTier): the tier's model on
+Lindley's own AI, else the help if it can do the job, else nothing. ai.tier and ai.help record
+the choices; the choice of AI for each job stays underneath, and changing one makes the settings
+a person's own (ai.tier is then None). The measurements behind the models are in
+design/database.md, "Local models on a CPU".
 """
 
 from __future__ import annotations
@@ -20,83 +26,72 @@ class Tier:
     id: str  # ai.tier in settings.json
     label: str
     needs: str  # what the computer needs, in words
-    does: str  # what the AI does, and how fast
-    # Where its AI runs: nowhere, this computer (the local connection), a computer on your
-    # network (the local connection at its address), or a cloud company (a key).
-    runs: Literal["none", "this", "network", "cloud"]
-    # For a tier on this computer: the model each job uses. Jobs left out get no AI. Elsewhere,
-    # each job its connection can do uses the connection's model.
-    models: Mapping[Job, str] = field(default_factory=dict)
+    does: str  # what it does on this computer, and what's left for the help
+    # The model of Lindley's own AI (lindley.localai.catalog) for each job done on this computer
+    local: Mapping[Job, str] = field(default_factory=dict)
+
+    def downloads(self) -> list[str]:
+        """The models the tier needs downloaded, each once."""
+        return list(dict.fromkeys(self.local.values()))
 
 
-# EmbeddingGemma found a page's own document 125 times in 147, nomic-embed-text 114
-EMBED = "embeddinggemma"
+@dataclass(frozen=True)
+class Help:
+    id: Literal["none", "server", "cloud"]
+    label: str
+    does: str  # where pages go, and what it costs
+
+
+# Qwen3.5 4B saw best whether a page runs on (0.92 where the rules can't tell, 0.94 with them)
+CONTINUES = "qwen3.5-4b"
+# Gemma 4 E4B reads handwriting nearly as Claude does (CER 0.15 against it), and sorts
+READS = "gemma-4-e4b"
 
 TIERS: tuple[Tier, ...] = (
     Tier(
-        id="basic",
-        label="Basic",
-        needs="Any computer.",
-        does="Tesseract reads printed and typed pages, and Lindley's rules sort them into "
-        "documents. No AI: handwriting and pages Tesseract can't read wait for you.",
-        runs="none",
+        id="low",
+        label="Low",
+        needs="Any computer, even an old or slow one.",
+        does="No AI runs on this computer: Tesseract reads printed and typed pages, and Lindley’s "
+        "rules sort them. Everything else goes to the help you choose below, or waits for you.",
     ),
     Tier(
-        id="light",
-        label="Light",
+        id="middle",
+        label="Middle",
         needs="8 GB of memory.",
-        # E4B, not E2B: on the bench E2B left words and half a page out (design/database.md,
-        # "Local models"). The smaller computer only makes it slower
-        does="Gemma 4 E4B on this computer reads handwriting, slowly: a few minutes a page. "
-        "EmbeddingGemma finds pages about the same thing. Sorting and questions use Lindley's "
-        "rules.",
-        runs="this",
-        models={"vision": "gemma4:e4b", "embed": EMBED},
+        does="A small AI on this computer checks whether each page carries on from the last, so "
+        "sorting needs the help less. Reading handwriting, sorting what’s left and answering "
+        "questions go to the help you choose below.",
+        local={"continues": CONTINUES},
     ),
     Tier(
-        id="full",
-        label="Full local",
-        needs="16 GB of memory, and a processor from the last few years or built-in graphics.",
-        does="Gemma 4 E4B on this computer reads handwriting, sorts pages and answers your "
-        "questions, at a minute or two a hard page.",
-        runs="this",
-        models={
-            "vision": "gemma4:e4b",
-            "assemble": "gemma4:e4b",
-            "chat": "gemma4:e4b",
-            "embed": EMBED,
-        },
+        id="high",
+        label="High",
+        needs="16 GB of memory, or a graphics card.",
+        does="Gemma 4 on this computer reads handwriting, sorts pages and answers your questions, "
+        "at a minute or two a hard page without a graphics card. Nothing needs to leave it.",
+        local={"vision": READS, "assemble": READS, "chat": READS, "continues": CONTINUES},
     ),
-    Tier(
-        id="power",
-        label="Power",
-        needs="32 GB of memory, or a graphics card with 8 GB or more.",
-        # Gemma 4 26B-A4B uses 3.8B of its 25B weights for each token, so it runs on a
-        # processor with the memory; 12B suits an 8 GB card, 31B one with 24 GB or more
-        does="Gemma 4 26B on this computer: quicker and more accurate at every job. With a "
-        "graphics card, Gemma 4 12B (8 GB) or 31B (24 GB) can be set for each job in Settings.",
-        runs="this",
-        models={
-            "vision": "gemma4:26b",
-            "assemble": "gemma4:26b",
-            "chat": "gemma4:26b",
-            "embed": EMBED,
-        },
+)
+
+HELPS: tuple[Help, ...] = (
+    Help(
+        id="none",
+        label="Nobody",
+        does="What this computer doesn’t do waits for you: handwriting waits for your review, you "
+        "match the pages Lindley isn’t sure of, and Ask Lindley only finds words.",
     ),
-    Tier(
+    Help(
         id="server",
         label="Your own AI server",
-        needs="A computer on your network running Ollama or LM Studio.",
-        does="That computer does every job, with its power. Your scans stay on your network.",
-        runs="network",
+        does="A computer you own, on your network, does the rest: Ollama, LM Studio or "
+        "llama-server. Your scans stay with you.",
     ),
-    Tier(
+    Help(
         id="cloud",
-        label="Cloud",
-        needs="Any computer, and an API key from an AI company.",
-        does="A cloud AI reads, sorts and answers well and quickly. Pages leave this computer, "
-        "and each one costs money.",
-        runs="cloud",
+        label="A cloud AI",
+        does="An AI company does the rest, with an API key: quick and good. The pages it’s sent "
+        "leave this computer, and each one costs money.",
     ),
 )
 

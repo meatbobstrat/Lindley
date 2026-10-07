@@ -3,7 +3,7 @@ library."""
 
 from __future__ import annotations
 
-from lindley.providers.base import JOBS, ConnectorInfo
+from lindley.providers.base import NOT_CONTINUES, ConnectorInfo
 from lindley.providers.connectors._openai_chat import OpenAIChat
 
 INFO = ConnectorInfo(
@@ -11,7 +11,7 @@ INFO = ConnectorInfo(
     label="Another OpenAI-compatible service",
     short="Cloud AI",
     where="cloud",
-    jobs=frozenset(JOBS),
+    jobs=NOT_CONTINUES,
     needs_key=True,  # a service on a computer you control is a `local` connection instead
 )
 

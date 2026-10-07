@@ -1,4 +1,5 @@
-// What every view needs: the overview (counts, documents, folders), settings, connectors and tiers.
+// What every view needs: the overview (counts, documents, folders), settings, connectors, and the
+// tiers and helps.
 // The overview is checked every few seconds; when the background work has moved on (a scan
 // read, pages sorted), every view fetches its data again.
 
@@ -53,7 +54,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       offline: offline || (!!ov.error && !ov.data),
       settings: st.data,
       connectors,
-      tiers: tr.data ?? [],
+      tiers: tr.data?.tiers ?? [],
+      helps: tr.data?.helps ?? [],
       docs,
       folders,
       folderPath,

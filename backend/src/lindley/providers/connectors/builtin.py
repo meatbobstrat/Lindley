@@ -26,6 +26,7 @@ INFO = ConnectorInfo(
         "assemble": "gemma-4-e4b",
         "chat": "gemma-4-e4b",
         "embed": "embeddinggemma",
+        "continues": "qwen3.5-4b",
     },
     # A laptop with no graphics card may take minutes over a page, and loading a model the
     # first time it's asked for takes a while too
@@ -39,6 +40,8 @@ class Provider(OpenAIChat):
     # model can spend its whole context thinking). llama.cpp's switch is the chat template's
     # enable_thinking; it has no per-request reasoning_effort.
     quick_options = {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+    # A typed page is about 600 tokens; past this, a model is repeating itself
+    read_most = 2048
 
     def __init__(self, config=None, model=None, api_key=None, http_client=None) -> None:
         super().__init__(config, model, api_key, http_client)

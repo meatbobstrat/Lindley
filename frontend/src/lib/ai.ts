@@ -82,6 +82,12 @@ export const JOB_WORDS: Record<Job, { label: string; what: string; none: string;
     none: 'Nothing connected: related pages are found by matching words only.',
     short: 'finding related pages',
   },
+  continues: {
+    label: 'Checking whether a page carries on from the last',
+    what: 'the last lines of one page and the first of the next',
+    none: 'Nothing connected: Lindley’s rules judge it alone, from how each page ends and starts.',
+    short: 'checking whether pages carry on',
+  },
 }
 
 /** The companies your pages are sent to, given the jobs set up now. */

@@ -117,9 +117,11 @@ class AiSettings(BaseModel):
     # vision: reading hard pages; assemble: sorting pages into documents; chat: Ask Lindley;
     # embed: finding related pages.
     jobs: dict[Job, JobConfig] = Field(default_factory=_no_jobs)
-    # The performance tier the jobs were set from (providers/tiers.py), as Setup or Settings
-    # chose it. None: none chosen, or a person changed a job since.
+    # How much AI this computer runs (providers/tiers.py: low, middle, high), and the connection
+    # that does the jobs it leaves (None: nobody), as Setup or Settings chose them; the jobs
+    # were set from the two. tier None: none chosen, or a person changed a job since.
     tier: str | None = None
+    help: str | None = None
 
     def connection_for(self, job: Job) -> str | None:
         j = self.jobs.get(job)
@@ -194,6 +196,7 @@ class Settings(BaseModel):
             if isinstance(providers, dict) and isinstance(providers.get(name), dict):
                 providers[name].setdefault("allow", "auto")
         _jobs_from_earlier(data)
+        _tiers_from_earlier(ai)
         # Google connections once went through Google's OpenAI-compatible address; its own
         # library uses its own.
         for p in providers.values() if isinstance(providers, dict) else ():
@@ -222,6 +225,20 @@ def _jobs_from_earlier(data: dict) -> None:
             p["type"] = "local"
     old = {"vision": vision, "assemble": chat, "chat": chat, "embed": embed}
     ai["jobs"] = {job: {"connection": c if c in providers else None} for job, c in old.items()}
+
+
+def _tiers_from_earlier(ai: dict) -> None:
+    """Carry over the tiers from before there were two choices. Basic, and a server or a cloud
+    AI doing every job, are Low with that connection as the help. Light, Full local and Power
+    ran on Ollama, not Lindley's own AI: their jobs are kept, as a person's own choice."""
+    tier = ai.get("tier")
+    if tier not in ("basic", "light", "full", "power", "server", "cloud"):
+        return
+    ai["tier"] = "low" if tier in ("basic", "server", "cloud") else None
+    if tier in ("server", "cloud"):
+        jobs = ai.get("jobs") if isinstance(ai.get("jobs"), dict) else {}
+        used = [j.get("connection") for j in jobs.values() if isinstance(j, dict)]
+        ai["help"] = next((c for c in used if c), None)
 
 
 def _private(url: str | None) -> bool:

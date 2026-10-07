@@ -6,12 +6,13 @@ import { useNavigate } from 'react-router'
 import type { AiWorking } from '../api/client'
 import { anyAi, cloudInUse } from '../lib/ai'
 import { useApp } from '../lib/appContext'
-import { plural } from '../lib/words'
+import { plural, size } from '../lib/words'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
 
 /** "AI reading page 2 of 5", "AI sorting 6 pages · question 1 of 2 so far": answers can raise more */
 function doing(w: AiWorking): string {
+  if (w.kind === 'download') return `Downloading ${w.label ?? 'Lindley’s own AI'} · ${size(w.done)} of ${size(w.of)}`
   if (w.kind === 'sort') {
     const what = `AI sorting ${w.pages ? plural(w.pages, 'page') : 'the Inbox'}`
     return w.of > 0 ? `${what} · question ${Math.min(w.done + 1, w.of)} of ${w.of} so far` : what
@@ -91,21 +92,32 @@ export function StatusBar() {
             ? `Reading ${plural(c.reading_again, 'turned page')} again`
             : 'All scans read'}
       </span>
-      {working.map((w, i) => (
-        <button
-          key={i}
-          onClick={() => nav('/needs-ai')}
-          data-tip={`${w.connection ?? 'The AI'} is ${w.kind === 'sort' ? 'sorting pages' : 'reading hard pages'}, ${w.asked ? 'as you asked' : 'on its own'}.${
-            w.kind === 'sort' ? ' It’s asked about the pages the rules couldn’t settle, a few at a time, and more questions can come up as it goes.' : ''
-          } You can keep working meanwhile.${
-            queued ? ` ${plural(queued, 'more request')} ${queued === 1 ? 'waits' : 'wait'} behind it.` : ''
-          }`}
-        >
-          <i className="dot busy" aria-hidden="true" />
-          {doing(w)}
-          {i === 0 && queued ? ` · ${queued} more waiting` : ''}
-        </button>
-      ))}
+      {working.map((w, i) =>
+        w.kind === 'download' ? (
+          <button
+            key={i}
+            onClick={() => nav('/settings/ai')}
+            data-tip="Lindley’s own AI, downloading as you asked. You can keep working meanwhile, and cancel it in Settings."
+          >
+            <i className="dot busy" aria-hidden="true" />
+            {doing(w)}
+          </button>
+        ) : (
+          <button
+            key={i}
+            onClick={() => nav('/needs-ai')}
+            data-tip={`${w.connection ?? 'The AI'} is ${w.kind === 'sort' ? 'sorting pages' : 'reading hard pages'}, ${w.asked ? 'as you asked' : 'on its own'}.${
+              w.kind === 'sort' ? ' It’s asked about the pages the rules couldn’t settle, a few at a time, and more questions can come up as it goes.' : ''
+            } You can keep working meanwhile.${
+              queued ? ` ${plural(queued, 'more request')} ${queued === 1 ? 'waits' : 'wait'} behind it.` : ''
+            }`}
+          >
+            <i className="dot busy" aria-hidden="true" />
+            {doing(w)}
+            {i === 0 && queued ? ` · ${queued} more waiting` : ''}
+          </button>
+        ),
+      )}
       {!!c?.failed && (
         <span data-tip="Scans Lindley couldn’t read. They’re in the quarantine folder, and Lindley tries them again when it next starts.">
           <Icon name="warn" /> {plural(c.failed, 'scan')} couldn’t be read

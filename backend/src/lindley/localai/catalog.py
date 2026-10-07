@@ -92,7 +92,7 @@ def engine() -> Engine | None:
     return ENGINES.get(sys.platform)
 
 
-_READS = frozenset({"vision", "assemble", "chat"})
+_READS = frozenset({"vision", "assemble", "chat", "continues"})
 
 MODELS: dict[str, Model] = {
     m.id: m
@@ -133,7 +133,7 @@ MODELS: dict[str, Model] = {
                     "8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52",
                 ),
             ),
-            jobs=frozenset({"assemble", "chat"}),
+            jobs=frozenset({"assemble", "chat", "continues"}),
             context=8192,
             memory_gb=4,
         ),
@@ -173,7 +173,7 @@ MODELS: dict[str, Model] = {
                     "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
                 ),
             ),
-            jobs=frozenset({"assemble", "chat"}),
+            jobs=frozenset({"assemble", "chat", "continues"}),
             context=8192,
             memory_gb=3.5,
         ),

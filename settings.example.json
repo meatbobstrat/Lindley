@@ -1,5 +1,7 @@
 {
-  "watch_folders": ["./data/inbox"],
+  "watch_folders": [
+    "./data/inbox"
+  ],
   "processing_dir": "./data/processing",
   "quarantine_dir": "./data/quarantine",
   "library_dir": "./data/library",
@@ -9,7 +11,9 @@
   "ocr": {
     "engine": "hybrid",
     "tesseract_path": null,
-    "languages": ["eng"],
+    "languages": [
+      "eng"
+    ],
     "confidence_threshold": 70,
     "review_below": 80,
     "vision_max_side": 2000,
@@ -19,7 +23,10 @@
     "group_at": 75,
     "hint_at": 45,
     "offer_at": 60,
-    "ai_band": [35, 75],
+    "ai_band": [
+      35,
+      75
+    ],
     "ask_ai_after_days": 0
   },
   "ask": {
@@ -28,19 +35,34 @@
     "history_turns": 6
   },
   "ai": {
-    "tier": null,
+    "tier": "middle",
+    "help": "claude",
     "jobs": {
-      "vision": { "connection": "local", "model": null },
-      "assemble": { "connection": "claude", "model": null },
-      "chat": { "connection": "claude", "model": null },
-      "embed": { "connection": "local", "model": null }
+      "vision": {
+        "connection": "claude",
+        "model": null
+      },
+      "assemble": {
+        "connection": "claude",
+        "model": null
+      },
+      "chat": {
+        "connection": "claude",
+        "model": null
+      },
+      "embed": {
+        "connection": null,
+        "model": null
+      },
+      "continues": {
+        "connection": "own",
+        "model": "qwen3.5-4b"
+      }
     },
     "providers": {
-      "local": {
-        "type": "local",
-        "label": "Ollama on this computer",
-        "base_url": "http://localhost:11434/v1",
-        "model": "gemma4:e4b",
+      "own": {
+        "type": "builtin",
+        "label": "Lindley's own AI",
         "allow": "ask",
         "daily_limit": null,
         "monthly_limit": null,
@@ -77,7 +99,23 @@
         "monthly_limit": 1000,
         "per_minute": 30,
         "at_once": 2
+      },
+      "server": {
+        "type": "local",
+        "label": "Ollama on another computer",
+        "base_url": "http://192.168.1.20:11434/v1",
+        "model": "gemma4:e4b",
+        "allow": "ask",
+        "daily_limit": null,
+        "monthly_limit": null,
+        "per_minute": null,
+        "at_once": 1
       }
+    },
+    "local": {
+      "models_dir": null,
+      "server_path": null,
+      "device": null
     }
   }
 }

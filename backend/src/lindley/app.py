@@ -27,6 +27,7 @@ from lindley.api import (
     folders,
     health,
     library,
+    local_ai,
     needs_ai,
     pages,
     scans,
@@ -38,6 +39,7 @@ from lindley.api import settings as settings_api
 from lindley.config import Settings, load_settings
 from lindley.db.database import connect, init_db
 from lindley.localai import server as local_server
+from lindley.localai.download import Downloads
 from lindley.watcher.watcher import FolderWatcher
 from lindley.worker.ai_work import AiWork
 from lindley.worker.intake import absolute_paths
@@ -143,6 +145,7 @@ def create_app(
                 if app.state.watcher:
                     app.state.watcher.stop()
             app.state.ai_work.stop()
+            app.state.downloads.stop()
             local_server.stop()
 
     app = FastAPI(title="Lindley", version=__version__, lifespan=lifespan)
@@ -151,6 +154,8 @@ def create_app(
     app.state.watcher_swap = threading.Lock()  # one watcher at a time is started or stopped
     # AI work a person asked for, done in the background with the settings in use then
     app.state.ai_work = AiWork(lambda: app.state.settings)
+    # Lindley's own AI's files, downloaded when a person asks, into the folder in use then
+    app.state.downloads = Downloads(lambda: app.state.settings.ai.local.folder())
 
     app.add_middleware(
         CORSMiddleware,
@@ -177,6 +182,7 @@ def create_app(
         suggestions.router,
         assembler_api.router,
         needs_ai.router,
+        local_ai.router,
     ):
         app.include_router(router, prefix="/api")
 

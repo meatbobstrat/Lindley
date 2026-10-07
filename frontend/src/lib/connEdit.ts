@@ -1,6 +1,6 @@
 // A connection being added or changed, in Settings or first-run setup, and what it saves as.
 
-import type { Connector, ProviderConfig } from '../api/client'
+import type { Connector, HelpKind, ProviderConfig } from '../api/client'
 
 export const LANGS: [string, string][] = [
   ['eng', 'English'],
@@ -32,7 +32,7 @@ export interface Edit {
   atOnce: number
   api_key_env: string | null
   timeout_s: number | null // not shown: kept as settings.json has it
-  tier?: string // the performance tier waiting for this connection, a server or a cloud AI
+  help?: HelpKind // to do the rest once it's added: a server or a cloud AI
 }
 
 export function newEdit(c: Connector | undefined): Edit {

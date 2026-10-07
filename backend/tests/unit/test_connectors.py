@@ -819,6 +819,7 @@ def test_builtin_starts_the_server_and_turns_thinking_off(running):
     assert "reasoning_effort" not in server.body
     p.transcribe(PNG)
     assert server.body["chat_template_kwargs"] == {"enable_thinking": False}
+    assert server.body["max_tokens"] == 2048  # a reading that runs on is stopped
     assert running.asked == ["gemma-4-e4b"]  # the address is kept
     assert p.client.timeout == 600
 

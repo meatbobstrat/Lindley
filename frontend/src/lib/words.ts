@@ -10,6 +10,22 @@ export const dollars = (n: number) => (n > 0 && n < 0.005 ? 'under 1¢' : `${n.t
 // A size on disk: "33 MB", "5.2 GB"
 export const size = (bytes: number) => (bytes < 1e9 ? `${Math.max(1, Math.round(bytes / 1e6))} MB` : `${(bytes / 1e9).toFixed(1)} GB`)
 
+// How long something takes, roughly: "about a minute", "about 25 minutes", "about 1½ hours"
+export function duration(seconds: number): string {
+  const m = seconds / 60
+  if (m < 1.5) return 'about a minute'
+  if (m < 10) return `about ${Math.round(m)} minutes`
+  if (m < 55) return `about ${Math.round(m / 5) * 5} minutes`
+  const h = m / 60
+  if (h < 1.25) return 'about an hour'
+  if (h < 10) {
+    const halves = Math.round(h * 2) / 2
+    return `about ${Math.floor(halves)}${halves % 1 ? '½' : ''} hours`
+  }
+  if (h < 36) return `about ${Math.round(h)} hours`
+  return `about ${Math.round(h / 24)} days`
+}
+
 export const shortName = (n: string, max = 26) => (n.length > max ? `${n.slice(0, max - 1)}…` : n)
 
 /** A name in quotes, unless it has its own: Lindley's (Pages starting “…”) do, as

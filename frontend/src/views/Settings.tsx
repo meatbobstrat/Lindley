@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker, useNavigate, useParams } from 'react-router'
-import { api, type AiCalls, type Connector, type Help, type HelpKind, JOBS, type Settings, type Tier } from '../api/client'
+import { api, type AiCalls, type Computer, type Connector, type Help, type HelpKind, JOBS, type Settings, type Tier } from '../api/client'
 import { invalidate, useApi } from '../api/store'
 import { Banner, LimitsTag, Loading, Meter, PrivTag } from '../components/bits'
 import { cloudInUse, companyOf, connection, hostOf, JOB_WORDS, reachOf } from '../lib/ai'
@@ -12,7 +12,7 @@ import { useApp, useLooking } from '../lib/appContext'
 import { cfgOf, type Edit, editOf, editReady, LANGS, newEdit, newId } from '../lib/connEdit'
 import { helpKind, helpsOf, withTier } from '../lib/tiers'
 import { useDockPos, useTheme } from '../lib/view'
-import { dollars, plural, size } from '../lib/words'
+import { dollars, duration, plural, size } from '../lib/words'
 import { DBtn, Dock, DockText } from '../ui/Dock'
 import { Modal } from '../ui/feedback'
 import { useFeedback } from '../ui/feedbackContext'
@@ -388,19 +388,62 @@ export function ModeChoices({ ctx, move, set }: { ctx: string; move: boolean; se
 }
 
 /** How much AI this computer runs: Low, Middle or High. */
-export function TierChoices({ ctx, tiers, value, onChoose }: { ctx: string; tiers: Tier[]; value: string | null; onChoose: (t: Tier) => void }) {
+export function TierChoices({
+  ctx,
+  tiers,
+  value,
+  onChoose,
+  computer,
+}: {
+  ctx: string
+  tiers: Tier[]
+  value: string | null
+  onChoose: (t: Tier) => void
+  computer?: Computer
+}) {
   return (
     <fieldset className="choices">
       <legend className="sr-only">How much AI this computer runs</legend>
-      {tiers.map((t) => (
-        <label className="choice" key={t.id}>
-          <input type="radio" name={`${ctx}-tier`} checked={value === t.id} onChange={() => onChoose(t)} />
-          <span>
-            <b>{t.label}.</b> {t.needs} {t.does}
-          </span>
-        </label>
-      ))}
+      {tiers.map((t) => {
+        const time = computer?.times[t.id]
+        return (
+          <label className="choice" key={t.id}>
+            <input type="radio" name={`${ctx}-tier`} checked={value === t.id} onChange={() => onChoose(t)} />
+            <span>
+              <b>
+                {t.label}
+                {computer?.suggested === t.id && ' (suggested for this computer)'}.
+              </b>{' '}
+              {t.needs} {t.does}
+              {time && (
+                <i>
+                  {' '}
+                  100 typed pages: {duration(time.typed)} here.{' '}
+                  {time.handwritten === null ? 'Handwriting goes to the help, or waits for you.' : `100 handwritten: ${duration(time.handwritten)}.`}
+                </i>
+              )}
+            </span>
+          </label>
+        )
+      })}
     </fieldset>
+  )
+}
+
+/** What Lindley found this computer has, and the tier it suggests. */
+export function ComputerNote({ computer: c, tiers }: { computer: Computer; tiers: Tier[] }) {
+  const gb = (n: number) => `${Math.round(n / 2 ** 30)} GB`
+  const parts = [
+    c.processor ? `${c.processor} (${plural(c.threads, 'thread')})` : plural(c.threads, 'processor thread'),
+    c.memory !== null && `${gb(c.memory)} of memory`,
+    c.graphics.length ? c.graphics.map((g) => `${g.name} (${gb(g.memory)})`).join(', ') : 'no graphics card',
+    c.free !== null && `${size(c.free)} free`,
+  ].filter(Boolean)
+  const label = tiers.find((t) => t.id === c.suggested)?.label ?? c.suggested
+  return (
+    <p className="fld-note">
+      This computer: {parts.join(', ')}. Lindley suggests <b>{label}</b>. {c.why} Times are estimates, measured on {c.measured_on}; yours may differ.
+    </p>
   )
 }
 
@@ -706,6 +749,7 @@ function SetAi({
   const any = JOBS.some((j) => connection(d, connectors, d.ai.jobs[j]?.connection))
   // Lindley's own AI's models: their names, and which can do each job
   const own = useApi('local-ai', api.localAi).data
+  const computer = useApi('computer', api.computer).data
   const ownModel = (id: string) => own?.models.find((m) => m.id === id)
   const modelsOf = (n: string) =>
     [...new Set(JOBS.filter((j) => d.ai.jobs[j]?.connection === n).map((j) => d.ai.jobs[j]?.model || connection(d, connectors, n)?.connector?.default_models[j] || ''))]
@@ -816,7 +860,8 @@ function SetAi({
       </p>
       <h3>How much AI this computer runs</h3>
       <p className="set-p">The more this computer does itself, the less goes to the help below. You can still change any job further down.</p>
-      <TierChoices ctx="st" tiers={tiers} value={tierNow?.id ?? null} onChoose={chooseTier} />
+      {computer && <ComputerNote computer={computer} tiers={tiers} />}
+      <TierChoices ctx="st" tiers={tiers} value={tierNow?.id ?? null} onChoose={chooseTier} computer={computer} />
       {tierNow ? (
         <LocalModels tier={tierNow} />
       ) : (

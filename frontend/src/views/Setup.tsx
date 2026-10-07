@@ -3,14 +3,14 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { api, type Connector, type Help, type HelpKind, JOBS, type Settings, type Tier } from '../api/client'
-import { invalidate } from '../api/store'
+import { invalidate, useApi } from '../api/store'
 import { cloudInUse } from '../lib/ai'
 import { plural } from '../lib/words'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
 import { cfgOf, type Edit, editReady, newEdit, newId } from '../lib/connEdit'
 import { withTier } from '../lib/tiers'
-import { ConnEditor, FoldersEditor, HelpChoices, LocalModels, ModeChoices, TierChoices } from './Settings'
+import { ComputerNote, ConnEditor, FoldersEditor, HelpChoices, LocalModels, ModeChoices, TierChoices } from './Settings'
 
 /** The connection the help starts from: a server on your network, or a cloud AI. */
 const editFor = (h: HelpKind, connectors: Connector[]): Edit =>
@@ -23,8 +23,11 @@ export function Setup({ settings, connectors, tiers, helps }: { settings: Settin
   const ref = useRef<HTMLDialogElement>(null)
   const [folders, setFolders] = useState<string[]>([])
   const [move, setMove] = useState(settings.move_files)
-  // Until Lindley can look at the computer itself, the tier most computers suit
-  const [tier, setTier] = useState<Tier>(() => tiers.find((t) => t.id === 'middle') ?? tiers[0])
+  // The tier this computer suits, once Lindley has looked at it (Middle until then), unless the
+  // person has chosen one
+  const computer = useApi('computer', api.computer).data
+  const [chosen, setChosen] = useState<Tier | null>(null)
+  const tier = chosen ?? tiers.find((t) => t.id === (computer?.suggested ?? 'middle')) ?? tiers[0]
   const [help, setHelp] = useState<HelpKind>('none')
   const [edit, setEdit] = useState<Edit>(() => editFor('cloud', connectors))
   const [download, setDownload] = useState(true)
@@ -125,7 +128,8 @@ export function Setup({ settings, connectors, tiers, helps }: { settings: Settin
             An AI reads handwriting, helps sort pages into documents, and answers your questions. The more this computer can do itself, the more private your
             scans stay and the less each page costs.
           </p>
-          <TierChoices ctx="su" tiers={tiers} value={tier.id} onChoose={setTier} />
+          {computer && <ComputerNote computer={computer} tiers={tiers} />}
+          <TierChoices ctx="su" tiers={tiers} value={tier.id} onChoose={setChosen} computer={computer} />
           <LocalModels tier={tier} now={download} setNow={setDownload} />
         </section>
         <section aria-labelledby="su-5">

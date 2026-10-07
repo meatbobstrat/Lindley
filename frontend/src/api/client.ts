@@ -320,6 +320,21 @@ export interface LocalAi {
   on_processor: boolean // the graphics couldn't load a model, so it runs on the processor alone
 }
 
+/** A look at this computer (backend localai/computer.py), the tier it suits, and how long 100
+ *  pages would take on each tier, in seconds (handwritten null: it isn't read on this computer). */
+export interface Computer {
+  processor: string | null
+  threads: number
+  memory: number | null // bytes
+  graphics: { name: string; memory: number }[] // cards with memory of their own, the largest first
+  free: number | null // bytes free on the disk Lindley's own AI goes on
+  engine: boolean // whether Lindley's own AI runs on this kind of computer
+  suggested: string // a tier's id
+  why: string
+  times: Record<string, { typed: number; handwritten: number | null }>
+  measured_on: string // the computer the times were measured on
+}
+
 export interface AiCalls {
   providers: Record<
     string,
@@ -407,6 +422,7 @@ export const api = {
   connectors: () => get<Connector[]>('/connectors'),
   tiers: () => get<{ tiers: Tier[]; helps: Help[] }>('/tiers'),
   localAi: () => get<LocalAi>('/local-ai'),
+  computer: () => get<Computer>('/local-ai/computer'),
   aiCalls: () => get<AiCalls>('/settings/ai-calls'),
   setupNeeded: () => get<{ needed: boolean }>('/setup'),
 

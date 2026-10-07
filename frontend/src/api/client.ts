@@ -317,6 +317,7 @@ export interface LocalAi {
   models: { id: string; label: string; size: number; memory_gb: number; jobs: Job[]; state: 'ready' | 'downloading' | 'missing' }[]
   downloading: { label: string; done: number; of: number } | null
   running: boolean
+  on_processor: boolean // the graphics couldn't load a model, so it runs on the processor alone
 }
 
 export interface AiCalls {

@@ -64,6 +64,8 @@ def status(request: Request) -> dict:
             else None
         ),
         "running": local_server.current().running(),
+        # The graphics couldn't load a model, so it runs on the processor alone
+        "on_processor": local_server.current().on_processor,
     }
 
 

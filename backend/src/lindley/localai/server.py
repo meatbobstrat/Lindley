@@ -32,14 +32,17 @@ log = logging.getLogger(__name__)
 HOST = "127.0.0.1"
 MODELS_MAX = 2  # models kept loaded at once
 START_S = 60  # seconds to wait for it to start (models load later, when asked for)
+LOAD_S = 600  # seconds to wait for a model to load (a big one, from a slow disk)
 KEEP_LOGS = 10  # its logs kept, in the models folder's logs/
 
 NOT_DOWNLOADED = "Lindley's own AI isn't downloaded yet. Download it in Settings › AI."
 
 
-def preset(local: LocalAiSettings, models: list[Model]) -> str:
-    """The server's --models-preset file: one section per model, its files and settings."""
+def preset(local: LocalAiSettings, models: list[Model], device: str | None = None) -> str:
+    """The server's --models-preset file: one section per model, its files and settings.
+    `device`: in place of the settings' (graphics that failed: "none", the processor alone)."""
     root = local.folder()
+    device = device or local.device
     out = []
     for m in models:
         lines = [f"[{m.id}]", f"model = {(m.folder(root) / m.files[0].name).resolve()}"]
@@ -51,9 +54,9 @@ def preset(local: LocalAiSettings, models: list[Model]) -> str:
         # memory a model needs. The last prompt is still reused, which is what a run of
         # questions with the same instructions wants.
         lines.append("cache-ram = 0")
-        if local.device:
-            lines.append(f"device = {local.device}")
-        if local.device == "none":
+        if device:
+            lines.append(f"device = {device}")
+        if device == "none":
             lines.append("n-gpu-layers = 0")
         lines += [f"{k} = {v}" for k, v in m.preset.items()]
         out.append("\n".join(lines))
@@ -69,13 +72,20 @@ def _free_port() -> int:
 class LocalServer:
     """One llama-server for these settings. `command`: what to run in its place (tests)."""
 
-    def __init__(self, local: LocalAiSettings, command: list[str] | None = None) -> None:
+    def __init__(
+        self, local: LocalAiSettings, command: list[str] | None = None, loads: bool = False
+    ) -> None:
         self.local = local
         self._command = command
+        self._command_loads = loads  # the command answers /models (tests)
         self._lock = threading.Lock()
         self._proc: subprocess.Popen | None = None
         self._job = None  # Windows: the job that ends the server with Lindley
         self._models: set[str] = set()  # the models the running server knows
+        self._loaded: set[str] = set()  # the models it has loaded, since it started
+        # The graphics failed to load a model, so it runs on the processor alone (when no
+        # device is set: one that is set is what a person chose)
+        self.on_processor = False
         self.port: int | None = None
         self.log: Path | None = None  # what the server wrote, since it last started
 
@@ -96,19 +106,54 @@ class LocalServer:
         """The server's OpenAI-compatible address, started (or started again, to know a model
         downloaded since) if need be. Raises ProviderError when it can't run this model."""
         with self._lock:
-            if self.running() and model in self._models:
-                return f"http://{HOST}:{self.port}/v1"
-            models = self.installed()
-            if model not in {m.id for m in models}:
-                label = MODELS[model].label if model in MODELS else model
-                raise ProviderError(
-                    f"{label} isn't downloaded yet. Download it in Settings › AI."
-                    if model in MODELS
-                    else f"Lindley's own AI has no model called {label!r}"
-                )
-            self._stop()
-            self._start(models)
+            if not (self.running() and model in self._models):
+                self._start_for(model)
+            if model not in self._loaded:
+                self._load(model)
             return f"http://{HOST}:{self.port}/v1"
+
+    def _start_for(self, model: str) -> None:
+        models = self.installed()
+        if model not in {m.id for m in models}:
+            label = MODELS[model].label if model in MODELS else model
+            raise ProviderError(
+                f"{label} isn't downloaded yet. Download it in Settings › AI."
+                if model in MODELS
+                else f"Lindley's own AI has no model called {label!r}"
+            )
+        self._stop()
+        self._start(models)
+
+    def _load(self, model: str) -> None:
+        """Load the model now, so a failure is known before any call. Graphics that can't load it
+        (a driver too old, too little memory) are left for the processor alone, once."""
+        base = f"http://{HOST}:{self.port}"
+        label = MODELS[model].label if model in MODELS else model
+        if self._command is not None and not self._command_loads:
+            self._loaded.add(model)
+            return
+        with httpx2.Client(timeout=10) as client:
+            client.post(f"{base}/models/load", json={"model": model})
+            deadline = time.monotonic() + LOAD_S
+            while time.monotonic() < deadline:
+                found = [m for m in client.get(f"{base}/models").json()["data"] if m["id"] == model]
+                status = found[0]["status"] if found else {}
+                if status.get("value") == "loaded":
+                    self._loaded.add(model)
+                    return
+                if status.get("failed"):
+                    break
+                time.sleep(0.5)
+            else:
+                raise ProviderError(f"{label} didn't load in {LOAD_S // 60} minutes")
+        if self.local.device is None and not self.on_processor:
+            log.warning("%s didn't load on the graphics, so it runs on the processor", label)
+            self.on_processor = True
+            self._stop()
+            self._start(self.installed())
+            self._load(model)
+            return
+        raise ProviderError(f"{label} couldn't be loaded. Its log: {self.log}")
 
     def _start(self, models: list[Model]) -> None:
         root = self.local.folder()
@@ -123,7 +168,8 @@ class LocalServer:
         stamp = f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
         ini = logs / f"server-{stamp}.ini"
         self.log = logs / f"server-{stamp}.log"
-        ini.write_text(preset(self.local, models), encoding="utf-8")
+        device = "none" if self.on_processor else None
+        ini.write_text(preset(self.local, models, device), encoding="utf-8")
         self.port = _free_port()
         args = [
             "--host",
@@ -185,7 +231,7 @@ class LocalServer:
                     self._proc.kill()
             log.info("Stopped Lindley's own AI")
         _close(self._job)  # and any model process left
-        self._proc, self._job, self._models = None, None, set()
+        self._proc, self._job, self._models, self._loaded = None, None, set(), set()
 
     def peak_memory(self) -> int | None:
         """The most memory the server and its models have held, in bytes (Windows;

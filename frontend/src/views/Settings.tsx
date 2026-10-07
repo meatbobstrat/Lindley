@@ -439,6 +439,7 @@ export function LocalModels({ tier, now, setNow }: { tier: Tier; now?: boolean; 
     return (
       <p className="fld-note">
         <Icon name="lock" /> {names} {models.length === 1 ? 'is' : 'are'} downloaded, and run on this computer.
+        {s.on_processor && ' This computer’s graphics couldn’t run it, so it runs on the processor alone: slower, but the same answers.'}
       </p>
     )
   const room = s.free === null || s.free > need

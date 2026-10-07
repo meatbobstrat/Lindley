@@ -316,3 +316,64 @@ def test_a_model_in_use_isnt_removed(client, settings, made_up):
     assert client.delete("/api/local-ai/models/small").json() == {"removed": "small"}
     assert not small.folder(root).exists() and reader.installed(root)
     assert client.delete("/api/local-ai/models/nothing").status_code == 404
+
+
+LOADING_STUB = textwrap.dedent(
+    """
+    import http.server, json, sys
+    port = int(sys.argv[sys.argv.index("--port") + 1])
+    ini = open(sys.argv[sys.argv.index("--models-preset") + 1]).read()
+    names = [l.strip("[]") for l in ini.splitlines() if l.startswith("[")]
+    on_graphics = "device = none" not in ini  # the graphics fail, the processor works
+    asked = set()
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def reply(self, body):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(json.dumps(body).encode())
+
+        def do_GET(self):
+            if self.path == "/health":
+                return self.reply({"status": "ok"})
+            status = lambda n: (
+                {"value": "unloaded", "failed": True} if on_graphics
+                else {"value": "loaded"} if n in asked else {"value": "unloaded"}
+            )
+            self.reply({"data": [{"id": n, "status": status(n)} for n in names]})
+
+        def do_POST(self):
+            n = self.rfile.read(int(self.headers["Content-Length"]))
+            asked.add(json.loads(n)["model"])
+            self.reply({"success": True})
+
+        def log_message(self, *a):
+            pass
+
+    http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
+    """
+)
+
+
+def test_graphics_that_cant_load_a_model_are_left_for_the_processor(tmp_path, made_up):
+    _, _, reader, _ = made_up
+    root = tmp_path / "models"
+    install(root, reader)
+    (tmp_path / "loading.py").write_text(LOADING_STUB, encoding="utf-8")
+    command = [sys.executable, str(tmp_path / "loading.py")]
+    s = server.LocalServer(LocalAiSettings(models_dir=root), command=command, loads=True)
+    try:
+        s.url("reader")
+        assert s.on_processor and "device = none" in s.log.with_suffix(".ini").read_text()
+    finally:
+        s.stop()
+    # A device a person chose is kept: its failure is said
+    s = server.LocalServer(
+        LocalAiSettings(models_dir=root, device="Vulkan1"), command=command, loads=True
+    )
+    try:
+        with pytest.raises(ProviderError, match="Reader couldn't be loaded"):
+            s.url("reader")
+        assert not s.on_processor
+    finally:
+        s.stop()

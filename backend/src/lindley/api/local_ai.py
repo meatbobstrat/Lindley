@@ -13,8 +13,10 @@ from pydantic import BaseModel
 
 from lindley import activity
 from lindley.config import Settings
+from lindley.localai import computer
 from lindley.localai import server as local_server
 from lindley.localai.catalog import MODELS, engine
+from lindley.providers import tiers
 from lindley.providers.registry import connectors
 
 router = APIRouter(prefix="/local-ai", tags=["local-ai"])
@@ -66,6 +68,30 @@ def status(request: Request) -> dict:
         "running": local_server.current().running(),
         # The graphics couldn't load a model, so it runs on the processor alone
         "on_processor": local_server.current().on_processor,
+    }
+
+
+@router.get("/computer")
+def this_computer(request: Request) -> dict:
+    """A look at this computer (processor, memory, graphics cards, free disk), the tier it
+    suits, and how long 100 pages would take on each tier, for Setup and Settings."""
+    settings: Settings = request.app.state.settings
+    root = settings.ai.local.folder()
+    c = computer.look()
+    free = _free(root)
+    suggested, why = tiers.suggest(c, free, root)
+    workers = settings.ocr.reading_workers()
+    return {
+        "processor": c.processor,
+        "threads": c.threads,
+        "memory": c.memory,
+        "graphics": [{"name": g.name, "memory": g.memory} for g in c.graphics],
+        "free": free,
+        "engine": engine() is not None,
+        "suggested": suggested,
+        "why": why,
+        "times": {t.id: tiers.hundred_pages(t, tiers.on_card(t, c), workers) for t in tiers.TIERS},
+        "measured_on": tiers.MEASURED_ON,
     }
 
 

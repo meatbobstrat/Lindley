@@ -1,7 +1,8 @@
 """Copy what Tesseract needs for reading into the Windows app, from an installed Tesseract
 (UB-Mannheim's build). The installer then brings it, where find_tesseract looks first.
 
-    python scripts/bundle_tesseract.py "C:\\Program Files\\Tesseract-OCR" build\\lindley\\windows\\app\\src\\tesseract
+    python scripts/bundle_tesseract.py "C:\\Program Files\\Tesseract-OCR" ^
+        build\\lindley\\windows\\app\\src\\tesseract
 
 What goes: tesseract.exe, the DLLs it loads from its own folder (each one's imports followed in
 turn: the build's training tools need far more), English, the orientation check (osd) and the

@@ -467,3 +467,39 @@ def test_graphics_that_cant_load_a_model_are_left_for_the_processor(tmp_path, ma
         assert not s.on_processor
     finally:
         s.stop()
+
+
+def test_stopping_doesnt_wait_for_a_model_to_load(tmp_path, made_up):
+    """Quit Lindley while a big model loads: it stops at once, not after LOAD_S."""
+    _, _, reader, _ = made_up
+    root = tmp_path / "models"
+    install(root, reader)
+    never = LOADING_STUB.replace("if n in asked", "if False")  # loading for ever
+    (tmp_path / "never.py").write_text(never, encoding="utf-8")
+    s = server.LocalServer(
+        LocalAiSettings(models_dir=root, device="none"),
+        command=[sys.executable, str(tmp_path / "never.py")],
+        loads=True,
+    )
+    failed: list[Exception] = []
+
+    def ask() -> None:
+        try:
+            s.url("reader")
+        except ProviderError as e:
+            failed.append(e)
+
+    asking = threading.Thread(target=ask, daemon=True)
+    asking.start()
+    for _ in range(200):  # until it's started, and loading
+        if s.running() and s.port:
+            break
+        threading.Event().wait(0.05)
+    threading.Event().wait(0.5)
+    stopped = threading.Thread(target=s.stop, daemon=True)
+    stopped.start()
+    stopped.join(10)
+    asking.join(10)
+    assert not stopped.is_alive() and not asking.is_alive()
+    assert not s.running()
+    assert failed and "stopped while Reader was loading" in str(failed[0])

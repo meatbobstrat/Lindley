@@ -81,6 +81,9 @@ class LocalServer:
         self._command = command
         self._command_loads = loads  # the command answers /models (tests)
         self._lock = threading.Lock()
+        # Set while it's being stopped: a start or a model load in hand gives up, rather than
+        # holding Quit (or new settings) until it's done, up to LOAD_S
+        self._stopping = threading.Event()
         self._proc: subprocess.Popen | None = None
         # What ends the server with Lindley: a Windows job, or elsewhere its process group
         self._job = None
@@ -139,6 +142,8 @@ class LocalServer:
             client.post(f"{base}/models/load", json={"model": model})
             deadline = time.monotonic() + LOAD_S
             while time.monotonic() < deadline:
+                if self._stopping.is_set():
+                    raise ProviderError(f"Lindley's own AI stopped while {label} was loading")
                 found = [m for m in client.get(f"{base}/models").json()["data"] if m["id"] == model]
                 status = found[0]["status"] if found else {}
                 if status.get("value") == "loaded":
@@ -146,7 +151,7 @@ class LocalServer:
                     return
                 if status.get("failed"):
                     break
-                time.sleep(0.5)
+                self._stopping.wait(0.5)
             else:
                 raise ProviderError(f"{label} didn't load in {LOAD_S // 60} minutes")
         if self.local.device is None and not self.on_processor:
@@ -202,6 +207,8 @@ class LocalServer:
         deadline = time.monotonic() + START_S
         with httpx2.Client(timeout=2) as client:
             while time.monotonic() < deadline:
+                if self._stopping.is_set():
+                    raise ProviderError("Lindley's own AI stopped as it started")
                 if self._proc.poll() is not None:
                     raise ProviderError(f"Lindley's own AI stopped as it started: {self._said()}")
                 try:
@@ -209,7 +216,7 @@ class LocalServer:
                         return
                 except httpx2.HTTPError:
                     pass
-                time.sleep(0.2)
+                self._stopping.wait(0.2)
         self._stop()
         raise ProviderError(f"Lindley's own AI didn't start in {START_S} seconds")
 
@@ -222,8 +229,12 @@ class LocalServer:
         return next((x.strip() for x in reversed(lines) if x.strip()), "it said nothing")
 
     def stop(self) -> None:
+        self._stopping.set()  # a start or a load in hand gives up, and lets go of the lock
         with self._lock:
-            self._stop()
+            try:
+                self._stop()
+            finally:
+                self._stopping.clear()
 
     def _stop(self) -> None:
         if self._proc is not None:

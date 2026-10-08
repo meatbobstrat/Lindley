@@ -18,6 +18,7 @@ import tarfile
 import threading
 import zipfile
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx2
@@ -160,15 +161,16 @@ def get(
 
 class Downloads:
     """Downloads people asked for, one at a time, in order. `root` gives the folder in use now
-    (ai.local)."""
+    (ai.local). Each request has a cancel of its own: one cancelled stops, and asking again
+    straight after starts afresh rather than being caught by that cancel."""
 
     def __init__(self, root: Callable[[], Path], transport=None) -> None:
         self._root = root
         self._transport = transport  # tests
-        self._queue: queue.Queue[list[str] | None] = queue.Queue()
+        self._queue: queue.Queue[_Batch | None] = queue.Queue()
         self._lock = threading.Lock()
-        self._asked: list[str] = []  # models queued or downloading
-        self._cancel = threading.Event()
+        self._batches: list[_Batch] = []  # queued or downloading, in order
+        self._running: _Batch | None = None
         self._thread: threading.Thread | None = None
         self.idle = threading.Event()
         self.idle.set()
@@ -179,11 +181,14 @@ class Downloads:
         if unknown:
             raise KeyError(", ".join(unknown))
         with self._lock:
-            new = [m for m in dict.fromkeys(model_ids) if m not in self._asked]
+            # One cancelled but still stopping doesn't count: it's asked for again
+            live = {m for b in self._batches if not b.cancelled.is_set() for m in b.models}
+            new = [m for m in dict.fromkeys(model_ids) if m not in live]
             if new:
-                self._asked.extend(new)
+                batch = _Batch(new)
+                self._batches.append(batch)
                 self.idle.clear()
-                self._queue.put(new)
+                self._queue.put(batch)
                 if self._thread is None or not self._thread.is_alive():
                     self._thread = threading.Thread(
                         target=self._run, name="lindley-download", daemon=True
@@ -192,48 +197,44 @@ class Downloads:
         return new
 
     def asked(self) -> list[str]:
+        """The models queued or downloading: one cancelled counts until it has stopped, as its
+        files may still be open."""
         with self._lock:
-            return list(self._asked)
+            return list(
+                dict.fromkeys(
+                    m
+                    for b in self._batches
+                    if b is self._running or not b.cancelled.is_set()
+                    for m in b.models
+                )
+            )
 
     def cancel(self) -> None:
         """Stop what's downloading and drop the rest. What came down so far is kept for next
         time."""
         with self._lock:
-            stopping = False
-            while not self._queue.empty():
-                dropped = self._queue.get_nowait()
-                if dropped is None:
-                    stopping = True
-                    continue
-                for m in dropped:
-                    self._asked.remove(m)
-            if stopping:
-                self._queue.put(None)
-            if self._asked:  # one is downloading: it stops
-                self._cancel.set()
-            else:
-                self.idle.set()
+            for b in self._batches:
+                b.cancelled.set()
 
     def stop(self) -> None:
         self.cancel()
         self._queue.put(None)
 
     def _run(self) -> None:
-        while (models := self._queue.get()) is not None:
+        while (batch := self._queue.get()) is not None:
+            with self._lock:
+                self._running = batch
             try:
-                self._do(models)
+                if not batch.cancelled.is_set():
+                    self._do(batch.models, batch.cancelled)
             finally:
                 with self._lock:
-                    for m in models:
-                        if m in self._asked:
-                            self._asked.remove(m)
-                    if not self._asked:
-                        self._cancel.clear()
+                    self._running = None
+                    self._batches.remove(batch)
+                    if not self._batches:
                         self.idle.set()
 
-    def _do(self, models: list[str]) -> None:
-        if self._cancel.is_set():
-            return
+    def _do(self, models: list[str], cancelled: threading.Event) -> None:
         names = " and ".join(MODELS[m].label for m in models)
         root = self._root()
         of = sum(f.size for _, f, _ in wanted(root, models))
@@ -243,7 +244,7 @@ class Downloads:
                     root,
                     models,
                     lambda label, done, total: step(done, total),
-                    self._cancel,
+                    cancelled,
                     self._transport,
                 )
         except Cancelled:
@@ -253,3 +254,11 @@ class Downloads:
             activity.finished("download", f"Couldn't download {names}: {e}", ok=False)
         else:
             activity.finished("download", f"{names} downloaded, ready to use.")
+
+
+@dataclass
+class _Batch:
+    """Models asked for together, and their cancel."""
+
+    models: list[str]
+    cancelled: threading.Event = field(default_factory=threading.Event)

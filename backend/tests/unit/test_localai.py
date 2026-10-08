@@ -167,6 +167,52 @@ def test_downloads_in_the_background(tmp_path: Path, made_up):
         d.start(["nothing"])
 
 
+def test_downloading_again_straight_after_cancel_downloads(tmp_path: Path, made_up):
+    """Cancel, then Download at once, while the cancelled one is still stopping: the new one
+    isn't caught by the old cancel."""
+    files, _, _, small = made_up
+    inflight, release = threading.Event(), threading.Event()
+
+    def slow(request: httpx2.Request) -> httpx2.Response:
+        if not inflight.is_set():  # the first request waits, mid-download
+            inflight.set()
+            release.wait(10)
+        return files(request)
+
+    d = Downloads(lambda: tmp_path, transport=httpx2.MockTransport(slow))
+    d.start(["small"])
+    assert inflight.wait(10)
+    d.cancel()
+    assert d.asked() == ["small"]  # still stopping: its files may be open
+    assert d.start(["small"]) == ["small"]  # asked for again
+    release.set()
+    assert d.idle.wait(10)
+    assert small.installed(tmp_path) and d.asked() == []
+    said = [f["message"] for f in activity.recent()[-2:]]
+    assert said == ["Stopped downloading Small.", "Small downloaded, ready to use."]
+
+
+def test_cancel_drops_what_waits(tmp_path: Path, made_up):
+    files, _, reader, small = made_up
+    inflight, release = threading.Event(), threading.Event()
+
+    def slow(request: httpx2.Request) -> httpx2.Response:
+        if not inflight.is_set():
+            inflight.set()
+            release.wait(10)
+        return files(request)
+
+    d = Downloads(lambda: tmp_path, transport=httpx2.MockTransport(slow))
+    d.start(["small"])
+    d.start(["reader"])
+    assert inflight.wait(10)
+    d.cancel()
+    assert d.asked() == ["small"]  # the one stopping; the one waiting is dropped
+    release.set()
+    assert d.idle.wait(10)
+    assert not small.installed(tmp_path) and not reader.installed(tmp_path)
+
+
 def test_a_failed_download_is_said(tmp_path: Path, made_up):
     files, *_ = made_up
     files.files["s.gguf"] = b"wrong"

@@ -519,6 +519,15 @@ and you can ask it about them. All of it from a one-click install.
 
 ### After the MVP
 
+- [ ] Installing on Windows for just yourself or for everyone who uses the computer. The MSI
+  already asks (Briefcase builds it to, as `system_installer` isn't set), but only installing for
+  one person has been tried. Next:
+  - choose it on purpose: keep the question, or set `system_installer` in `pyproject.toml`
+  - try both by hand, including uninstalling, and Lindley's own AI and Tesseract from Program
+    Files
+  - each person signed in gets a Lindley of their own: today every Lindley uses port 8765, so a
+    second person who starts it opens the first person's Lindley, and their archive with it
+    (Lindley has no login). A port per person, or a check that the Lindley answering is theirs
 - [ ] Ask Lindley, next:
   - related pages by meaning (embeddings) alongside the words searched for, once the `embed`
     job fills the `embeddings` table

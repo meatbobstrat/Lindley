@@ -44,7 +44,7 @@ export function StatusBar() {
   return (
     <footer className="status">
       {offline && (
-        <span className="offline" role="alert" data-tip="Start it with scripts\dev.ps1, or python -m lindley in the backend folder. This page reconnects by itself.">
+        <span className="offline" role="alert" data-tip="Lindley may have stopped. Start it again from the Start menu, Applications or your app menu. This page reconnects by itself.">
           <Icon name="warn" /> Lindley’s backend isn’t answering
         </span>
       )}

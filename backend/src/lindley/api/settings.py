@@ -1,7 +1,11 @@
+import sqlite3
+from contextlib import closing
+
 from fastapi import APIRouter, HTTPException, Request
 
 from lindley.api.deps import Conn
 from lindley.config import Settings, save_settings
+from lindley.db.database import connect, init_db, not_lindleys
 from lindley.localai import server as local_server
 from lindley.providers import allowance, keys
 from lindley.providers.registry import connectors
@@ -40,13 +44,28 @@ def _problems(new: Settings) -> list[str]:
 
 @router.put("")
 def put_settings(new: Settings, request: Request, conn: Conn) -> Settings:
-    if problems := _problems(new):
-        raise HTTPException(422, problems)
     old: Settings = request.app.state.settings
+    # A new place for the database must hold Lindley's database already: a path typed wrong
+    # would otherwise leave every page failing now, and an empty library at the next start.
+    moved = new.db_path.resolve() != old.db_path.resolve()
+    problems = _problems(new)
+    if moved and (why := not_lindleys(new.db_path)):
+        problems.append(why)
+    if problems:
+        raise HTTPException(422, problems)
+    if moved:
+        try:
+            init_db(new.db_path)  # one from an earlier Lindley is brought up to date
+        except (RuntimeError, sqlite3.Error) as e:
+            raise HTTPException(422, [f"Lindley can't use {new.db_path}: {e}"]) from e
     save_settings(new, request.app.state.settings_path)
     request.app.state.settings = new
     # A new threshold, or a vision model set up or taken away, counts for pages read before.
-    follow_settings(conn, new)
+    if moved:
+        with closing(connect(new.db_path, any_thread=True)) as there:
+            follow_settings(there, new)
+    else:
+        follow_settings(conn, new)
     with request.app.state.watcher_swap:
         if (watcher := getattr(request.app.state, "watcher", None)) is not None:
             # The watcher works from the settings it started with: start it again with these,

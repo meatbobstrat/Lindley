@@ -1251,8 +1251,8 @@ function SetLibrary({ d, set }: SetProps) {
       </label>
       <input className="fld-in" id="st-db" value={d.db_path} onChange={(e) => set({ ...d, db_path: e.target.value })} spellCheck={false} aria-describedby="st-dbh" />
       <p className="fld-note" id="st-dbh">
-        The database of everything Lindley read and every change you made: names, page order, corrections. Lindley uses a new place at once, so move the file there
-        first.
+        The database of everything Lindley read and every change you made: names, page order, corrections. To move it, copy the file to the new place first, with
+        the file beside it whose name ends in -wal if there is one, then save. Lindley checks the file is its database before it uses it.
       </p>
       <h3>Keeping your originals safe</h3>
       <ul className="safe">

@@ -18,6 +18,35 @@ def test_settings_get_and_put(client, tmp_path):
     assert (tmp_path / "settings.json").exists()
 
 
+def test_a_new_database_place_must_hold_lindleys_database(client, tmp_path):
+    current = client.get("/api/settings").json()
+    for where in (tmp_path / "typo" / "lindley.db", tmp_path / "nothing.db"):
+        current["db_path"] = str(where)
+        r = client.put("/api/settings", json=current)
+        assert r.status_code == 422
+        assert "Move Lindley's database file there first" in r.json()["detail"][0]
+        assert not where.exists()  # nothing made there
+    (tmp_path / "notes.db").write_text("not a database")
+    current["db_path"] = str(tmp_path / "notes.db")
+    assert "can open" in client.put("/api/settings", json=current).json()["detail"][0]
+    # Settings and the library are as they were
+    assert client.get("/api/settings").json()["db_path"] == str(tmp_path / "lindley.db")
+    assert client.get("/api/inbox").status_code == 200
+
+
+def test_a_database_moved_there_first_is_used(client, tmp_path):
+    import shutil
+
+    moved = tmp_path / "elsewhere" / "lindley.db"
+    moved.parent.mkdir()
+    shutil.copy(tmp_path / "lindley.db", moved)
+    current = client.get("/api/settings").json()
+    current["db_path"] = str(moved)
+    assert client.put("/api/settings", json=current).status_code == 200
+    assert client.get("/api/settings").json()["db_path"] == str(moved)
+    assert client.get("/api/inbox").status_code == 200
+
+
 def test_settings_say_when_each_ai_may_run_and_how_much_it_has_today(client, settings):
     current = client.get("/api/settings").json()
     assert current["ai"]["providers"]["local"]["allow"] == "ask"

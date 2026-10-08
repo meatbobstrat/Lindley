@@ -147,6 +147,28 @@ def _drop_placeholder(conn: sqlite3.Connection) -> None:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
 
 
+def not_lindleys(db_path: Path) -> str | None:
+    """Why this file can't be used as Lindley's database, in words; None if it can. Nothing is
+    made: a path typed wrong must not become a new, empty library."""
+    db_path = Path(db_path)
+    if not db_path.is_file():
+        return f"There's no database at {db_path}. Move Lindley's database file there first."
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            tables = _tables(conn)
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError:
+        return f"{db_path} isn't a database Lindley can open."
+    if not version or "pages" not in tables:
+        return f"{db_path} isn't Lindley's database."
+    if version > SCHEMA_VERSION:
+        return f"{db_path} is from a newer Lindley. Update Lindley to use it."
+    return None
+
+
 def init_db(db_path: Path) -> None:
     """Create or upgrade the database to SCHEMA_VERSION (safe to call repeatedly)."""
     db_path = Path(db_path)

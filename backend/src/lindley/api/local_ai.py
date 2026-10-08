@@ -17,7 +17,7 @@ from lindley.localai import computer
 from lindley.localai import server as local_server
 from lindley.localai.catalog import MODELS, engine
 from lindley.providers import tiers
-from lindley.providers.registry import connectors
+from lindley.providers.registry import model_for
 
 router = APIRouter(prefix="/local-ai", tags=["local-ai"])
 
@@ -126,8 +126,7 @@ def remove(model_id: str, request: Request) -> dict:
         raise HTTPException(404, f"Lindley's own AI has no model called {model_id!r}")
     for job, j in settings.ai.jobs.items():
         cfg = settings.ai.providers.get(j.connection) if j.connection else None
-        usual = connectors()["builtin"].info.default_models.get(job)
-        if cfg is not None and cfg.type == "builtin" and (j.model or usual) == model_id:
+        if cfg is not None and cfg.type == "builtin" and model_for(cfg, job, j.model) == model_id:
             raise HTTPException(409, f"{m.label} is in use ({job}). Choose another AI first.")
     if model_id in request.app.state.downloads.asked():
         raise HTTPException(409, f"{m.label} is downloading. Cancel it first.")

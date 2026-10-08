@@ -70,8 +70,17 @@ def build_provider(
     info = connector.info
     if job not in info.jobs:
         raise ProviderError(f"{info.company or info.label} can't do this job ({job})")
-    model = model or (config.model if job != "embed" else None) or info.default_models.get(job)
+    model = model_for(config, job, model)
     return connector.provider(config=config, model=model, api_key=config.api_key(name))
+
+
+def model_for(config: ProviderConfig, job: Job, model: str | None = None) -> str | None:
+    """The model a job uses on this connection: `model` (the job's own), else the
+    connection's (except for embeddings, which need a model of their own), else the
+    connector's default for that job."""
+    connector = connectors().get(config.type)
+    usual = connector.info.default_models.get(job) if connector else None
+    return model or (config.model if job != "embed" else None) or usual
 
 
 def get_provider(ai: AiSettings, job: Job) -> Guarded:

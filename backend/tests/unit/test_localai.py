@@ -454,6 +454,18 @@ def test_a_model_in_use_isnt_removed(client, settings, made_up):
     assert client.delete("/api/local-ai/models/nothing").status_code == 404
 
 
+def test_a_model_the_connection_names_isnt_removed(client, settings, made_up):
+    """A model set on the connection, for every job that doesn't name its own, is in use."""
+    _, _, reader, _ = made_up
+    install(settings.ai.local.folder(), reader)
+    current = client.get("/api/settings").json()
+    current["ai"]["providers"]["own"] = {"type": "builtin", "model": "reader"}
+    current["ai"]["jobs"]["chat"] = {"connection": "own", "model": None}
+    assert client.put("/api/settings", json=current).status_code == 200
+    r = client.delete("/api/local-ai/models/reader")
+    assert r.status_code == 409 and "Reader is in use (chat)" in r.text
+
+
 LOADING_STUB = textwrap.dedent(
     """
     import http.server, json, sys

@@ -1,6 +1,6 @@
 import { type ComponentType, useEffect, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
-import { api } from './api/client'
+import { api, type ApiError } from './api/client'
 import { useApi } from './api/store'
 import { AskPane } from './components/AskPane'
 import { StatusBar } from './components/StatusBar'
@@ -45,7 +45,7 @@ export default function App() {
   const setShowTree = (on: boolean) => setTreeOn(on ? loc.pathname : null)
   const [showAi, setShowAi] = useState(false)
   const [fileDrop, setFileDrop] = useState(false)
-  const { undo } = useFeedback()
+  const { undo, toast } = useFeedback()
   const acts = useActions()
   const nav = useNavigate()
   const [params] = useSearchParams()
@@ -164,7 +164,13 @@ export default function App() {
               className="icon-btn"
               aria-label="Quit Lindley"
               data-tip="Quit Lindley: it stops reading and watching your folders until you start it again. Closing this tab leaves it running."
-              onClick={() => api.quit().then(() => setStopped(true))}
+              onClick={() =>
+                api.quit().then(
+                  () => setStopped(true),
+                  // No answer: it had stopped already. Else it says why it can't
+                  (e: ApiError) => (e.status === 0 ? setStopped(true) : toast(e.message)),
+                )
+              }
             >
               <Icon name="power" />
             </button>

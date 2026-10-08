@@ -1,10 +1,12 @@
 import sqlite3
 from contextlib import closing
+from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from lindley.api.deps import Conn
-from lindley.config import Settings, save_settings
+from lindley.config import Settings, default_inbox, save_settings
 from lindley.db.database import connect, init_db, not_lindleys
 from lindley.localai import server as local_server
 from lindley.providers import allowance, keys
@@ -79,6 +81,18 @@ def put_settings(new: Settings, request: Request, conn: Conn) -> Settings:
     for name in set(old.ai.providers) - set(new.ai.providers):
         keys.delete_key(name)  # a connection removed takes its key with it
     return new
+
+
+def watchable(folder: Path) -> bool:
+    """Whether a folder to watch is there. Lindley's own Inbox counts: it's made the first time
+    it's watched. A path that isn't a full one (E:\\Scans) can't be found."""
+    return folder.is_absolute() and (folder.is_dir() or folder == default_inbox())
+
+
+@router.get("/folders")
+def check_folders(path: Annotated[list[str], Query()] = []) -> dict:  # noqa: B006 - FastAPI copies it
+    """Whether each folder to watch is there, for Setup and Settings to say so as it's added."""
+    return {"folders": [{"path": p, "found": watchable(Path(p))} for p in path]}
 
 
 @router.get("/ai-calls")

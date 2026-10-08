@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from lindley import __version__, activity, browse
 from lindley.api.deps import Conn
 from lindley.api.needs_ai import sort_items
+from lindley.api.settings import watchable
 from lindley.config import Settings
 from lindley.organise import Change
 from lindley.worker.pipeline import vision_queue
@@ -52,6 +53,8 @@ def overview(request: Request, conn: Conn) -> dict:
         ),
         "documents": browse.documents(conn, settings.ocr.review_below),
         "folders": browse.folders(conn),
+        # Folders to watch that aren't there (a path typed wrong, a drive unplugged)
+        "missing_folders": [str(f) for f in settings.watch_folders if not watchable(f)],
         # What the AI is doing now, what's queued behind it, and what came of what people asked
         "ai": {
             "working": activity.current(),

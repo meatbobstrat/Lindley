@@ -27,6 +27,7 @@ export function StatusBar() {
   const c = overview?.counts
   const cloud = cloudInUse(settings, connectors)
   const folders = settings?.watch_folders ?? []
+  const missing = overview?.missing_folders ?? []
   const working = overview?.ai.working ?? []
   const queued = overview?.ai.waiting.length ?? 0
 
@@ -73,9 +74,16 @@ export function StatusBar() {
         <button
           className="hide-narrow"
           onClick={() => nav('/settings/scans')}
-          data-tip={folders.length ? `Watching: ${folders.join(', ')}. Click to change.` : 'No folders are watched. Click to add one.'}
+          data-tip={
+            missing.length
+              ? `Lindley can’t find ${missing.join(' or ')}. Check the path in Settings, or plug in the drive it’s on: Lindley watches it once it’s there.`
+              : folders.length
+                ? `Watching: ${folders.join(', ')}. Click to change.`
+                : 'No folders are watched. Click to add one.'
+          }
         >
-          <Icon name="eye" /> Watching {plural(folders.length, 'folder')} · {settings.move_files ? 'moving' : 'copying'} new scans
+          <Icon name={missing.length ? 'warn' : 'eye'} /> Watching {plural(folders.length - missing.length, 'folder')}
+          {missing.length ? ` · ${missing.length} not found` : ''} · {settings.move_files ? 'moving' : 'copying'} new scans
         </button>
       )}
       <span

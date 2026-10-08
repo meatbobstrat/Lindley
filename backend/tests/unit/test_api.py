@@ -47,6 +47,19 @@ def test_a_database_moved_there_first_is_used(client, tmp_path):
     assert client.get("/api/inbox").status_code == 200
 
 
+def test_folders_to_watch_say_whether_theyre_there(client, tmp_path, monkeypatch):
+    from lindley.api import settings as settings_api
+
+    inbox = tmp_path / "Documents" / "Lindley" / "Inbox"  # made the first time it's watched
+    monkeypatch.setattr(settings_api, "default_inbox", lambda: inbox)
+    (tmp_path / "scans").mkdir()
+    asked = [str(tmp_path / "scans"), str(tmp_path / "scnas"), "Scans", str(inbox)]
+    r = client.get("/api/settings/folders", params={"path": asked})
+    assert [f["found"] for f in r.json()["folders"]] == [True, False, False, True]
+    # The overview says which watched folders aren't there
+    assert client.get("/api/overview").json()["missing_folders"] == [str(tmp_path / "inbox")]
+
+
 def test_settings_say_when_each_ai_may_run_and_how_much_it_has_today(client, settings):
     current = client.get("/api/settings").json()
     assert current["ai"]["providers"]["local"]["allow"] == "ask"

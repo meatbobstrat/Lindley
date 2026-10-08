@@ -21,7 +21,8 @@ const editFor = (h: HelpKind, connectors: Connector[]): Edit =>
 export function Setup({ settings, connectors, tiers, helps }: { settings: Settings; connectors: Connector[]; tiers: Tier[]; helps: Help[] }) {
   const { toast } = useFeedback()
   const ref = useRef<HTMLDialogElement>(null)
-  const [folders, setFolders] = useState<string[]>([])
+  // Lindley's own Inbox, in Documents, to start with: it's made the first time it's watched
+  const [folders, setFolders] = useState<string[]>(settings.watch_folders)
   const [move, setMove] = useState(settings.move_files)
   // The tier this computer suits, once Lindley has looked at it (Middle until then), unless the
   // person has chosen one
@@ -46,6 +47,12 @@ export function Setup({ settings, connectors, tiers, helps }: { settings: Settin
   const save = async () => {
     if (!folders.length) {
       toast('Add at least one folder for Lindley to watch.')
+      document.getElementById('su-path')?.focus()
+      return
+    }
+    const missing = (await api.checkFolders(folders).catch(() => null))?.folders.filter((f) => !f.found).map((f) => f.path) ?? []
+    if (missing.length) {
+      toast(`Lindley can’t find ${missing.join(' or ')}. Check the path, or remove it.`)
       document.getElementById('su-path')?.focus()
       return
     }
@@ -112,6 +119,10 @@ export function Setup({ settings, connectors, tiers, helps }: { settings: Settin
         </p>
         <section aria-labelledby="su-1">
           <h3 id="su-1">1. Folders to watch</h3>
+          <p>
+            To start with, Lindley watches its own Inbox, in your Documents folder: save or copy scans into it. Add the folder your scanner saves into as well, or
+            instead.
+          </p>
           <FoldersEditor ctx="su" folders={folders} set={setFolders} />
         </section>
         <section aria-labelledby="su-2">

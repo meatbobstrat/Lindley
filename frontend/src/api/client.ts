@@ -120,6 +120,8 @@ export interface Overview {
   counts: Counts
   documents: DocSummary[]
   folders: Folder[]
+  /** Folders to watch that aren't there: a path typed wrong, or a drive unplugged */
+  missing_folders: string[]
   ai: { working: AiWorking[]; waiting: { kind: 'read' | 'sort'; of: number }[]; finished: AiFinished[] }
 }
 
@@ -454,6 +456,8 @@ export const api = {
   notDuplicates: (setId: number) => send<Change>('POST', `/duplicates/${setId}/not-duplicates`),
   undo: (batch?: number | null) => send<{ undone: number }>('POST', batch ? `/undo/${batch}` : '/undo'),
   saveSettings: (s: Settings) => send<Settings>('PUT', '/settings', s),
+  checkFolders: (paths: string[]) =>
+    get<{ folders: { path: string; found: boolean }[] }>(`/settings/folders?${paths.map((p) => `path=${encodeURIComponent(p)}`).join('&')}`),
   downloadModels: (models: string[]) => send<{ queued: string[] }>('POST', '/local-ai/download', { models }),
   cancelDownload: () => send<{ ok: boolean }>('POST', '/local-ai/cancel'),
   removeModel: (id: string) => send<{ removed: string }>('DELETE', `/local-ai/models/${encodeURIComponent(id)}`),

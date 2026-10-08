@@ -315,11 +315,21 @@ export function ConnEditor({
   )
 }
 
+/** A folder path as people copy it: File Explorer's Copy as path puts it in quotes. */
+const cleanPath = (p: string) => p.trim().replace(/^"(.*)"$/, '$1').trim()
+
+/** The folders Lindley can't find, of these: a path typed wrong, or a drive unplugged. */
+function useMissing(folders: string[]): Set<string> {
+  const found = useApi(folders.length ? `folders:${JSON.stringify(folders)}` : null, () => api.checkFolders(folders)).data
+  return new Set((found?.folders ?? []).filter((f) => !f.found).map((f) => f.path))
+}
+
 /** Watched folders. A browser can't open a folder picker that gives a path, so they're typed. */
 export function FoldersEditor({ ctx, folders, set }: { ctx: string; folders: string[]; set: (f: string[]) => void }) {
   const [path, setPath] = useState('')
+  const missing = useMissing(folders)
   const add = () => {
-    const v = path.trim()
+    const v = cleanPath(path)
     if (v && !folders.includes(v)) set([...folders, v])
     setPath('')
   }
@@ -331,6 +341,11 @@ export function FoldersEditor({ ctx, folders, set }: { ctx: string; folders: str
             <li key={x}>
               <Icon name="folder" />
               <span className="mono">{x}</span>
+              {missing.has(x) && (
+                <span className="chip missing" data-tip="Lindley can’t find this folder. Check the path, or plug in the drive it’s on: Lindley watches it once it’s there.">
+                  <Icon name="warn" /> Not found
+                </span>
+              )}
               <button className="btn ghost" aria-label={`Stop watching ${x}`} data-tip="Stop watching this folder. Scans already in Lindley stay." onClick={() => set(folders.filter((_, j) => j !== i))}>
                 Remove
               </button>

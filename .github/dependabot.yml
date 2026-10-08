@@ -35,6 +35,10 @@ updates:
       npm:
         patterns: ["*"]
         update-types: [minor, patch]
+    ignore:
+      # Node's types follow the Node that builds the frontend (22, in CI), not Node's newest
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     cooldown:
       default-days: 3
 

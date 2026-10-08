@@ -2,16 +2,19 @@
 
 ## Layout
 - `backend/`: Python 3.13 FastAPI app, `src/lindley/`, setuptools, pytest and ruff
-  - `config.py`: Pydantic `Settings`, plus the settings.json lookup and load/save
+  - `config.py`: Pydantic `Settings`, plus the settings.json lookup and load/save. A connection's
+    `allow` is `ask` out of the box, but `auto` for Lindley's own AI (`builtin`): it sends nothing
   - `app.py`: `create_app(settings)` factory; routers live in `api/`
   - `__main__.py` and `launcher.py`: Lindley as an app. One running at a time (a second start
     opens it), the browser opened once it's up, a tray icon (pystray; on Ubuntu the system's)
     and Quit Lindley (`POST /api/quit`, offered when `/api/health` says `can_quit`). The icons
     are drawn by `scripts/make_icons.py` into `backend/icons/` (installers) and `icon.png` (tray)
-  - `db/`: plain `sqlite3` with FTS5; `schema.sql` is applied idempotently by `init_db`
+  - `db/`: plain `sqlite3` with FTS5; `schema.sql` is applied idempotently by `init_db`;
+    `not_lindleys` checks a database Settings is pointed at (`PUT /api/settings` refuses one that isn't)
   - `providers/`: the AI abstraction (`ChatProvider`, `VisionProvider`, `EmbeddingProvider`).
     `registry.get_provider(ai, job)` builds the one settings give a job (`vision`, `assemble`,
-    `chat`, `embed`), wrapped in its connection's throttle (`throttle.py`). Connectors are files
+    `chat`, `embed`), wrapped in its connection's throttle (`throttle.py`); `registry.model_for`
+    says which model a job uses. Connectors are files
     in `providers/connectors/`, found at start-up: `builtin` (Lindley's own AI, `localai/`), `local`,
     `anthropic`, `openai`, `google`, `openai_compat` and `fake` (for tests). Each calls its AI through the company's own library
     (`anthropic`, `openai`, `google-genai`), as its docs recommend: never hand-written HTTP.

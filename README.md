@@ -336,11 +336,11 @@ the program.
 
 | Key | Meaning |
 | --- | --- |
-| `watch_folders` | Folders to watch for new scans (`Documents/Lindley/Inbox`) |
+| `watch_folders` | Folders to watch for new scans (`Documents/Lindley/Inbox`, made the first time it's watched). Setup won't start with a folder it can't find; Settings and the status bar mark one that isn't there (a path typed wrong, a drive unplugged), and it's watched once it's back |
 | `processing_dir` | Working area for files being processed (`processing` in the data folder) |
 | `quarantine_dir` | Where files that fail processing are put (`quarantine` in the data folder) |
 | `library_dir` | Lindley's library (`Documents/Lindley/Library`): its copies of scans (in `scans`), each page as an image (in `pages`), and exported PDFs (in `Exports`) |
-| `db_path` | SQLite database location (`lindley.db` in the data folder). It's kept outside the library, which is often in a synced folder, where SQLite isn't safe. Back up both |
+| `db_path` | SQLite database location (`lindley.db` in the data folder). It's kept outside the library, which is often in a synced folder, where SQLite isn't safe. Back up both. To move it, copy it to the new place first (with its `-wal` file, if there is one): Settings refuses a place that doesn't hold Lindley's database |
 | `move_files` | `true` moves scans out of watched folders; `false` copies them and leaves the originals |
 | `add_mode` | Files added with Add scans… in the Inbox: `ask` each time (the default), or always `copy` or `move` them |
 | `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this (20 to 95; 70), a page needs the vision model. `review_below`: a page whose reading falls below this (50 to 99; 80) waits for a person's review. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000). `workers`: scans read at once; Tesseract uses one core a page, so a few side by side finish sooner (`null`: one fewer than the computer's cores, at most 3) |
@@ -513,6 +513,11 @@ and you can ask it about them. All of it from a one-click install.
     with Lindley everywhere (on Ubuntu and the Mac, a process group; one left by a Lindley that
     was killed is ended at the next start). Keys go in the desktop's keyring, with plain words
     when there isn't one
+- [x] Reviewed for the MVP (October 2026), and what was found fixed: Settings refuses a database
+  place that doesn't hold Lindley's database; Setup starts with Lindley's own Inbox and won't start
+  with a folder it can't find; Lindley's own AI works whenever it's needed out of the box (it sends
+  nothing and costs nothing); stopping it doesn't wait for a model to load; downloading again
+  straight after Cancel works; a model the connection names counts as in use
 - [ ] Tried by hand on a clean computer of each kind: install, first-run setup, scans read and
   sorted, a PDF made, a question answered, then uninstall. Until then the installers have only
   been started and quit by CI

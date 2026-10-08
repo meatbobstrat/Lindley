@@ -63,7 +63,7 @@
       "own": {
         "type": "builtin",
         "label": "Lindley's own AI",
-        "allow": "ask",
+        "allow": "auto",
         "daily_limit": null,
         "monthly_limit": null,
         "per_minute": null,

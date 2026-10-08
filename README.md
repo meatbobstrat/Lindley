@@ -117,10 +117,12 @@ watched folders ─► watcher ─► intake ───────────�
   will include. Searchable PDFs are built from Lindley's own readings and word positions, so
   they need no Ghostscript or second OCR pass, and they carry people's corrections.
 - **Accessible.** The UI targets WCAG 2.2 AA, and status is never shown by colour alone.
-- **No AI calls without your OK.** AI calls can cost money, so by default Lindley makes none
-  until you say so.
+- **No AI calls without your OK.** AI calls can cost money, so by default Lindley sends nothing
+  to another computer until you say so.
   - Each AI connection says when Lindley may use it: *Ask me first* (the default), or
     *Whenever it's needed*, with a daily and a monthly limit after which it asks again.
+  - Lindley's own AI is the exception: it runs on this computer, sending nothing and costing
+    nothing, so out of the box it works whenever it's needed. Settings can make it ask first.
   - Each connection is also throttled, for every call: at most so many calls a minute, and so
     many at once. That keeps Lindley under a cloud AI's rate limits, and a slow computer usable.
   - Pages that need the vision model wait for you, with their Tesseract reading in use meanwhile.
@@ -343,7 +345,7 @@ the program.
 | `add_mode` | Files added with Add scans… in the Inbox: `ask` each time (the default), or always `copy` or `move` them |
 | `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this (20 to 95; 70), a page needs the vision model. `review_below`: a page whose reading falls below this (50 to 99; 80) waits for a person's review. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000). `workers`: scans read at once; Tesseract uses one core a page, so a few side by side finish sooner (`null`: one fewer than the computer's cores, at most 3) |
 | `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" or "Do these go together?" hint (45). `offer_at`: a group the AI checked, at or above this but below `group_at`, is offered for one-click accept (60). `ai_band`: which uncertain breaks may be sent to the AI. `ask_ai_after_days`: when the sorting AI may run on its own, how long pages wait for a person first (0: at once) |
-| `ai.providers` | Named AI connections. `type` is a connector (`builtin`, Lindley's own AI; `local`, `anthropic`, `openai`, `google`, `openai_compat`), with `base_url` and `model` where needed. `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some). `daily_limit` and `monthly_limit` cap the calls it makes on its own. `per_minute` and `at_once` throttle every call |
+| `ai.providers` | Named AI connections. `type` is a connector (`builtin`, Lindley's own AI; `local`, `anthropic`, `openai`, `google`, `openai_compat`), with `base_url` and `model` where needed. `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some; the default for `builtin`). `daily_limit` and `monthly_limit` cap the calls it makes on its own. `per_minute` and `at_once` throttle every call |
 | `ask` | Ask Lindley: `local_chars` and `cloud_chars`, how much page text goes with a question to an AI on your own computers (6000) or a cloud AI (40000); `history_turns`, how many earlier questions and answers go with it (6) |
 | `ai.jobs` | Which connection does each job: `vision` (reading hard pages), `assemble` (sorting pages into documents), `chat` (Ask Lindley), `embed` (finding related pages) and `continues` (whether a page carries on from the last: only an AI that gives token probabilities, such as Lindley's own), each with an optional `model` of its own. Out of the box there are none |
 | `ai.tier`, `ai.help` | How much AI this computer runs (`low`, `middle` or `high`; see `providers/tiers.py`), and the connection that does the jobs it leaves (`null`: nobody). Setup and Settings set them; `tier` is `null` once a person changes a job's AI |

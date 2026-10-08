@@ -91,6 +91,13 @@ def test_env_var_overrides_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert resolve_settings_path(tmp_path / "explicit.json") == tmp_path / "explicit.json"
 
 
+def test_lindleys_own_ai_works_whenever_its_needed_unless_told_to_ask():
+    assert ProviderConfig(type="builtin").allow == "auto"
+    assert ProviderConfig(type="builtin", allow="ask").allow == "ask"  # a person's choice
+    assert ProviderConfig(type="local").allow == "ask"  # an AI on another computer asks first
+    assert ProviderConfig(type="anthropic").allow == "ask"
+
+
 def test_api_key_read_from_env(monkeypatch: pytest.MonkeyPatch):
     cfg = ProviderConfig(type="anthropic", api_key_env="LINDLEY_TEST_KEY")
     monkeypatch.setenv("LINDLEY_TEST_KEY", "secret")

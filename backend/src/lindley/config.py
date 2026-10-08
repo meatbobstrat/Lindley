@@ -86,6 +86,15 @@ class ProviderConfig(BaseModel):
     # Seconds to wait for an answer. None: the connector's own (longer for an AI on a laptop).
     timeout_s: int | None = Field(default=None, ge=5, le=3600)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _own_ai_works_when_needed(cls, data: object) -> object:
+        """Lindley's own AI runs on this computer, sending nothing and costing nothing: unless
+        a person says to ask first, it works whenever it's needed."""
+        if isinstance(data, dict) and data.get("type") == "builtin" and "allow" not in data:
+            return {**data, "allow": "auto"}
+        return data
+
     def api_key(self, name: str | None = None) -> str | None:
         """The key: from api_key_env if it's set, else saved for connection `name`."""
         if self.api_key_env and (key := os.environ.get(self.api_key_env)):

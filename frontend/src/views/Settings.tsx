@@ -54,6 +54,7 @@ export function ConnEditor({
   const [testing, setTesting] = useState(false)
   const up = (p: Partial<Edit>) => set({ ...e, ...p, tested: 'tested' in p ? (p.tested ?? null) : null })
   const who = cloud ? co : 'this AI'
+  const own = e.type === 'builtin'
 
   // A test takes a while: what's typed meanwhile stays, and a result for a connection since
   // changed, or closed, is dropped
@@ -214,14 +215,15 @@ export function ConnEditor({
           <label className="choice">
             <input type="radio" name={`${ctx}-allow`} checked={e.allow === 'ask'} onChange={() => up({ allow: 'ask' })} />
             <span>
-              <b>Ask me first.</b> Recommended. Hard pages, and pages Lindley isn’t sure how to sort, wait in Needs AI until you send them. Nothing goes to {who}{' '}
-              without you.
+              <b>Ask me first.</b> {own ? '' : 'Recommended. '}Hard pages, and pages Lindley isn’t sure how to sort, wait in Needs AI until you send them. Nothing
+              goes to {who} without you.
             </span>
           </label>
           <label className="choice">
             <input type="radio" name={`${ctx}-allow`} checked={e.allow === 'auto'} onChange={() => up({ allow: 'auto' })} />
             <span>
-              <b>Whenever it’s needed.</b> Hard pages go to {who} as soon as they’re read, and it helps sort pages into documents as they arrive.
+              <b>Whenever it’s needed.</b> {own ? 'Recommended: it runs on this computer, so nothing is sent anywhere or paid for. ' : ''}Hard pages go to {who}{' '}
+              as soon as they’re read, and it helps sort pages into documents as they arrive.
             </span>
           </label>
         </fieldset>

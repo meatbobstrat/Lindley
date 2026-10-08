@@ -37,6 +37,9 @@ export interface Edit {
 
 export function newEdit(c: Connector | undefined): Edit {
   const local = c?.where !== 'cloud'
+  // Lindley's own AI runs on this computer: nothing is sent anywhere or paid for, so it works
+  // whenever it's needed, unless a person says to ask first
+  const own = c?.id === 'builtin'
   return {
     id: null,
     type: c?.id ?? 'local',
@@ -48,7 +51,7 @@ export function newEdit(c: Connector | undefined): Edit {
     ack: local,
     show: false,
     tested: null,
-    allow: 'ask',
+    allow: own ? 'auto' : 'ask',
     dailyOn: !local,
     daily: 50,
     monthlyOn: !local,

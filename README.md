@@ -21,8 +21,11 @@ anything it isn't sure of, and never changes or deletes your original scans.
 
 Lindley is in early development. The app works end to end, from scans dropped in a folder to
 searchable PDFs and questions answered about them, and has been tried on a first batch of real
-scans. Installers for Windows, Ubuntu and the Mac are built; what's left for the MVP is
-trying each by hand on a clean computer (see the Roadmap).
+scans. Installers for Windows, Ubuntu and the Mac are built. The first hand test, on an Ubuntu
+laptop, went from install to uninstall. It found that the rules sorted a batch of
+typescripts right but were too unsure to show it, and the UI needs work before someone new can
+find their way. Those come next, then Windows and the Mac (see the Roadmap and
+[design/hand-tests.md](design/hand-tests.md)).
 
 | Part | State |
 | --- | --- |
@@ -519,11 +522,38 @@ and you can ask it about them. All of it from a one-click install.
   nothing and costs nothing); stopping it doesn't wait for a model to load; downloading again
   straight after Cancel works; a model the connection names counts as in use
 - [ ] Tried by hand on a clean computer of each kind: install, first-run setup, scans read and
-  sorted, a PDF made, a question answered, then uninstall. Until then the installers have only
-  been started and quit by CI
+  sorted, a PDF made, a question answered, then uninstall ([design/hand-tests.md](design/hand-tests.md)):
+  - [x] Ubuntu 26.04, on a 2019 laptop with 7 GB (October 8, Low tier): installing, Setup,
+    reading, turning pages, PDFs, Quit and uninstalling all worked. What it found is below
+  - [ ] Ubuntu again, once those are fixed: the same scans, plus search, the tray and Add scans…
+  - [ ] Windows and the Mac
+- [ ] What the Ubuntu test found, using its 14 scans as a test to run again:
+  - the rules put a typescript's pages together right, then rated the groups 24–28%, too low
+    even for a hint, so nothing showed: a typescript has no greeting or signature, and each
+    one missing cut the confidence again (`segment._confidence`)
+  - typed page numbers read as "a" or "WwW", beside pencil and red numbers, so pages weren't
+    put in order by them and missing pages weren't found
+  - a handwritten page whose Tesseract reading is gibberish was called blank and offered to be
+    set aside
+  - handwriting with no AI to read it waits only in Review: decide whether it belongs in Needs
+    AI too, saying how to get an AI
+  - smaller: the main view shows before Setup does; the example folder path is a Windows one on
+    Ubuntu and the Mac; the app's icon isn't the app's "L"
+- [ ] The UI, for someone new:
+  - grouping is Lindley's most useful feature and nothing points to it: hints and nudges where
+    they apply (select pages and group them, make folders, move documents into them), and a
+    walkthrough the first time
+  - the same controls in every view (turning a page is missing from some toolbars)
+  - zoom and pan on page images
+  - next and previous in a document or scan, without going back to the Inbox
+  - say that an exported PDF's text is invisible over the scan, ready to search and select
 
 ### After the MVP
 
+- [ ] A desktop app of its own, rather than a tab in the browser. The browser UI stays as it is,
+  the same as a web app's, so Lindley could one day run as a service in the cloud
+- [ ] The toolbar floats over the whole app, not only the document pane, and docks to the top,
+  bottom or either side. The ideas need working out first
 - [ ] Installing on Windows for just yourself or for everyone who uses the computer. The MSI
   already asks (Briefcase builds it to, as `system_installer` isn't set), but only installing for
   one person has been tried. Next:

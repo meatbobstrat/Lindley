@@ -69,6 +69,9 @@
     `api/documents.py`, `api/pages.py`, `api/folders.py`; search in `search/fts.py`;
     Add scans… uploads in `api/scans.py` (read by the watcher, `read_later`)
   - `scripts/intake.py` reads real scans end to end; tests stub Tesseract (not installed in CI)
+  - `test_scans/aa_demo_scans/`: 452 real scans for development and testing (gitignored, like
+    all of `test_scans/`). Hand tests of the installers, what each found, and the answer key
+    for the 14 scans they use: design/hand-tests.md
 - `frontend/`: Vite, React and TypeScript, built from `design/mockup` (its CSS is `index.css`).
   The dev server proxies `/api` to `127.0.0.1:8765`. `api/client.ts` (typed API), `api/store.ts`
   (`useApi`, `invalidate` after a change), `lib/` (contexts, actions and dialogs, wording),

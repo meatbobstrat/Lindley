@@ -57,7 +57,7 @@ url = "https://github.com/meatbobstrat/Lindley"
 author = "Bob Stratton"
 author_email = "me@bobstratton.net"
 # Here, not in [project]: the LICENSE is the repo's, a folder up, where packaging can't look
-license = "LicenseRef-Proprietary"
+license = "LicenseRef-Lindley-Personal-Use-1.0"
 license-files = ["../LICENSE"]
 
 [tool.briefcase.app.lindley]

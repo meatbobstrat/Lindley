@@ -9,7 +9,7 @@
 ![Platforms: Windows, Ubuntu, macOS](https://img.shields.io/badge/platforms-Windows%20%7C%20Ubuntu%20%7C%20macOS-blue)
 ![AI: local, no telemetry](https://img.shields.io/badge/AI-local%2C%20no%20telemetry-6f42c1)
 ![Status: early development](https://img.shields.io/badge/status-early%20development-yellow)
-[![License: source-available](https://img.shields.io/badge/license-source--available-orange)](LICENSE)
+[![License: free for personal use](https://img.shields.io/badge/license-free%20for%20personal%20use-blue)](LICENSING.md)
 
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232a?logo=react&logoColor=61DAFB)
@@ -604,3 +604,9 @@ and you can ask it about them. All of it from a one-click install.
     computer suggests tiers from them
   - EmbeddingGemma for what pages are about, if it helps build documents (no tier downloads it
     until something uses it)
+
+## License
+
+Lindley is free for a person to use for themselves. Organisations, and anyone using it to make
+money, need a licence: see [LICENSING.md](LICENSING.md) for what that means, and [LICENSE](LICENSE)
+for the terms.

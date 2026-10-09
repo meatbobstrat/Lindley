@@ -1,6 +1,22 @@
 # Lindley
 
 [![CI](https://github.com/meatbobstrat/Lindley/actions/workflows/ci.yml/badge.svg)](https://github.com/meatbobstrat/Lindley/actions/workflows/ci.yml)
+[![Installers](https://github.com/meatbobstrat/Lindley/actions/workflows/installers.yml/badge.svg)](https://github.com/meatbobstrat/Lindley/actions/workflows/installers.yml)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Last commit](https://img.shields.io/github/last-commit/meatbobstrat/Lindley)](https://github.com/meatbobstrat/Lindley/commits/main)
+
+![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https://raw.githubusercontent.com/meatbobstrat/Lindley/main/backend/pyproject.toml&logo=python&logoColor=white)
+![Platforms: Windows, Ubuntu, macOS](https://img.shields.io/badge/platforms-Windows%20%7C%20Ubuntu%20%7C%20macOS-blue)
+![AI: local, no telemetry](https://img.shields.io/badge/AI-local%2C%20no%20telemetry-6f42c1)
+![Status: early development](https://img.shields.io/badge/status-early%20development-yellow)
+[![License: source-available](https://img.shields.io/badge/license-source--available-orange)](LICENSE)
+
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-20232a?logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
+![llama.cpp](https://img.shields.io/badge/llama.cpp-333333)
+![Tesseract](https://img.shields.io/badge/Tesseract-4a4a4a)
 
 Lindley is a research partner for working through thousands of scanned pages: letters, deeds,
 receipts, diaries, books and manuscripts. Drop scans into a folder and Lindley reads them, sorts

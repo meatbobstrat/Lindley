@@ -78,7 +78,8 @@ def test_with_a_wait_uncertain_pages_go_to_a_person_first(conn):
     report = assemble(conn, WAIT, ai)
     assert ai.calls == 0 and report.documents_created == 0  # just arrived: a person first
     [h] = hints(conn, "group_pages")
-    assert json.loads(h["payload"])["pages"] == [a, b] and h["confidence"] == 53
+    # How sure it is the pages go together, whole document or not
+    assert json.loads(h["payload"])["pages"] == [a, b] and h["confidence"] == 62
     assert any("letterhead" in r for r in json.loads(h["reasons"]))
 
 

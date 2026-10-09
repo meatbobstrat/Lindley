@@ -173,7 +173,7 @@ export function InboxView() {
               </>
             }
           >
-            <b>Do these {plural(g.payload.pages?.length ?? 0, 'scan')} go together?</b> {g.offer ? 'The AI checked them: it' : 'Lindley'} thinks they’re one document, <i>{g.payload.name}</i>, {g.confidence}% sure.{' '}
+            <b>Do these {plural(g.payload.pages?.length ?? 0, 'scan')} go together?</b> {g.offer ? 'The AI checked them: it' : 'Lindley'} thinks they belong to one document, <i>{g.payload.name}</i>, {g.confidence}% sure.{' '}
             {sentences(g.reasons)}
           </Banner>
         ))}
@@ -373,7 +373,7 @@ function Hint({
       <button
         className="pg-hint"
         onClick={(e) => openMenu(menu, e.currentTarget)}
-        data-tip={`Lindley thinks these ${ids.length} scans are one document, ${quoted(s.payload.name ?? '')}, ${sure}. Click for choices.`}
+        data-tip={`Lindley thinks these ${ids.length} scans belong to one document, ${quoted(s.payload.name ?? '')}, ${sure}. Click for choices.`}
       >
         <Mark />
         <span>Goes with {plural(ids.length - 1, 'other scan')}</span>

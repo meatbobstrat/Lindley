@@ -544,9 +544,10 @@ and you can ask it about them. All of it from a one-click install.
   - [ ] Ubuntu again, once those are fixed: the same scans, plus search, the tray and Add scans…
   - [ ] Windows and the Mac
 - [ ] What the Ubuntu test found, using its 14 scans as a test to run again:
-  - the rules put a typescript's pages together right, then rated the groups 24–28%, too low
-    even for a hint, so nothing showed: a typescript has no greeting or signature, and each
-    one missing cut the confidence again (`segment._confidence`)
+  - [x] the rules put a typescript's pages together right, then rated the groups 24–28%, too
+    low even for a hint, so nothing showed. Now "Do these go together?" is asked by how sure
+    Lindley is that the pages belong together, whole document or not (68% and 65% here), and
+    says when pages may be missing (design/database.md, "Together, if not whole")
   - typed page numbers read as "a" or "WwW", beside pencil and red numbers, so pages weren't
     put in order by them and missing pages weren't found
   - a handwritten page whose Tesseract reading is gibberish was called blank and offered to be

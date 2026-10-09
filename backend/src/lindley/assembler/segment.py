@@ -242,6 +242,21 @@ def _reasons(pages: list[Page], inside: list[Pair], folders: Folders | None = No
     return out[:5]
 
 
+def whole_doubt(pages: list[Page]) -> str | None:
+    """Why pages that belong together may not be the whole document: nothing marks where it
+    starts or ends. Diaries mark neither."""
+    if all(p.clues.kind == "diary" for p in pages):
+        return None
+    start, end = pages[0].clues.starts_doc, pages[-1].clues.ends_doc
+    if not start and not end:
+        return "Nothing marks where it starts or ends, so it may be part of a longer document"
+    if not start:
+        return "Nothing marks where it starts, so pages before these may be missing"
+    if not end:
+        return "Nothing marks where it ends, so pages after these may be missing"
+    return None
+
+
 def missing_pages(pages: list[Page]) -> str | None:
     """Pages the page numbers say are missing: 'Page 4 seems to be missing'. Only when every
     page is numbered, so a page whose number didn't read isn't taken for a missing one."""
@@ -276,6 +291,10 @@ def make_group(
         settled,
     )
     g.features = group_features(ordered, inside, left, right, folders)
+    # That its pages all belong to one document, whole or not: its weakest link inside. On real
+    # typescripts fed in scan order, about 8 in 10 groups the rules propose are one document's
+    # pages, whatever their confidence (design/database.md, "Together, if not whole")
+    g.together = round(100 * min(min((p.score for p in inside), default=1.0), 0.97))
     if len(pages) == 1 and pages[0].clues.kind in ("blank", "notes"):
         g.set_aside = True
         g.reasons = [

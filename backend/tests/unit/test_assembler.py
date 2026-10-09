@@ -11,6 +11,7 @@ from lindley.assembler.bench import TruePage, load, make_batch, proposed_groups,
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page
 from lindley.assembler.run import load_inbox
+from lindley.assembler.segment import segment
 from lindley.config import AssemblerSettings
 from lindley.db.database import SCHEMA_VERSION, connect, init_db
 from lindley.duplicates.resolve import quoted
@@ -874,3 +875,27 @@ def test_an_answer_of_none_of_these_is_kept_and_not_paid_for_again(conn):
     # It said none of them, so it isn't suggested for the letter either
     assert not open_suggestions(conn, "add_to_document")
     assert conn.execute("SELECT document_id FROM pages WHERE id = ?", (late,)).fetchone()[0] is None
+
+
+# The middle of a typescript, as in the first hand test: its first and last pages are elsewhere,
+# so nothing marks where it starts or ends, and it's no kind of document the rules know
+TYPESCRIPT = [
+    "the camp had grown to nearly three thousand men by then, and the doctors were\n"
+    "working day and night in the two rooms they had taken over the assay office, where",
+    "the sick were laid on blankets along the walls. No one knew where the fever had come\n"
+    "from, and the miners who could still stand went on working the shafts as if",
+    "nothing had changed at all. By the end of the month the town council had closed the\n"
+    "saloons and the school, and sent to Reno for nurses and for more of the medicine",
+]
+
+
+def test_pages_that_run_on_are_asked_about_though_they_may_not_be_the_whole_document(conn):
+    ids = list(load(conn, [TruePage(t, "t", i, "page") for i, t in enumerate(TYPESCRIPT)]))
+    report = assemble(conn)
+    assert report.documents_created == 0 and report.hints == 1
+    [h] = open_suggestions(conn, "group_pages")
+    assert json.loads(h["payload"])["pages"] == ids and h["confidence"] >= 45
+    assert "it may be part of a longer document" in " ".join(json.loads(h["reasons"]))
+    # The document itself is still far from sure: it's made only once a person says so
+    [g] = segment(load_inbox(conn))[0]
+    assert g.confidence < 45 <= g.together

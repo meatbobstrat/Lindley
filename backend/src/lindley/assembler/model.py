@@ -91,7 +91,7 @@ def weigh_terms(pages: list[Page], library: Library | None = None) -> None:
 @dataclass
 class Group:
     pages: list[Page]  # in reading order
-    confidence: int  # 0-100: that these pages, and only these, belong together
+    confidence: int  # 0-100: that these pages, and only these, are one whole document
     reasons: list[str] = field(default_factory=list)
     kind: str | None = None
     name: str = ""
@@ -101,6 +101,13 @@ class Group:
     set_aside: bool = False  # a blank page or a stray note
     by_ai: bool = False
     features: dict[str, float] = field(default_factory=dict)  # what its confidence comes from
+    # 0-100: that its pages all belong to one document, though maybe not all of it (a page may
+    # be missing, or the document go on). None: as sure as its confidence.
+    together: int | None = None
+
+    @property
+    def sure_together(self) -> int:
+        return self.confidence if self.together is None else max(self.together, self.confidence)
 
     @property
     def ids(self) -> list[int]:

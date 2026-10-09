@@ -117,7 +117,15 @@ in the exported PDF in Ubuntu's own viewer (the text is in the file).
 ### Next
 
 Fix 1 to 3 and make grouping visible (5), using the 14 scans as a test that can be run again
-here. Then install again on the same laptop, and try the same scans plus the steps not tried
+here (`scripts/intake.py --no-ai` on the 14 in a scratch library).
+
+- **1 is fixed.** "Do these go together?" is now asked by how sure Lindley is that the pages
+  belong together, whole document or not (the weakest link inside), not by how sure it is that
+  they're the whole document. A and B are both asked about, at 68% and 65%, with exactly the
+  answer key's pages, and each says "Nothing marks where it starts or ends, so it may be part of
+  a longer document". See design/database.md, "Together, if not whole".
+
+Then install again on the same laptop, and try the same scans plus the steps not tried
 yet. Then Windows (the build failed on Chocolatey being down, a 503, and needs running again)
 and the Mac. After that, Middle or High, which downloads models and runs `llama-server` on Linux
 for the first time.

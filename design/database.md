@@ -214,6 +214,7 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    - **Then loose ends, over the whole Inbox, best first.** A chain that doesn't end is joined to one that doesn't start when one clearly continues the other (0.75; 0.6 for two pages fed through the scanner the wrong way round), and no other loose end comes within 0.1 of it, for either page. Without that last rule, page 3 of one typescript was joined to page 4 of another: typescripts by one author share page numbers, and nearly every page ends mid-sentence.
    - **Order within a group:** clearly read page numbers first, then greeting first and signature last, then the chain. The order counts as settled, so the AI isn't asked about it, when every link in the chain scores 0.7 or more.
    - **Confidence:** each group gets one (0–100), based on how sure the breaks inside and around it are. It drops when the group has no clear start or end (a page may be missing), except for diaries. A group that is every page of a folder that looks like one document's (`segment.whole_folder`), with no break inside and no greeting, signature or second kind of document within it, is at least 90 sure, and says "They're every scan in the folder …".
+   - **Together:** how sure it is that the group's pages all belong to one document, whole or not: its weakest link inside. "Do these go together?" is asked by this, not by the confidence (see "Together, if not whole").
 4. **A person, then the AI** (`ai.py`). What the rules can't settle goes to a person as hints in the Inbox: an answer costs nothing and is right. The AI is the last resort, asked only about breaks scoring 35–75 and groups whose order isn't settled, and only:
    - on its own, when its connection's `allow` is `auto` and its limits aren't used up (`auto.py`), as the pages arrive, or once they've waited `ask_ai_after_days` for a person to answer first (default 0). Pages whose "Do these go together?" a person dismissed aren't sent on their own. Naming new documents follows the same rule.
    - when a person sends them from **Needs AI** (below), or asks about some pages (`POST /api/assembler/ask`): asking is the OK, and those pages are sent at once.
@@ -233,7 +234,7 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    | The group is confident (at or above `group_at`, default 75) | Creates a Lindley document with an italic name, its type, date, confidence and `reasons` (`history`: `group_pages`) |
    | A likely match (35–75) and the AI may be asked | Asks it which of the likeliest documents, if any (above) |
    | A likely match (at or above `hint_at`, default 45) | Suggests it (`add_to_document`), with the likeliest places (`candidates`); the page stays in the Inbox |
-   | Pages that may be one document (two or more, at or above `hint_at`) | Asks "Do these go together?" (`group_pages`, with the pages in order, a name, type and date) |
+   | Pages that may be one document (two or more, going together at or above `hint_at`, whole or not) | Asks "Do these go together?" (`group_pages`, with the pages in order, a name, type and date, and why it may not be the whole document) |
    | A blank page or stray note | Suggests Set aside; never moves it |
    | A completed document | Never touches it |
    | A suggestion a person dismissed | Never makes it again |
@@ -546,6 +547,21 @@ The rules didn't see it start, so it was added to the end of whatever typescript
 - **A greeting under a letterhead**: "Dear Sir:" is looked for in the first 15 lines, not 5, if it's short and ends with a comma or colon. Mashburn's reply has it 12 lines down.
 
 In the whole dev library, only those letters' four scans get a date line. On the sweep, the rules' wrong documents went from 27 to 1 (of 1,109 made), and made-up batches came out the same as before. The folder holds three letters (Johnson's, the Attorney General's two-page reply, and Johnson's answer), which Lindley now keeps apart, as Claude did. The answer key counts the folder as one document, so a folder each now rebuilds 95% of its documents exactly at 90% or more, not 100%.
+
+**Together, if not whole** (October 2026). The first hand test (design/hand-tests.md) fed in the middle of two typescripts: no title, no ending, no kind of document the rules know. The rules grouped both exactly right, but each missing clue cut the confidence again (×0.8 no start, ×0.85 no end, ×0.6 no kind), to 28% and 24%. That's under `hint_at`, so nothing was shown. As a chance that the pages are a *whole* document, that's fair: on the dev library, groups under 45 are rarely all of one. But "Do these go together?" asks something else: whether the pages belong to one document. Groups under 45 were that as often as the ones hinted (in scan order 70–100%, against 75–94%).
+
+So a group carries two numbers. `confidence` stays the chance that these pages, and only these, are the document, and decides `group_at`. `together` (`Group.sure_together`) is its weakest link inside, the chance that its pages all belong to one document. A rules' group of two or more pages is asked about when `together` reaches `hint_at`, and the hint shows it. When the start or end isn't marked, the hint says so (`segment.whole_doubt`): "Nothing marks where it starts or ends, so it may be part of a longer document". The hand test's two typescripts are now asked about at 68% and 65%. The sweep, before → after, rules only, 10 runs each:
+
+| Filed, fed in | "Do these go together?" hints | Pure |
+|---|---|---|
+| One folder, in order | 193 → 206 | 87% → 86% |
+| One folder, some swapped | 191 → 220 | 81% → 79% |
+| Mixed, in order | 104 → 109 | 86% → 86% |
+| Mixed, some swapped | 99 → 119 | 83% → 83% |
+| One folder, shuffled | 152 → 262 | 2% → 3% |
+| Mixed, shuffled | 87 → 173 | 24% → 22% |
+
+Documents made didn't change in any run. The made-up bench made the same documents and the same 6 hints. The numbers shown fit better: hints at 60–74 are pure 77–85% of the time, where before those at 45–59 were 79–84%. Shuffled scans, fed in no order, still defeat the rules: two neighbouring scans with nothing against them link at 0.62 on scan order alone, and these typescripts' pages nearly all end mid-sentence, so "runs on" can't tell them apart either. A scanner feeds pages in order, so that's not how scans arrive.
 
 ## Duplicates
 

@@ -19,7 +19,7 @@ from lindley.assembler.answers import Answers, AskFirst, OnCall, Progress
 from lindley.assembler.evidence import pair
 from lindley.assembler.model import Group, Page, weigh_terms
 from lindley.assembler.place import Candidate, DocEnds, candidates
-from lindley.assembler.segment import segment
+from lindley.assembler.segment import segment, whole_doubt
 from lindley.assembler.terms import Library
 from lindley.config import AssemblerSettings
 from lindley.duplicates.resolve import quoted
@@ -516,7 +516,11 @@ def _assemble(
                 continue
             if said is None and place(g, first=False):
                 continue
-            if len(g.pages) > 1 and g.confidence >= cfg.hint_at:
+            # Asked about when its pages belong together, though they may not be all of the
+            # document: a person can say so, and add the rest later
+            if len(g.pages) > 1 and g.sure_together >= cfg.hint_at:
+                if g.sure_together > g.confidence and (doubt := whole_doubt(g.pages)):
+                    g.reasons.append(doubt)
                 report.hints += apply.suggest_group(conn, g, _listed(candidates(g, docs, others)))
 
         apply.save_links(conn, [p.id for p in pages], links)

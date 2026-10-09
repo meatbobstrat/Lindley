@@ -1791,7 +1791,7 @@ function cardHint(s, doc) {
   const why = (n, w) => `${n}% sure${w?.length ? `: ${esc(w.join('. '))}` : ''}`;
   if (doc) return wrap(`<button class="pg-hint" data-place="${s.id}:${doc.id}" title="Lindley thinks this belongs in “${esc(doc.name)}”, ${why(s.hintConf, s.hintWhy)}">${lic()}<span>Add to “${esc(shortName(doc.name))}”</span></button>`);
   const g = groupOf(s.id);
-  if (g) return wrap(`<button class="pg-hint" data-act="groupHint" data-id="${g.id}" title="Lindley thinks these ${g.pages.length} scans are one document, “${esc(g.name)}”, ${why(g.conf, g.why)}">${lic()}<span>Goes with ${plural(g.pages.length - 1, 'other scan')}</span></button>`);
+  if (g) return wrap(`<button class="pg-hint" data-act="groupHint" data-id="${g.id}" title="Lindley thinks these ${g.pages.length} scans belong to one document, “${esc(g.name)}”, ${why(g.conf, g.why)}">${lic()}<span>Goes with ${plural(g.pages.length - 1, 'other scan')}</span></button>`);
   if (s.asideWhy) return wrap(`<button class="pg-hint" data-act="asideHint" data-id="${s.id}" title="${esc(s.asideWhy)}, so Lindley thinks it could be set aside">${lic()}<span>Set aside? ${esc(s.asideWhy)}</span></button>`);
   const x = sortItemOf(s.id);
   if (x) return `<button class="pg-hint" data-nav="needsai:${x.id}" title="This scan needs an AI to look at it: Lindley couldn't tell which document it belongs in">${lic()}<span>Needs AI to sort</span></button>`;
@@ -1967,7 +1967,7 @@ function viewInbox() {
   const hints = D.inbox.filter(id => D.scans[id].hint && D.docs[D.scans[id].hint]).length;
   const gs = D.groups.filter(g => g.pages.every(p => D.inbox.includes(p)));
   const asides = D.inbox.filter(id => D.scans[id].asideWhy);
-  const groupBanners = gs.map(g => `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Do these ${plural(g.pages.length, 'scan')} go together?</b> Lindley thinks they’re one document, <i>${esc(g.name)}</i>, ${g.conf}% sure. ${esc(g.why.join('. '))}.</div><span class="b-acts"><button class="btn" data-act="groupHint" data-id="${g.id}">Group them…</button><button class="btn ghost" data-act="showGroup" data-id="${g.id}">Show them</button><button class="btn ghost" data-act="noGroup" data-id="${g.id}">No</button></span></div></div>`).join('');
+  const groupBanners = gs.map(g => `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Do these ${plural(g.pages.length, 'scan')} go together?</b> Lindley thinks they belong to one document, <i>${esc(g.name)}</i>, ${g.conf}% sure. ${esc(g.why.join('. '))}.</div><span class="b-acts"><button class="btn" data-act="groupHint" data-id="${g.id}">Group them…</button><button class="btn ghost" data-act="showGroup" data-id="${g.id}">Show them</button><button class="btn ghost" data-act="noGroup" data-id="${g.id}">No</button></span></div></div>`).join('');
   const asideBanner = asides.length ? `<div class="banner ai">${lic()}<div class="b-body"><div class="b-text"><b>Lindley thinks ${plural(asides.length, 'scan')} ${asides.length === 1 ? 'isn’t' : 'aren’t'} part of any document.</b> ${esc([...new Set(asides.map(id => D.scans[id].asideWhy))].join('; '))}.</div><span class="b-acts"><button class="btn" data-act="asideAll">Set ${asides.length === 1 ? 'it' : 'them'} aside</button><button class="btn ghost" data-act="showAside">Show ${asides.length === 1 ? 'it' : 'them'}</button></span></div></div>` : '';
   return `
   <div class="head">

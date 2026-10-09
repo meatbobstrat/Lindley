@@ -37,7 +37,8 @@
     answers and Claude's reference readings are, and what was learned: design/benches.md
   - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
     `pipeline.py` (step records, Tesseract/vision reading; `read_turned_again`: pages a person
-    turned since Tesseract read them, read again by the watcher), `ocr/` engines, `ai_work.py` (AI
+    turned since Tesseract read them, read again by the watcher), `ocr/` engines (`margins.py`:
+    page numbers in the margins, read again on their own as part of each Tesseract reading), `ai_work.py` (AI
     work a person asked for, done in the background, one job at a time). `activity.py`: what
     the AI is doing now, and what came of it, for the status bar (in the overview)
   - `watcher/`: watchdog folder watcher, started by the app lifespan (`create_app(watch=False)` in tests)

@@ -184,7 +184,7 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
 `lindley.assembler.assemble(conn, settings.assembler, chat)` runs once new scans have settled. It's safe to run as often as you like; a second run with nothing new changes nothing.
 
 1. **Clues** (`clues.py`, rules only).
-   - **Page numbers.** A number on a row of its own in the top or bottom 12% of the page ("- 2 -", "Page 2 of 3", "ii"). Specks and smudges on that row don't count against it, and OCR slips next to a real digit are read through ("1l" is 11). A number inside a sentence, or in a typesetter's note like "Indent 1 em", isn't one. A number read with doubt is marked unsure and counts for less, and never moves a page: creases and specks by the paper's edge are often read as numbers. When every page of a document is numbered, a gap is reported: "Page 4 seems to be missing".
+   - **Page numbers.** A number on a row of its own in the top or bottom 12% of the page ("- 2 -", "Page 2 of 3", "ii"). Specks and smudges on that row don't count against it, and OCR slips next to a real digit are read through ("1l" is 11). A number inside a sentence, or in a typesetter's note like "Indent 1 em", isn't one. A number read with doubt is marked unsure and counts for less, and never moves a page: creases and specks by the paper's edge are often read as numbers. When every page of a document is numbered, a gap is reported: "Page 4 seems to be missing". The same number twice on a row (typed, and copied beside it in pencil) is that number. Tesseract often drops or garbles a number standing alone, so the reading already holds the margins read again on their own (`worker/ocr/margins.py`, see "Page numbers in the margins").
    - **Noise at the edges.** Lines of specks (the paper's edge, show-through, a hole punch) are dropped from the top and bottom before the first and last lines are taken, and so are stray marks before the first word. A scrap Tesseract read out of order goes back into the line it sits in.
    - greetings ("Dear Sister,", in the first 5 lines, or a short one ending in a comma or colon in the first 15, under a letterhead), letterheads, headings and bylines ("By Lindley C. Branson"), which start a document;
    - date lines: a short line with a full date near the top, with who the letter is to (Honorable, Mr., Mrs., Dear…) or a greeting just below, which starts a letter that has no "Dear". A diary's dated entry has no one under its date. It's looked for before noise is trimmed, since Tesseract can doubt every word of one (see "Confidence bars");
@@ -212,7 +212,7 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    - **Scan order first.** Neighbours in scan order are linked wherever they score 0.5 or more. Scan order is the strongest single hint. It goes folder by folder (the folder each scan was found in), then by file number, then by time, and only files in one folder count as scanned one after the other: every folder a scanner writes to can have its own Image (2).
    - **A page scanned again** (an open `same_page` duplicate of a page earlier in the stream) is taken out of the stream before neighbours are scored, so the pages either side of it still join, and is suggested for setting aside. Which copy to keep is a person's choice in Duplicates.
    - **Then loose ends, over the whole Inbox, best first.** A chain that doesn't end is joined to one that doesn't start when one clearly continues the other (0.75; 0.6 for two pages fed through the scanner the wrong way round), and no other loose end comes within 0.1 of it, for either page. Without that last rule, page 3 of one typescript was joined to page 4 of another: typescripts by one author share page numbers, and nearly every page ends mid-sentence.
-   - **Order within a group:** clearly read page numbers first, then greeting first and signature last, then the chain. The order counts as settled, so the AI isn't asked about it, when every link in the chain scores 0.7 or more.
+   - **Order within a group:** clearly read page numbers first, then greeting first and signature last, then the chain. Page numbers two pages of the group share don't move pages: they're two numberings (a story's, and a bundle's), or a page scanned twice. The order counts as settled, so the AI isn't asked about it, when every link in the chain scores 0.7 or more.
    - **Confidence:** each group gets one (0–100), based on how sure the breaks inside and around it are. It drops when the group has no clear start or end (a page may be missing), except for diaries. A group that is every page of a folder that looks like one document's (`segment.whole_folder`), with no break inside and no greeting, signature or second kind of document within it, is at least 90 sure, and says "They're every scan in the folder …".
    - **Together:** how sure it is that the group's pages all belong to one document, whole or not: its weakest link inside. "Do these go together?" is asked by this, not by the confidence (see "Together, if not whole").
 4. **A person, then the AI** (`ai.py`). What the rules can't settle goes to a person as hints in the Inbox: an answer costs nothing and is right. The AI is the last resort, asked only about breaks scoring 35–75 and groups whose order isn't settled, and only:
@@ -562,6 +562,37 @@ So a group carries two numbers. `confidence` stays the chance that these pages, 
 | Mixed, shuffled | 87 → 173 | 24% → 22% |
 
 Documents made didn't change in any run. The made-up bench made the same documents and the same 6 hints. The numbers shown fit better: hints at 60–74 are pure 77–85% of the time, where before those at 45–59 were 79–84%. Shuffled scans, fed in no order, still defeat the rules: two neighbouring scans with nothing against them link at 0.62 on scan order alone, and these typescripts' pages nearly all end mid-sentence, so "runs on" can't tell them apart either. A scanner feeds pages in order, so that's not how scans arrive.
+
+**Page numbers in the margins** (October 2026). The hand test's typed page numbers weren't read: a typed "5" came out as "WwW", and a "2" and two 7s not at all. Reading a whole page, Tesseract takes a lone mark at the edge for a speck, and its one threshold for the page can lose a faint one, more so beside the scanner's white bed. Read alone, cropped tight and on white, the same marks come out right.
+
+So `worker/ocr/margins.py` looks again, as part of every Tesseract reading. It finds the ink above the first line of writing and below the last, within the top and bottom 12%, on a quarter-size copy of the margins (Pillow alone). Marks within a word height of each other on a row are joined, so a "12" stays whole and a signature's letters become too wide to be a number. It keeps those the size of typing, leaving out specks, marks cut off where the margin starts (the tail of a signature's "y"), and marks already read well as a word. It sets them one under another on a sheet, and reads that once more with Tesseract, as digits only (`--psm 6`): about 0.2 s a page. A number read at 85% or more becomes a line of its own in the reading, in place of whatever Tesseract made of the same mark, so text and word boxes still match. It's then found by the clues like any other page number.
+
+What was tried, on the hand test's 11 typed pages (5 typed numbers that show):
+
+| Read | Right | Wrong at 85%+ |
+|---|---|---|
+| The whole page (as before) | 0 | 0 |
+| Each margin, in sparse mode (`--psm 11`), with any threshold | 0–1 | a few |
+| Each mark alone, digits only, its own run each (`--psm 7`) | 4 | a corner mark as "4" at 88% |
+| All marks on one sheet (`--psm 6`), black at the paper's shade less 30 | 4 | none (a corner mark as "1" at 56%) |
+
+The fifth, a typed "5" whose top stroke has faded, reads as a "2" (65% here, up to 86% other ways), so it's left unread. The answer key's other numbers for the first typescript (8, 10, 11, 12) are pencilled by hand, beside archive numbers in red and circled in pencil; Tesseract can't read those, and the reading AI can.
+
+On the dev library (147 pages in 23 sorted documents), 65 of 354 readings gained a number, every one checked against its document's order or by eye. Early versions read the tail of a signature as a "7" (that's what the cut-off rule is for) and a red dotted line beside blue handwriting as a "3" at 82%, while every true number read at 85% or more: hence the bar. The ink's colour didn't tell them apart: on yellowed paper every ink scans brownish. Ordering by them showed one more thing: some documents number two pages alike (a story's own pages, and a bundle's), and sorting by those pulled a page out of place. So page numbers two pages of a group share no longer move pages. Fed again with the numbers (a copy of the library given them, as reading again would; rules only, 10 runs each):
+
+| Filed, fed in | In the right order | Pure, before confidence | Documents made (wrong) |
+|---|---|---|---|
+| One folder, in order | 93.5% → 93.4% | 0.853 → 0.841 | 27 → 26 (0) |
+| One folder, some swapped | 53.2% → 57.0% | 0.813 → 0.790 | 23 → 22 (0) |
+| One folder, shuffled | 0% → 0% | 0.048 → 0.048 | 22 (1) → 21 (0) |
+| A folder each, in order | 90.0% → 90.0% | 1.000 → 1.000 | 220 → 220 (0) |
+| A folder each, some swapped | 43.2% → 44.2% | 1.000 → 1.000 | 219 → 219 (0) |
+| A folder each, shuffled | 17.4% → 22.7% | 1.000 → 0.991 | 210 → 208 (0) |
+| Mixed, in order | 91.3% → 91.2% | 0.950 → 0.936 | 134 → 134 (0) |
+| Mixed, some swapped | 46.4% → 48.3% | 0.936 → 0.898 | 129 → 129 (0) |
+| Mixed, shuffled | 13.7% → 18.6% | 0.640 → 0.628 | 120 → 120 (0) |
+
+Pages fed out of order come out in order more often. Groups are a little less pure where several typescripts are loose together: this author numbers every typescript 1, 2, 3…, so a page 3 followed by another's page 4 looks like one running on. Refusing to join two pages into a group that would then hold one number twice made the groups purer, but split real documents that carry two numberings (220 documents made became 200), so it isn't done. The made-up bench is unchanged. Pages read before this change keep their readings until they're read again.
 
 ## Duplicates
 

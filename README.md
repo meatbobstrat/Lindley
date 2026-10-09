@@ -548,8 +548,10 @@ and you can ask it about them. All of it from a one-click install.
     low even for a hint, so nothing showed. Now "Do these go together?" is asked by how sure
     Lindley is that the pages belong together, whole document or not (68% and 65% here), and
     says when pages may be missing (design/database.md, "Together, if not whole")
-  - typed page numbers read as "a" or "WwW", beside pencil and red numbers, so pages weren't
-    put in order by them and missing pages weren't found
+  - [x] typed page numbers read as "a" or "WwW", beside pencil and red numbers, so pages weren't
+    put in order by them. Now the margins are read again on their own, and every typed number
+    that shows is read (design/database.md, "Page numbers in the margins"); the pencilled ones
+    are for the reading AI
   - a handwritten page whose Tesseract reading is gibberish was called blank and offered to be
     set aside
   - handwriting with no AI to read it waits only in Review: decide whether it belongs in Needs

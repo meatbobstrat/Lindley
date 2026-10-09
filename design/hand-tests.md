@@ -36,9 +36,9 @@ done, what each run found, and what's left to fix.
 gitignored, as all scans are: the repo is public. The first runs use 14 of them, whose answer
 key Claude read from the scans:
 
-| Document | Scans, in order | Typed page | What it tests |
+| Document | Scans, in order | Page number | What it tests |
 | --- | --- | --- | --- |
-| A. A typescript about the Tonopah epidemic | Image (2) to (6) | 7, 8, 10, 11, 12 | (2) is upside down. Page 9 is missing. (6) ends the piece |
+| A. A typescript about the Tonopah epidemic | Image (2) to (6) | 7 typed; 8, 10, 11, 12 in pencil | (2) is upside down. Page 9 is missing. (6) ends the piece. Archive numbers 48–53 beside them, in red and circled in pencil |
 | B. A memoir of Leigh Hunt, "By Lindley C. Branson" | Image (7), (8), (9), (10), (12), (13) | 1, 2, 4, 5, 7, 8 | (12) and (13) are upside down. (9)'s number doesn't show. Pages 3 and 6 are missing |
 | C. A dog story | Image (64) | none | Lying sideways, with typed-over words and pencil corrections |
 | D. A handwritten letter (1902) | Image (96), (97) | 1, 2 | Copperplate handwriting, some of it sideways in the margin |
@@ -124,6 +124,12 @@ here (`scripts/intake.py --no-ai` on the 14 in a scratch library).
   they're the whole document. A and B are both asked about, at 68% and 65%, with exactly the
   answer key's pages, and each says "Nothing marks where it starts or ends, so it may be part of
   a longer document". See design/database.md, "Together, if not whole".
+- **2 is fixed, as far as Tesseract can go.** Not every page has a typed number: A's 8, 10, 11
+  and 12 are pencilled by hand, and only its 7 is typed. The margins are now read again on their
+  own, and every typed number that shows is read, sure: A's 7, and B's 2, 7 and 8. B now says
+  "Page numbers 2–8 run in order" and "Page numbers run 7 → 8". B's 5 has faded to look like a
+  2, so it's left unread, and the pencilled ones are for the reading AI. See design/database.md,
+  "Page numbers in the margins".
 
 Then install again on the same laptop, and try the same scans plus the steps not tried
 yet. Then Windows (the build failed on Chocolatey being down, a 503, and needs running again)

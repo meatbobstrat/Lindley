@@ -44,13 +44,16 @@ def order(pages: list[Page]) -> tuple[list[Page], bool]:
 
     Pages keep the order they come in (scan order) unless a clue says otherwise: a page number,
     a first page, a last page. A page number read with doubt doesn't move a page: a crease or a
-    speck by the edge of the paper is easily read as one."""
+    speck by the edge of the paper is easily read as one. Nor do page numbers two pages share:
+    they're two numberings (a story's, and a bundle's), or one page scanned twice."""
     if len(pages) == 1:
         return pages, True
+    numbers = [p.clues.marker[0] for p in pages if p.clues.marker and p.clues.marker_sure]
+    by_number = len(numbers) == len(set(numbers))
     keys, last = [], 0.0
     for p in pages:
         c = p.clues
-        if c.marker and c.marker_sure:
+        if c.marker and c.marker_sure and by_number:
             k = float(c.marker[0])
         elif c.starts_doc:
             k = 0.5
@@ -66,7 +69,9 @@ def order(pages: list[Page]) -> tuple[list[Page], bool]:
     pinned = sum(
         1
         for p in pages
-        if (p.clues.marker and p.clues.marker_sure) or p.clues.starts_doc or p.clues.ends_doc
+        if (p.clues.marker and p.clues.marker_sure and by_number)
+        or p.clues.starts_doc
+        or p.clues.ends_doc
     )
     chained = all(
         pair(a, b, True).links and any(k.relation == "continues" for k in pair(a, b, True).links)

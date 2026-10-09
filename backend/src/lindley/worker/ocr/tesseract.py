@@ -11,6 +11,10 @@ Tesseract turns a page black and white with one threshold for the whole page. A 
 white page (a PDF made from scans often does this) can fool it: the threshold falls between the
 white edge and the tan paper, and faint typing vanishes. When a reading finds next to nothing,
 the page is read again with a threshold that adapts across the page, and the fuller reading kept.
+
+A page number standing alone in the margin is often dropped or garbled, so the marks there are
+read again on their own (margins.py), and a number read well is added as a line of its own, in
+place of any words Tesseract made of the same mark.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 from lindley.config import OcrSettings
+from lindley.worker.ocr import margins
 from lindley.worker.ocr.base import PageResult
 
 # Where the UB-Mannheim installer puts it when it isn't added to PATH.
@@ -45,6 +50,7 @@ ORIENTATION_MIN_CONF = 2.0
 # A reading with fewer words than this is tried again with an adaptive threshold.
 FEW_WORDS = 20
 ADAPTIVE = ["-c", "thresholding_method=1"]  # Leptonica's adaptive Otsu
+DIGITS = ["-c", "tessedit_char_whitelist=0123456789"]  # a page number: digits only
 WORK_PREFIX = "lindley-ocr-"  # the folders its output and turned pages are written to
 
 
@@ -53,18 +59,22 @@ def leftovers() -> list[Path]:
     return list(Path(tempfile.gettempdir()).glob(f"{WORK_PREFIX}*"))
 
 
+def _count(lines: Lines) -> int:
+    return sum(len(ws) for _, ws in lines)
+
+
 class TesseractNotFound(RuntimeError):
     pass
 
 
-def parse_tsv(tsv: str) -> tuple[str, list[dict], float | None]:
-    """Tesseract TSV -> (text, words, mean word confidence 0-100 or None if no words).
+# A reading's lines in order, each with the paragraph it's in and its words
+Lines = list[tuple[tuple, list[dict]]]
 
-    Words are {"text", "conf", "bbox": [x, y, w, h]}. Text keeps Tesseract's lines, with a blank
-    line between paragraphs.
-    """
-    lines: dict[tuple[int, int, int, int], list[str]] = {}
-    words: list[dict] = []
+
+def tsv_lines(tsv: str) -> Lines:
+    """Tesseract TSV -> its lines, in reading order. Words are {"text", "conf", "bbox": [x, y,
+    w, h]}."""
+    lines: dict[tuple[int, int, int, int], list[dict]] = {}
     for row in tsv.splitlines()[1:]:
         cols = row.split("\t")
         if len(cols) < 12 or cols[0] != "5":  # level 5 is a word
@@ -75,18 +85,45 @@ def parse_tsv(tsv: str) -> tuple[str, list[dict], float | None]:
             continue
         page, block, par, line = (int(c) for c in cols[1:5])
         x, y, w, h = (int(c) for c in cols[6:10])
-        lines.setdefault((page, block, par, line), []).append(text)
-        words.append({"text": text, "conf": round(conf, 1), "bbox": [x, y, w, h]})
+        word = {"text": text, "conf": round(conf, 1), "bbox": [x, y, w, h]}
+        lines.setdefault((page, block, par, line), []).append(word)
+    return [(key[:3], ws) for key, ws in lines.items()]  # TSV rows are in reading order
 
+
+def joined(lines: Lines) -> tuple[str, list[dict], float | None]:
+    """-> (text, words, mean word confidence 0-100 or None if no words). Text keeps the lines,
+    with a blank line between paragraphs."""
     out: list[str] = []
     last_par = None
-    for key, ws in lines.items():  # TSV rows are already in reading order
-        if last_par is not None and key[:3] != last_par:
+    for par, ws in lines:
+        if last_par is not None and par != last_par:
             out.append("")
-        out.append(" ".join(ws))
-        last_par = key[:3]
+        out.append(" ".join(w["text"] for w in ws))
+        last_par = par
+    words = [w for _, ws in lines for w in ws]
     mean = round(sum(w["conf"] for w in words) / len(words), 1) if words else None
     return "\n".join(out), words, mean
+
+
+def parse_tsv(tsv: str) -> tuple[str, list[dict], float | None]:
+    """Tesseract TSV -> (text, words, mean word confidence), as joined says."""
+    return joined(tsv_lines(tsv))
+
+
+def with_numbers(lines: Lines, found: list[tuple[margins.Mark, str, float]]) -> Lines:
+    """The reading with the page numbers read in its margins as lines of their own, at the top
+    or bottom, in place of any words read from the same marks."""
+    if not found:
+        return lines
+    kept = []
+    for par, ws in lines:
+        if left := [w for w in ws if not any(margins.overlap(f[0].box, w["bbox"]) for f in found)]:
+            kept.append((par, left))
+    added = [
+        (("margin", m.top, m.box[1]), [{"text": text, "conf": conf, "bbox": list(m.box)}])
+        for m, text, conf in sorted(found, key=lambda f: f[0].box[1])
+    ]
+    return [a for a in added if a[0][1]] + kept + [a for a in added if not a[0][1]]
 
 
 def parse_osd(out: str) -> tuple[int, float] | None:
@@ -166,11 +203,12 @@ class TesseractEngine:
     def recognize(self, image_path: Path) -> list[PageResult]:
         if not self.exe:
             raise TesseractNotFound(self.missing_help())
-        text, words, conf = self._read(image_path)
-        if len(words) < FEW_WORDS:
+        lines = self._read(image_path)
+        if _count(lines) < FEW_WORDS:
             again = self._read(image_path, ADAPTIVE)
-            if len(again[1]) > len(words):
-                text, words, conf = again
+            if _count(again) > _count(lines):
+                lines = again
+        text, words, conf = joined(self._with_numbers(image_path, lines, 0))
         return [PageResult(1, text, conf, self.name, words)]
 
     def mirrored_reading(self, image_path: Path) -> PageResult:
@@ -196,24 +234,53 @@ class TesseractEngine:
         """
         if not self.exe:
             raise TesseractNotFound(self.missing_help())
-        turn, size, (text, words, conf) = self._read_oriented(image_path)
-        if len(words) < FEW_WORDS:
+        turn, size, lines = self._read_oriented(image_path)
+        if _count(lines) < FEW_WORDS:
             again = self._read_oriented(image_path, ADAPTIVE)
-            if len(again[2][1]) > len(words):
-                turn, size, (text, words, conf) = again
+            if _count(again[2]) > _count(lines):
+                turn, size, lines = again
         if turn == 180 and size:
             w, h = size
-            words = [
-                wd | {"bbox": [w - x - bw, h - y - bh, bw, bh]}
-                for wd in words
-                for x, y, bw, bh in [wd["bbox"]]
+            lines = [
+                (
+                    par,
+                    [
+                        wd | {"bbox": [w - x - bw, h - y - bh, bw, bh]}
+                        for wd in ws
+                        for x, y, bw, bh in [wd["bbox"]]
+                    ],
+                )
+                for par, ws in lines
             ]
         elif turn:
             return turn, None
+        text, words, conf = joined(self._with_numbers(image_path, lines, turn))
         return turn, PageResult(1, text, conf, self.name, words)
 
-    def _read(self, image_path: Path, extra: list[str] | None = None):
-        return parse_tsv(self._run(image_path, "stdout", (extra or []) + ["tsv"]))
+    def _with_numbers(self, image_path: Path, lines: Lines, turn: int) -> Lines:
+        """The reading, with the page numbers its margins hold read again on their own
+        (margins.py). `turn`: degrees clockwise that put the page upright, as it was read. A
+        page that can't be opened here is read as it was."""
+        try:
+            with Image.open(image_path) as img:
+                gray = img.convert("L")
+        except OSError:
+            return lines
+        if turn:
+            gray = gray.rotate(-turn, expand=True)
+        marks = margins.find(gray, [w for _, ws in lines for w in ws])
+        if not marks:
+            return lines
+        sheet, rows = margins.sheet(gray, marks)
+        with tempfile.TemporaryDirectory(prefix=WORK_PREFIX, ignore_cleanup_errors=True) as d:
+            path = Path(d) / "margins.png"
+            sheet.save(path, dpi=(300, 300))
+            read = tsv_lines(self._run(path, "stdout", ["--psm", "6", *DIGITS, "tsv"]))
+        found = margins.numbers(marks, rows, [w for _, ws in read for w in ws])
+        return with_numbers(lines, found)
+
+    def _read(self, image_path: Path, extra: list[str] | None = None) -> Lines:
+        return tsv_lines(self._run(image_path, "stdout", (extra or []) + ["tsv"]))
 
     def _read_oriented(self, image_path: Path, extra: list[str] | None = None):
         """One --psm 1 run: (turn, page size, parsed TSV). TSV and hOCR can't both go to
@@ -224,7 +291,7 @@ class TesseractEngine:
             tsv = out.with_suffix(".tsv").read_text(encoding="utf-8", errors="replace")
             hocr = out.with_suffix(".hocr").read_text(encoding="utf-8", errors="replace")
         turn, size = parse_hocr_turn(hocr)
-        return turn, size, parse_tsv(tsv)
+        return turn, size, tsv_lines(tsv)
 
     def _run(self, image_path: Path, output: str, args: list[str]) -> str:
         run = subprocess.run(

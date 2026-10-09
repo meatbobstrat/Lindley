@@ -126,6 +126,12 @@ def test_a_clear_number_beside_a_doubtful_one_is_the_page_number():
     assert page(words).marker == (95, None)
 
 
+def test_the_same_number_twice_on_a_row_is_the_page_number():
+    # Typed, and copied beside it in pencil: both read as 3
+    words = [w("3", 1250, 200, 96), w("3", 1700, 200, 88)] + body("The mine was sold in May.")
+    assert page(words).marker == (3, None) and page(words).marker_sure
+
+
 def test_a_byline_starts_a_document():
     c = page_clues("By Lindley C.Branson\nThey had adventures in the rough in the old days.")
     assert c.starts_doc and "By Lindley" in c.starts_doc

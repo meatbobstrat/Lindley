@@ -542,14 +542,35 @@ def test_file_numbers_count_only_within_one_folder():
     assert [p.id for p in scan_order([other, third, second, first])] == [1, 2, 4, 3]
 
 
+UNNUMBERED = "The corn is in and the wheat looks better than it did last year."
+
+
+def numbered(*numbers):
+    """Pages with nothing else to order them by, each with its page number read clearly, or
+    none."""
+    pages = [Page(i, i, f"scan_{i:04d}.jpg", UNNUMBERED) for i in range(1, len(numbers) + 1)]
+    for p, n in zip(pages, numbers, strict=True):
+        if n:
+            p.clues.marker, p.clues.marker_sure = (n, None), True
+    return pages
+
+
 def test_a_doubtful_page_number_doesnt_move_a_page():
     from lindley.assembler.segment import order
 
-    stream = [Page(i, i, f"scan_{i:04d}.jpg", LETTER[1]) for i in (1, 2, 3)]
-    stream[0].clues.marker, stream[0].clues.marker_sure = (9, None), False
+    stream = numbered(9, 2, 3)
+    stream[0].clues.marker_sure = False
     assert [p.id for p in order(stream)[0]] == [1, 2, 3]
     stream[0].clues.marker_sure = True
     assert [p.id for p in order(stream)[0]] == [2, 3, 1]
+
+
+def test_page_numbers_two_pages_share_dont_move_a_page():
+    from lindley.assembler.segment import order
+
+    assert [p.id for p in order(numbered(None, 2, 1, None))[0]] == [1, 3, 4, 2]
+    # Two numberings, say a story's and a bundle's: page 2 twice
+    assert [p.id for p in order(numbered(None, 2, 1, 2))[0]] == [1, 2, 3, 4]
 
 
 def test_a_gap_in_the_page_numbers_says_which_page_is_missing():

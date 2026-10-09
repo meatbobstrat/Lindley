@@ -130,6 +130,11 @@ def _marker_from_words(words: list[dict], height: int) -> Marker | None:
             for w in row
             if (n := read_number(w["text"])) and w.get("conf", 100) >= MARKER_MIN_CONF
         ]
+        # The same number twice, typed and copied in pencil beside it: the one read best
+        if len(numbers) > 1 and len({n for (n, _), _ in numbers}) == 1:
+            best = max(numbers, key=lambda x: x[1].get("conf", 100))
+            writing = [w for w in writing if read_number(w["text"]) is None or w is best[1]]
+            numbers = [best]
         # A clear number beside doubtful ones: "95" read at 94% next to a "25" at 51%
         clear = [x for x in numbers if x[1].get("conf", 100) >= 80]
         if (

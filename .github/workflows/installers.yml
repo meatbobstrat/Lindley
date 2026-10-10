@@ -16,13 +16,13 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Build the frontend into the package
@@ -50,7 +50,7 @@ jobs:
         run: |
           ./tesseract/tesseract.exe --version | head -1
           "$GITHUB_WORKSPACE/.github/smoke.sh" ./Lindley.exe
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: lindley-windows
           path: backend/dist/*.msi
@@ -58,13 +58,13 @@ jobs:
   ubuntu:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Build the frontend into the package
@@ -85,7 +85,7 @@ jobs:
             tesseract --version | head -1
             PORT=$0 .github/smoke.sh lindley
           ' "$PORT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: lindley-ubuntu
           path: backend/dist/*.deb
@@ -93,13 +93,13 @@ jobs:
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Build the frontend into the package
@@ -114,7 +114,7 @@ jobs:
       - name: Start it, and quit it
         working-directory: backend
         run: ../.github/smoke.sh build/lindley/macos/app/Lindley.app/Contents/MacOS/Lindley
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: lindley-mac
           path: backend/dist/*.dmg

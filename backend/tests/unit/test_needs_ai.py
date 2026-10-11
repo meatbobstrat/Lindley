@@ -439,3 +439,28 @@ def test_the_status_bar_counts_the_questions_while_a_person_s_sort_runs(client, 
         gate.set()
         assert client.app.state.ai_work.wait_idle()
     assert client.get("/api/overview").json()["ai"]["working"] == []
+
+
+def test_stopping_drops_the_work_still_queued(settings):
+    """Lindley is closing: the job in hand finishes, and nothing queued behind it is sent."""
+    from lindley.worker.ai_work import AiWork
+
+    work, started, go, done = AiWork(lambda: settings), threading.Event(), threading.Event(), []
+
+    def do(job):
+        started.set()
+        go.wait(5)
+        done.append(job.pages)
+
+    with patch.object(work, "_do", do):
+        work.read([1])
+        assert started.wait(5)
+        work.read([2])
+        work.sort([3])
+        assert work.pages() == {1, 2, 3}
+        work.stop()
+        assert work.pages() == {1} and work.waiting() == []
+        go.set()
+        assert work.wait_idle()
+        work._thread.join(5)
+    assert done == [[1]] and work.pages() == set() and not work._thread.is_alive()

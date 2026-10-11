@@ -131,7 +131,18 @@ class AiWork:
     def stop(self) -> None:
         """Stop after the job in hand; the rest of the queue is dropped (its pages still wait
         in Needs AI)."""
-        self._queue.put(None)
+        with self._lock:
+            while True:
+                try:
+                    job = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                if job is not None:
+                    for p in job.pages:
+                        self._held.pop(p, None)
+                    self._jobs.remove(job)
+                    job.done.set()
+            self._queue.put(None)
 
     # ------------------------------------------------------------ the work
 

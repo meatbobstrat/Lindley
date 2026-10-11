@@ -7,6 +7,9 @@ server's address is only known once it's running, so it's started when the first
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 import httpx2
 import openai
 
@@ -69,6 +72,20 @@ class Provider(OpenAIChat):
                 http_client=self._http or _fresh_connections(),
             )
         return self._client
+
+    @contextmanager
+    def _errors(self) -> Iterator[None]:
+        """As any OpenAI-compatible server's, but a server that can't be reached is asked for
+        afresh next time: it may have stopped, or started again at another port (a model
+        downloaded since, or graphics that failed), and this provider may be kept a long while
+        (the watcher's)."""
+        try:
+            with super()._errors():
+                yield
+        except ProviderError as e:
+            if not e.answered:
+                self._client = None
+            raise
 
     def check(self) -> str:
         """Whether this model and the engine are downloaded. The server isn't started: it

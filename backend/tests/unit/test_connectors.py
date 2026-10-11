@@ -824,6 +824,21 @@ def test_builtin_starts_the_server_and_turns_thinking_off(running):
     assert p.client.timeout == 600
 
 
+def test_builtin_asks_for_the_server_again_once_it_cant_be_reached(running):
+    """It may have stopped, or started again at another port: a provider kept a long while (the
+    watcher's) mustn't keep calling an address that's gone."""
+    from lindley.providers.connectors import builtin
+
+    server = Server(completion("Dear Sister,"), down, completion("Dear Brother,"))
+    p = make(builtin, server, key=None)
+    assert p.chat(TALK) == "Dear Sister,"
+    assert running.asked == ["gemma-4-e4b"]
+    with pytest.raises(ProviderError, match="Couldn't reach Lindley's own AI"):
+        p.chat(TALK)
+    assert p.chat(TALK) == "Dear Brother,"
+    assert running.asked == ["gemma-4-e4b", "gemma-4-e4b"]
+
+
 def test_builtin_streams_with_thinking_on(running):
     from lindley.providers.connectors import builtin
 

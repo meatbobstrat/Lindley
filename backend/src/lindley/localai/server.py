@@ -138,22 +138,26 @@ class LocalServer:
         if self._command is not None and not self._command_loads:
             self._loaded.add(model)
             return
-        with httpx2.Client(timeout=10) as client:
-            client.post(f"{base}/models/load", json={"model": model})
-            deadline = time.monotonic() + LOAD_S
-            while time.monotonic() < deadline:
-                if self._stopping.is_set():
-                    raise ProviderError(f"Lindley's own AI stopped while {label} was loading")
-                found = [m for m in client.get(f"{base}/models").json()["data"] if m["id"] == model]
-                status = found[0]["status"] if found else {}
-                if status.get("value") == "loaded":
-                    self._loaded.add(model)
-                    return
-                if status.get("failed"):
-                    break
-                self._stopping.wait(0.5)
-            else:
-                raise ProviderError(f"{label} didn't load in {LOAD_S // 60} minutes")
+        try:
+            with httpx2.Client(timeout=10) as client:
+                client.post(f"{base}/models/load", json={"model": model})
+                deadline = time.monotonic() + LOAD_S
+                while time.monotonic() < deadline:
+                    if self._stopping.is_set():
+                        raise ProviderError(f"Lindley's own AI stopped while {label} was loading")
+                    models = client.get(f"{base}/models").json()["data"]
+                    found = [m for m in models if m["id"] == model]
+                    status = found[0]["status"] if found else {}
+                    if status.get("value") == "loaded":
+                        self._loaded.add(model)
+                        return
+                    if status.get("failed"):
+                        break
+                    self._stopping.wait(0.5)
+                else:
+                    raise ProviderError(f"{label} didn't load in {LOAD_S // 60} minutes")
+        except httpx2.HTTPError as e:  # it stopped, or didn't answer: the next call tries again
+            raise ProviderError(f"Lindley's own AI stopped answering as {label} loaded") from e
         if self.local.device is None and not self.on_processor:
             log.warning("%s didn't load on the graphics, so it runs on the processor", label)
             self.on_processor = True

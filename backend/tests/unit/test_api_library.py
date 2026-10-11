@@ -245,15 +245,23 @@ def test_a_change_that_changes_nothing_has_nothing_to_undo(client, settings, tmp
     conn = db(client, settings)
     d = document(conn)
     a = add_page(conn, tmp_path, "one", d, 0)
+    loose = add_page(conn, tmp_path, "two")
     folder = client.post("/api/folders", json={"name": "Deeds"}).json()["folder_id"]
     client.patch(f"/api/documents/{d}", json={"name": "Letter from Will"})  # now the person's
+    client.put(f"/api/pages/{loose}/text", json={})  # checked
     same = [
         client.post("/api/pages/move", json={"page_ids": [a], "to": "document", "document_id": d}),
         client.put(f"/api/documents/{d}/order", json={"page_ids": [a]}),
         client.patch(f"/api/documents/{d}", json={"name": "Letter from Will"}),
         client.patch(f"/api/folders/{folder}", json={"name": "Deeds"}),
+        client.post("/api/pages/move", json={"page_ids": [loose], "to": "inbox"}),
+        client.put(f"/api/pages/{loose}/text", json={}),
+        client.put(f"/api/pages/{loose}/text", json={"text": "two"}),
     ]
-    assert [r.json()["undo"] for r in same] == [None] * 4
+    assert [r.json()["undo"] for r in same] == [None] * 7
+    aside = client.post("/api/pages/move", json={"page_ids": [loose], "to": "aside"}).json()
+    again = client.post("/api/pages/move", json={"page_ids": [loose], "to": "aside"}).json()
+    assert aside["undo"] is not None and again["undo"] is None
     # So the next change's undo is its own
     moved = client.post("/api/pages/move", json={"page_ids": [a], "to": "aside"}).json()
     undo(client, moved)

@@ -43,8 +43,15 @@ def move_page(
     aside: bool,
     action: str,
 ) -> None:
-    """Put a page in a document at `position`, in the Inbox, or Set aside, recording it."""
+    """Put a page in a document at `position`, in the Inbox, or Set aside, recording it. A page
+    already there isn't touched, and nothing is recorded: there's nothing to undo."""
     before = history.place(conn, page_id)
+    if (before["document_id"], before["position"], before["set_aside_at"] is not None) == (
+        document_id,
+        position,
+        bool(aside),
+    ):
+        return
     conn.execute(
         "UPDATE pages SET document_id = ?, position = ?,"
         " set_aside_at = CASE WHEN ? THEN coalesce(set_aside_at, datetime('now')) END,"
@@ -382,12 +389,15 @@ def check_text(conn: sqlite3.Connection, page_id: int, text: str | None = None) 
             text = text.strip()
         if cur is None and not text:
             raise ValueError("This page hasn't been read yet, so there's no text to check")
+        unchanged = text is None or (cur is not None and text == cur["text"])
+        if unchanged and cur["confirmed_at"] is not None:
+            return Change(None)  # checked already: nothing to undo
         change = Change(history.new_batch(conn))
         before = {
             "current": cur["id"] if cur else None,
             "confirmed_at": cur and cur["confirmed_at"],
         }
-        if text is None or (cur is not None and text == cur["text"]):
+        if unchanged:
             conn.execute(
                 "UPDATE transcriptions SET confirmed_at = coalesce(confirmed_at, datetime('now'))"
                 " WHERE id = ?",

@@ -118,7 +118,10 @@ def get_duplicate_set(set_id: int, conn: Conn) -> dict:
 
 @router.post("/keep-document")
 def keep_document(body: KeepDocumentRequest, conn: Conn) -> dict:
-    d = resolve.keep_document(conn, body.keep, body.other)
+    try:
+        d = resolve.keep_document(conn, body.keep, body.other)
+    except ValueError as e:  # one of them is completed
+        raise HTTPException(400, str(e)) from e
     if not d.sets:
         raise HTTPException(404, "Those two documents don't share any open duplicates")
     return {"sets": d.sets, "set_aside": d.set_aside, "undo": d.batch}

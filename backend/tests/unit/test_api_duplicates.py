@@ -119,6 +119,17 @@ def test_a_document_scanned_twice(client, settings, tmp_path):
     )
 
 
+def test_a_completed_document_scanned_twice_is_left_until_its_reopened(client, settings, tmp_path):
+    conn = db(client, settings)
+    d1 = conn.execute("INSERT INTO documents (name) VALUES ('Letter')").lastrowid
+    d2 = conn.execute("INSERT INTO documents (name, status) VALUES ('Again', 'complete')").lastrowid
+    first = add_page(conn, tmp_path, "page 0", d1, 0)
+    pair(conn, first, add_page(conn, tmp_path, "page 0", d2, 0))
+    r = client.post("/api/duplicates/keep-document", json={"keep": d1, "other": d2})
+    assert r.status_code == 400 and "“Again” is completed" in r.json()["detail"]
+    assert client.get("/api/duplicates").json()["count"] == 1  # nothing was changed
+
+
 def test_page_images_come_upright_and_reduced(client, settings, tmp_path):
     conn = db(client, settings)
     sideways = add_page(conn, tmp_path, "x", size=(1200, 1600), rotation=90)

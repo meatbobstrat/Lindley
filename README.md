@@ -537,6 +537,15 @@ and you can ask it about them. All of it from a one-click install.
   with a folder it can't find; Lindley's own AI works whenever it's needed out of the box (it sends
   nothing and costs nothing); stopping it doesn't wait for a model to load; downloading again
   straight after Cancel works; a model the connection names counts as in use
+- [x] Reviewed again (October 11, 2026), code and tests, and what was found fixed: Lindley's own
+  AI is asked for afresh once it can't be reached, so a server started again at another port
+  (a model downloaded since, graphics that failed, or one that stopped) no longer leaves the
+  watcher's calls failing until Lindley restarts; a change of nothing (pages moved to where they
+  are, text checked again) has nothing to undo; keeping one of two duplicate documents when one
+  is completed says to reopen it, rather than failing; stopping Lindley drops the AI work still
+  queued, rather than sending it as Lindley closes. Still to decide: whether a document waits to
+  export for its scan or only its own pages, how a scan that failed part way shows the pages it
+  did read, and whether undoing the text typed for an unread page should leave its scan unread
 - [ ] Tried by hand on a clean computer of each kind: install, first-run setup, scans read and
   sorted, a PDF made, a question answered, then uninstall ([design/hand-tests.md](design/hand-tests.md)):
   - [x] Ubuntu 26.04, on a 2019 laptop with 7 GB (October 8, Low tier): installing, Setup,
@@ -566,6 +575,49 @@ and you can ask it about them. All of it from a one-click install.
   - zoom and pan on page images
   - next and previous in a document or scan, without going back to the Inbox
   - say that an exported PDF's text is invisible over the scan, ready to search and select
+  - final polish, touch screens: every control big enough for a finger and reachable without
+    hovering (tooltips, right-click menus), pinch to zoom page images, and dragging (the
+    toolbar, the Ask Lindley window, pages) that ends cleanly when the browser cancels a touch
+    (`pointercancel`), which today can leave the window "dragging"
+
+### Security
+
+Lindley has kept private pages private by design (Lindley's own AI and Tesseract send nothing;
+a cloud AI only with a key a person adds), but hasn't had a security pass of its own. Before it's
+offered to anyone else, look at each of these and decide what to do:
+
+- [ ] Who can reach the app. It has no login: anyone who can reach its port can read and change
+  the archive. Today it listens on 127.0.0.1 only, and answers only to its own names (a guard
+  against DNS rebinding); but listening on IPv6's own address (`--host ::1`) turns that guard off,
+  as only `127.x` and `localhost` are recognised. Listening on a network (`--host 0.0.0.0`)
+  needs a login, or a clear warning. A second person signed in to the same computer reaches the
+  first person's Lindley on port 8765 (see After the MVP, installing for everyone)
+- [ ] Other programs and web pages on the same computer. Changes from another site's pages are
+  refused (`FromLindleyOnly`), but requests with no Origin (any program) are allowed, reading is
+  open to any page that can get round the browser's same-origin rules, and the dev server's
+  origins (`localhost:5173`) are allowed in the installed app too: only in development
+- [ ] Headers: stop other sites showing Lindley in a frame (clickjacking: a click on their page
+  landing on Lindley's buttons), with `frame-ancestors 'none'` or `X-Frame-Options: DENY`; a
+  Content Security Policy; `X-Content-Type-Options: nosniff`
+- [ ] Files a person adds or drops in: a size limit on Add scans… uploads, and a look at what a
+  hostile PDF or image could do (PDFium and Pillow read them; Pillow already refuses a picture too
+  big to open safely). Keep both up to date
+- [ ] Dependencies: `pip-audit` and `npm audit` in CI, and Dependabot (or similar) for updates
+- [ ] What's sent to a cloud AI, said plainly where it's chosen: page images and text, with
+  questions; each company's retention and training terms (Google's calls already ask it not to
+  store them)
+- [ ] Text on the pages talking to the AI (prompt injection): a scanned page could hold
+  instructions for Ask Lindley's AI. No connector gives the AI tools, so it can only mislead an
+  answer; keep it that way, or design for it before tools are added
+- [ ] Keys and logs: API keys stay in the system's credential store; check no key, and no page
+  text sent to an AI, ends up in a log or an error shown in the UI
+- [ ] What Lindley downloads: the engine and models are pinned and checked against their SHA-256
+  before use; the engine's zip is unpacked by Python's `zipfile`, which keeps files inside the
+  folder; review when the catalog changes
+- [ ] The archive at rest: the database, scans and PDFs are plain files in the user's folders.
+  Whether to offer encryption, or say how to back them up and keep them safe
+- [ ] Installers: sign the Windows MSI and the Mac app (the Mac app is unsigned today), so a
+  person can tell the download is Lindley's
 
 ### After the MVP
 

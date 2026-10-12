@@ -579,6 +579,15 @@ and you can ask it about them. All of it from a one-click install.
     hovering (tooltips, right-click menus), pinch to zoom page images, and dragging (the
     toolbar, the Ask Lindley window, pages) that ends cleanly when the browser cancels a touch
     (`pointercancel`), which today can leave the window "dragging"
+- [ ] The frontend, tested and trimmed:
+  - tests of its logic with Vitest (it has none today; lint and the type check are all that
+    run): the parser that reads Ask Lindley's answer as it streams (`ask` in `api/client.ts`),
+    `useApi` and `invalidate` fetching again after a change, and `withTier`
+    (`lib/tiers.ts`), which must set the jobs as the backend's `tiers.py` does
+  - screens people rarely open (Settings, Setup) loaded only when they're opened
+    (`React.lazy`), then the build's size warning set just above what's left, on purpose. The
+    app is one 515 kB file today; served from this computer that costs little, but it keeps
+    the first view quick, and matters if Lindley ever runs as a web service
 
 ### Security
 

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 # Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}, or a function
 # given the connection.
@@ -36,6 +37,7 @@ MIGRATIONS: dict[int, str | Callable[[sqlite3.Connection], None]] = {
     14: "",  # new tables only (chats, chat_messages)
     15: lambda conn: _continues(conn),
     16: lambda conn: _originals(conn),
+    17: lambda conn: _exported(conn),
 }
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.
@@ -158,6 +160,40 @@ def _originals(conn: sqlite3.Connection) -> None:
         "UPDATE scans SET original_path = library_path, original_state = 'held'"
         " WHERE import_mode = 'move' AND original_path IS NULL"
     )
+
+
+def _exported(conn: sqlite3.Connection) -> None:
+    """v17: completing a document and exporting it are two steps, so a document can be
+    exported (status 'exported'); an export records the originals it gave back. SQLite can't
+    change a CHECK, so documents is made again from schema.sql and what it held copied over.
+    Other tables refer to it by name, so they're left as they are."""
+    tables = _tables(conn)
+    has = {r[1] for r in conn.execute("PRAGMA table_info(exports)")}
+    if "exports" in tables and "originals" not in has:
+        conn.execute("ALTER TABLE exports ADD COLUMN originals TEXT")
+    if "documents" not in tables:
+        return
+    made = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'documents'").fetchone()[0]
+    if "'exported'" in made:
+        return
+    table = re.search(r"CREATE TABLE IF NOT EXISTS documents \(.*?\n\);", _schema(), re.DOTALL)
+    columns = ", ".join(r[1] for r in conn.execute("PRAGMA table_info(documents)"))
+    conn.commit()  # foreign keys can only be turned off outside a transaction
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("BEGIN")
+        conn.execute(table.group(0).replace("IF NOT EXISTS documents", "documents_v17", 1))
+        conn.execute(f"INSERT INTO documents_v17 ({columns}) SELECT {columns} FROM documents")
+        conn.execute("DROP TABLE documents")
+        conn.execute("ALTER TABLE documents_v17 RENAME TO documents")
+        if conn.execute("PRAGMA foreign_key_check").fetchone():
+            raise RuntimeError("Upgrading the documents table left a page without its document")
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
 
 
 def _drop_placeholder(conn: sqlite3.Connection) -> None:

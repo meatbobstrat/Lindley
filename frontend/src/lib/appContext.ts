@@ -38,5 +38,5 @@ export function useLooking(label: string, scope: Scope = {}) {
 
 /** Where a document lives, in words: its folder path, or In progress or Completed. */
 export function docHome(d: Pick<DocSummary, 'folder_id' | 'status'>, folderPath: (id: number | null) => string[]): string {
-  return d.folder_id != null ? `In ${folderPath(d.folder_id).join(' › ')}` : d.status === 'complete' ? 'Completed' : 'In progress'
+  return d.folder_id != null ? `In ${folderPath(d.folder_id).join(' › ')}` : d.status !== 'progress' ? 'Completed' : 'In progress'
 }

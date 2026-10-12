@@ -157,7 +157,7 @@ def _refuse_if_complete(conn: sqlite3.Connection, doc_ids: object) -> None:
     """A completed document is changed only once it's reopened, by undo too."""
     for doc_id in {d for d in doc_ids if d is not None}:
         r = conn.execute(
-            "SELECT name FROM documents WHERE id = ? AND status = 'complete'", (doc_id,)
+            "SELECT name FROM documents WHERE id = ? AND status != 'progress'", (doc_id,)
         ).fetchone()
         if r:
             raise UndoError(f"“{r[0]}” is completed. Reopen it to undo this.")

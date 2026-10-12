@@ -263,7 +263,7 @@ def document(conn: sqlite3.Connection, doc_id: int, review_below: float) -> dict
         return None
     progress = document_progress(conn, doc_id, review_below)
     export = conn.execute(
-        "SELECT pdf_path, exported_at FROM exports WHERE document_id = ?"
+        "SELECT pdf_path, exported_at, originals FROM exports WHERE document_id = ?"
         " ORDER BY exported_at DESC, id DESC LIMIT 1",
         (doc_id,),
     ).fetchone()
@@ -292,6 +292,8 @@ def document(conn: sqlite3.Connection, doc_id: int, review_below: float) -> dict
         and {
             "file_name": export["pdf_path"].replace("\\", "/").rsplit("/", 1)[-1],
             "exported_at": export["exported_at"],
+            "pdf_path": export["pdf_path"],
+            "originals": len(json.loads(export["originals"] or "[]")),
         },
         "inbox_hints": hinted,
     }

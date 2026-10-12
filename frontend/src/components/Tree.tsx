@@ -44,7 +44,7 @@ export function Tree({ onGo }: { onGo: () => void }) {
     if (d.kind === 'doc' && path === `/documents/${d.id}`) return false
     if (d.kind === 'inbox' && path === '/inbox') return false
     if (d.kind === 'aside' && path === '/aside') return false
-    if (d.kind === 'doc' && docs.get(d.id)?.status === 'complete') return false
+    if (d.kind === 'doc' && docs.get(d.id)?.status !== 'progress') return false
     e.preventDefault()
     return true
   }
@@ -77,7 +77,7 @@ export function Tree({ onGo }: { onGo: () => void }) {
     docs.forEach((d) => {
       if (d.folder_id !== fid) return
       st.docs++
-      if (d.status === 'complete') st.complete++
+      if (d.status !== 'progress') st.complete++
       else {
         st.progress++
         if (d.ready) st.ready++
@@ -126,7 +126,7 @@ export function Tree({ onGo }: { onGo: () => void }) {
     ) : null
 
   const docItem = (d: DocSummary, depth = 0) => {
-    const done = d.status === 'complete'
+    const done = d.status !== 'progress'
     const key = `doc:${d.id}`
     const active = on(`/documents/${d.id}`)
     return (
@@ -146,7 +146,7 @@ export function Tree({ onGo }: { onGo: () => void }) {
         {...(done ? {} : dropProps(key, { kind: 'doc', id: d.id }))}
         data-tip={`${d.name}${d.suggested ? ' (name suggested by Lindley)' : ''}. ${plural(d.pages, 'page')}${
           d.to_review ? `, ${d.to_review} to review` : ''
-        }${d.ready ? '. Lindley thinks it’s ready to export' : ''}. Drag it onto a folder to file it.`}
+        }${d.ready && !done ? '. Lindley thinks it’s complete' : ''}${d.status === 'complete' ? '. Completed, not exported yet' : ''}. Drag it onto a folder to file it.`}
       >
         <Icon name={done ? 'checkc' : 'doc'} />
         <span className="t-txt">
@@ -158,11 +158,12 @@ export function Tree({ onGo }: { onGo: () => void }) {
             flag(d.to_review),
             aiFlag(d.needs_ai),
             d.ready && !done ? (
-              <span key="ready" className="t-ready" data-tip="Lindley thinks this document is complete and ready to export">
+              <span key="ready" className="t-ready" data-tip="Lindley thinks this document is complete: look it over and mark it complete">
                 Ready
               </span>
             ) : null,
-            done ? <span key="done">Completed {when(d.exported_at, false)}</span> : null,
+            d.status === 'exported' ? <span key="done">Exported {when(d.exported_at, false)}</span> : null,
+            d.status === 'complete' ? <span key="done">Completed, not exported</span> : null,
             <span key="pages">{plural(d.pages, 'page')}</span>,
           ])}
         </span>
@@ -177,7 +178,7 @@ export function Tree({ onGo }: { onGo: () => void }) {
     const active = on(`/folders/${f.id}`)
     const summary = [
       plural(st.docs, 'document'),
-      st.progress ? `${st.progress} in progress${st.ready ? ` (${st.ready} ready to export)` : ''}` : '',
+      st.progress ? `${st.progress} in progress${st.ready ? ` (${st.ready} ready to complete)` : ''}` : '',
       st.complete ? `${st.complete} completed` : '',
       st.review ? `${plural(st.review, 'page')} to review` : '',
     ]
@@ -230,7 +231,8 @@ export function Tree({ onGo }: { onGo: () => void }) {
 
   const all = [...docs.values()]
   const prog = all.filter((d) => d.status === 'progress' && d.folder_id == null)
-  const done = all.filter((d) => d.status === 'complete' && d.folder_id == null)
+  const done = all.filter((d) => d.status !== 'progress' && d.folder_id == null)
+  const toExport = all.filter((d) => d.status === 'complete')
   const roots = [...folders.values()].filter((f) => f.parent_id == null)
   const count = (n: number | undefined, strong: boolean, what: string) => (
     <span className={`count${strong ? ' strong' : ''}`}>
@@ -295,8 +297,15 @@ export function Tree({ onGo }: { onGo: () => void }) {
         'complete',
         'Completed',
         done.length,
-        done.length ? done.map((d) => docItem(d)) : <p className="count" style={{ padding: '4px 12px' }}>Nothing here</p>,
-        'Documents exported as searchable PDFs, not in a folder of yours.',
+        <>
+          {toExport.length > 1 && (
+            <button className="t-add" onClick={() => acts.exportDocs(toExport)} data-tip="Export every document you’ve marked complete, wherever it’s filed">
+              <Icon name="pdf" /> Export {plural(toExport.length, 'completed document')}
+            </button>
+          )}
+          {done.length ? done.map((d) => docItem(d)) : <p className="count" style={{ padding: '4px 12px' }}>Nothing here</p>}
+        </>,
+        'Documents you marked complete, not in a folder of yours: each is exported, or ready to export.',
         true,
       )}
       <button
@@ -331,7 +340,7 @@ export function Tree({ onGo }: { onGo: () => void }) {
           <Mark /> Scans that need an AI to look at them
         </span>
         <span>
-          <Icon name="checkc" /> Completed and exported
+          <Icon name="checkc" /> Completed
         </span>
         <span>
           <i>Italic names</i> were suggested by Lindley

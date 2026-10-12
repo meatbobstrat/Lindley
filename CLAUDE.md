@@ -61,7 +61,9 @@
   - `duplicates/`: `detect.py` (pages scanned twice, found by text), `resolve.py` (keep a copy or
     document, not duplicates). API in `api/duplicates.py`; page images in `api/pages.py`
   - `export/`: searchable PDFs. `textlayer.py` (word boxes; other readings aligned to Tesseract's),
-    `pdf.py` (fpdf2, invisible text), `document.py` (Exports folder, status, `exports` row).
+    `pdf.py` (fpdf2, invisible text), `document.py` (`complete_document`, then `export_document`
+    into `output_dir`: the PDF, or in move mode a folder with the PDF and the held originals;
+    documents.status progress → complete → exported; `exports` row).
     API in `api/documents.py`; `scripts/export.py` exports from the command line
   - `browse.py`: what the UI shows (pages with a `state`, documents, folders, review queue,
     counts); `organise.py`: a person's changes (move, reorder, rotate, flip, new document, rename,

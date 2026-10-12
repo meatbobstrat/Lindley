@@ -468,9 +468,10 @@ def test_document_progress(conn):
         "dated": False,
         "typed": False,
         "ordered": True,
+        "completed": False,
         "exported": False,
     }
-    assert prog.done == 2 and prog.total == 8 and not prog.ready
+    assert prog.done == 2 and prog.total == 9 and not prog.ready
 
     # Raising the threshold flags more pages.
     def detail(t):
@@ -518,5 +519,45 @@ def test_v15_database_says_where_each_original_is(tmp_path):
         ("b", "/lib/b.jpg", "held"),  # move mode deleted it: Lindley's copy is the original now
         ("c", None, "in_place"),  # added from the person's computer
     ]
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    c.close()
+
+
+def test_v16_database_can_mark_documents_exported(tmp_path):
+    db = tmp_path / "lindley.db"
+    init_db(db)
+    c = sqlite3.connect(db)
+    c.execute("PRAGMA foreign_keys = OFF")
+    # As v16 made them: a document is in progress or complete, an export has no originals
+    c.executescript(
+        "DROP TABLE documents; ALTER TABLE exports DROP COLUMN originals;"
+        "CREATE TABLE documents (id INTEGER PRIMARY KEY, name TEXT NOT NULL, name_source TEXT"
+        " NOT NULL DEFAULT 'lindley', origin TEXT NOT NULL DEFAULT 'lindley', status TEXT NOT"
+        " NULL DEFAULT 'progress' CHECK (status IN ('progress', 'complete')), folder_id INTEGER"
+        " REFERENCES folders(id), doc_type TEXT, doc_date TEXT, date_source TEXT,"
+        " grouping_confidence REAL, reasons TEXT, summary TEXT, created_at TEXT NOT NULL DEFAULT"
+        " (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));"
+        "INSERT INTO documents (id, name, status) VALUES (7, 'Letter', 'complete');"
+        "INSERT INTO scans (sha256, original_name, source_path, origin, import_mode)"
+        " VALUES ('h', 'a.jpg', 'a.jpg', 'watched', 'copy');"
+        "INSERT INTO pages (scan_id, document_id, position) VALUES (1, 7, 0);"
+        "PRAGMA user_version = 16;"
+    )
+    c.close()
+    init_db(db)
+    c = connect(db)
+    assert tuple(c.execute("SELECT id, name, status FROM documents").fetchone()) == (
+        7,
+        "Letter",
+        "complete",
+    )
+    c.execute("UPDATE documents SET status = 'exported'")
+    c.execute(
+        "INSERT INTO exports (document_id, pdf_path, page_ids, originals)"
+        " VALUES (7, 'x.pdf', '[1]', '[]')"
+    )
+    with pytest.raises(sqlite3.IntegrityError):  # pages still need their document
+        c.execute("DELETE FROM documents")
+    assert c.execute("PRAGMA foreign_key_check").fetchall() == []
     assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     c.close()

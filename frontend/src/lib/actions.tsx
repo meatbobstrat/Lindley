@@ -2,7 +2,7 @@
 
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { api, type Folder, type Sent } from '../api/client'
+import { api, type Exported, type Folder, type Sent } from '../api/client'
 import { invalidate } from '../api/store'
 import { Modal } from '../ui/feedback'
 import { type MenuItem, useFeedback } from '../ui/feedbackContext'
@@ -13,7 +13,7 @@ import { plural, quoted, sentences, shortName } from './words'
 
 type Dialog =
   | { kind: 'newdoc'; ids: number[]; name: string; lindley: boolean }
-  | { kind: 'export'; doc: { id: number; name: string; pages: number; suggested: boolean; folder_id: number | null }; toReview: number }
+  | { kind: 'complete'; doc: { id: number; name: string; pages: number; suggested: boolean; folder_id: number | null }; toReview: number }
   | { kind: 'details'; doc: { id: number; name: string; doc_type: string | null; doc_date: string | null } }
   | { kind: 'add'; files: File[] }
 
@@ -112,7 +112,20 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
       sortWithAi: (itemId) => {
         run(api.sortWithAi(itemId), sent('sort'))
       },
-      confirmExport: (doc, toReview) => setDialog({ kind: 'export', doc, toReview }),
+      confirmComplete: (doc, toReview) => setDialog({ kind: 'complete', doc, toReview }),
+      exportDocs: (list) => {
+        if (list.length === 1) run(api.exportDocument(list[0].id), (r) => exportedNote(list[0].name, r))
+        else if (list.length)
+          run(api.exportDocuments(list.map((d) => d.id)), (r) =>
+            [
+              r.exported.length ? `Exported ${plural(r.exported.length, 'document')} to ${settings?.output_dir ?? 'your Exported folder'}.` : '',
+              r.exported.some((e) => e.kept.length) ? 'Some original scans stay with Lindley for now: they have pages in other documents.' : '',
+              r.failed.length ? `${plural(r.failed.length, 'document')} couldn’t be exported: ${r.failed[0].error}` : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+          )
+      },
       editDetails: (doc) => setDialog({ kind: 'details', doc }),
       addScans: (files) => {
         if (!files.length) return
@@ -127,7 +140,7 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
           api.updateDocument(doc.id, { folder_id: folderId }),
           to
             ? `Moved ${quoted(shortName(doc.name))} to ${to}.`
-            : `Took ${quoted(shortName(doc.name))} out of ${from}. It’s back under ${doc.status === 'complete' ? 'Completed' : 'In progress'}.`,
+            : `Took ${quoted(shortName(doc.name))} out of ${from}. It’s back under ${doc.status !== 'progress' ? 'Completed' : 'In progress'}.`,
         )
       },
       newFolder: async (parent, docId) => {
@@ -232,7 +245,7 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
     <ActionsCtx.Provider value={value}>
       {children}
       {dialog?.kind === 'newdoc' && <NewDocDialog d={dialog} close={close} />}
-      {dialog?.kind === 'export' && <ExportDialog d={dialog} close={close} />}
+      {dialog?.kind === 'complete' && <CompleteDialog d={dialog} close={close} />}
       {dialog?.kind === 'details' && <DetailsDialog d={dialog} close={close} />}
       {dialog?.kind === 'add' && (
         <AddDialog
@@ -324,26 +337,35 @@ function NewDocDialog({ d, close }: { d: Extract<Dialog, { kind: 'newdoc' }>; cl
   )
 }
 
-function ExportDialog({ d, close }: { d: Extract<Dialog, { kind: 'export' }>; close: () => void }) {
+/** What exporting a document did, in words. */
+function exportedNote(name: string, r: Exported): string {
+  return [
+    r.folder
+      ? `Exported ${quoted(shortName(name))}: ${r.file_name}${r.originals.length ? ` and ${plural(r.originals.length, 'original scan')}` : ''}, in ${r.folder}.`
+      : `Exported ${quoted(shortName(name))} as ${r.pdf_path}.`,
+    r.kept.length ? `${plural(r.kept.length, 'original scan')} ${r.kept.length === 1 ? 'stays' : 'stay'} with Lindley for now: ${r.kept.length === 1 ? 'it has' : 'they have'} pages in other documents too.` : '',
+    r.problems.length ? sentences(r.problems) : '',
+    r.to_review.length ? `${plural(r.to_review.length, 'page')} still waiting for review ${r.to_review.length === 1 ? 'has' : 'have'} Lindley’s best reading.` : '',
+    r.unplaced.length ? `${plural(r.unplaced.length, 'page')} read only by the AI ${r.unplaced.length === 1 ? 'is' : 'are'} searchable, but the text isn’t laid over the writing.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+function CompleteDialog({ d, close }: { d: Extract<Dialog, { kind: 'complete' }>; close: () => void }) {
   const { folders } = useApp()
   const { run } = useFeedback()
   const nav = useNavigate()
   const folder = d.doc.folder_id != null ? folders.get(d.doc.folder_id) : undefined
   const go = () => {
     close()
-    run(api.exportDocument(d.doc.id), (r) => {
-      const notes = [
-        r.to_review.length ? `${plural(r.to_review.length, 'page')} still waiting for review ${r.to_review.length === 1 ? 'has' : 'have'} Lindley’s best reading.` : '',
-        r.unplaced.length ? `${plural(r.unplaced.length, 'page')} read only by the AI ${r.unplaced.length === 1 ? 'is' : 'are'} searchable, but the text isn’t laid over the writing.` : '',
-      ]
-      return `Exported ${quoted(shortName(d.doc.name))} as ${r.file_name}. ${folder ? `It stays in ${folder.name}, marked Completed.` : 'It moved to Completed.'} ${notes.join(' ')}`
-    })
+    run(api.completeDocument(d.doc.id), `Marked ${quoted(shortName(d.doc.name))} complete. ${folder ? `It stays in ${folder.name}.` : 'It moved to Completed.'} Export it whenever you’re ready.`)
   }
   return (
-    <Modal title={`Export ${quoted(d.doc.name)}?`} onClose={close}>
+    <Modal title={`Mark ${quoted(d.doc.name)} complete?`} onClose={close}>
       <p>
-        Lindley will combine the {plural(d.doc.pages, 'page')} in their current order into one searchable PDF, with everything it read from the scans saved inside it.{' '}
-        {folder ? `The document stays in ${folder.name} and is marked Completed.` : 'The document moves to Completed.'}
+        You’re saying the {plural(d.doc.pages, 'page')} are all there, in the right order. Lindley locks the document and leaves it alone.{' '}
+        {folder ? `It stays in ${folder.name}.` : 'It moves to Completed.'} Then export it whenever you’re ready: a searchable PDF, saved with your original scans if Lindley has been keeping them.
       </p>
       {d.toReview > 0 && (
         <div className="rv-state flag">
@@ -352,21 +374,21 @@ function ExportDialog({ d, close }: { d: Extract<Dialog, { kind: 'export' }>; cl
             <b>
               {plural(d.toReview, 'page')} still {d.toReview === 1 ? 'needs' : 'need'} your review.
             </b>{' '}
-            The PDF’s searchable text will use Lindley’s best guess for {d.toReview === 1 ? 'it' : 'them'}.
+            Its searchable text will use Lindley’s best guess for {d.toReview === 1 ? 'it' : 'them'}.
           </div>
         </div>
       )}
       {d.doc.suggested && <p>The name was suggested by Lindley. You can rename it first by clicking the title.</p>}
       <p>You can reopen it later to make changes.</p>
       <div className="actions">
-        <button className="btn" onClick={close} data-tip="Close without exporting">
+        <button className="btn" onClick={close} data-tip="Close without marking it complete">
           Cancel
         </button>
         {d.toReview > 0 && (
           <button
             className="btn"
             autoFocus
-            data-tip="Check the flagged pages first, then come back to export"
+            data-tip="Check the flagged pages first, then come back"
             onClick={() => {
               close()
               nav(`/review/${d.doc.id}`)
@@ -375,8 +397,8 @@ function ExportDialog({ d, close }: { d: Extract<Dialog, { kind: 'export' }>; cl
             Review first
           </button>
         )}
-        <button className="btn primary" autoFocus={!d.toReview} onClick={go} data-tip="Make the searchable PDF in your library’s Exports folder">
-          <Icon name="pdf" /> Export PDF
+        <button className="btn primary" autoFocus={!d.toReview} onClick={go} data-tip="Lock the document, ready to export">
+          <Icon name="checkc" /> Mark complete
         </button>
       </div>
     </Modal>

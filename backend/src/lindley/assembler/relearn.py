@@ -57,7 +57,7 @@ def answer_key(conn: sqlite3.Connection) -> list[list[int]]:
     docs: list[list[int]] = []
     taken: set[int] = set()
     rows = conn.execute(
-        "SELECT d.id FROM documents d WHERE d.origin = 'user' OR d.status = 'complete' OR "
+        "SELECT d.id FROM documents d WHERE d.origin = 'user' OR d.status != 'progress' OR "
         + history.WORKED_ON_SQL
         + " ORDER BY d.id"
     ).fetchall()

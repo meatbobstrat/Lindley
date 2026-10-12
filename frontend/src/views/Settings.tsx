@@ -397,7 +397,7 @@ export function ModeChoices({ ctx, move, set }: { ctx: string; move: boolean; se
         <input type="radio" name={`${ctx}-mode`} checked={move} onChange={() => set(true)} />
         <span>
           <b>Move it into Lindley</b> and empty my scan folder. Handy when the folder is only a drop-off spot for the scanner. Lindley keeps your scan,
-          unchanged, in its library: nothing is deleted.
+          unchanged, and gives it back beside the PDF when you export the document. Nothing is deleted.
         </span>
       </label>
     </fieldset>
@@ -1243,8 +1243,8 @@ function SetLibrary({ d, set }: SetProps) {
   return (
     <>
       <p className="set-p">
-        Lindley’s copies of your scans and the PDFs you export live in its library folder. Its database, of everything it read and every change you made, is a file
-        of its own. Back up both and you’ve backed up everything.
+        Lindley works on its own copies of your scans, in its library folder. Its database, of everything it read and every change you made, is a file of its own.
+        Back up both and you’ve backed up everything. What you export goes to the Exported folder.
       </p>
       <label className="fld" htmlFor="st-lib">
         Library folder
@@ -1253,9 +1253,9 @@ function SetLibrary({ d, set }: SetProps) {
       <ul className="kv-list">
         {(
           [
-            ['scans', 'Lindley’s copies of your scans'],
+            ['scans', 'Lindley’s copies of your scans, to work on'],
             ['pages', 'Each page as an image'],
-            ['Exports', 'PDFs you export'],
+            ['originals', 'Your original scans, unchanged, when Lindley moves them in'],
           ] as const
         ).map(([x, l]) => (
           <li key={x}>
@@ -1263,6 +1263,21 @@ function SetLibrary({ d, set }: SetProps) {
           </li>
         ))}
       </ul>
+      <label className="fld" htmlFor="st-out">
+        Exported folder
+      </label>
+      <input
+        className="fld-in"
+        id="st-out"
+        value={d.output_dir}
+        onChange={(e) => set({ ...d, output_dir: e.target.value })}
+        spellCheck={false}
+        aria-describedby="st-outh"
+      />
+      <p className="fld-note" id="st-outh">
+        Where documents go when you export them. Each PDF goes in this folder. When Lindley has been keeping your original scans (it moves new scans in), each
+        document gets a folder of its own here, with the PDF and those originals.
+      </p>
       <label className="fld" htmlFor="st-db">
         Database
       </label>
@@ -1275,7 +1290,7 @@ function SetLibrary({ d, set }: SetProps) {
       <ul className="safe">
         <li>
           <Icon name="check" />
-          <span>Lindley never changes a scan. Turning, correcting text and putting pages in order are saved alongside it.</span>
+          <span>Lindley never changes or deletes your original scans. It works on copies of its own: turning, correcting text and putting pages in order are saved alongside them.</span>
         </li>
         <li>
           <Icon name="check" />

@@ -323,10 +323,10 @@ def test_a_page_waiting_for_the_ai_that_a_person_types_is_read(client, settings,
     typed = client.put(f"/api/pages/{pid}/text", json={"text": "Dear Sister"}).json()
     assert client.get(f"/api/pages/{pid}").json()["state"] == "checked"
     assert conn.execute("SELECT status FROM scans").fetchone()[0] == "read"
-    # Undone, the page has no text again: its scan waits for the AI again, and so does export
+    # Undone, the page has no text again: its scan waits for the AI again, and so does completing it
     undo(client, typed)
     assert conn.execute("SELECT status FROM scans").fetchone()[0] == "queued"
-    r = client.post(f"/api/documents/{d}/export")
+    r = client.post(f"/api/documents/{d}/complete")
     assert r.status_code == 409 and "still being read" in r.json()["detail"]
 
 

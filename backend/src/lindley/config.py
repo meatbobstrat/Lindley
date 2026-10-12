@@ -194,6 +194,9 @@ class Settings(BaseModel):
     processing_dir: Path = Field(default_factory=lambda: data_folder() / "processing")
     quarantine_dir: Path = Field(default_factory=lambda: data_folder() / "quarantine")
     library_dir: Path = Field(default_factory=lambda: documents_folder() / "Library")
+    # Where exported documents go: each PDF, and in move mode a folder of its own holding the
+    # PDF and the person's original scans.
+    output_dir: Path = Field(default_factory=lambda: documents_folder() / "Exported")
     db_path: Path = Field(default_factory=lambda: data_folder() / "lindley.db")
     # Files arriving in a watched folder are moved into the library, or else copied.
     move_files: bool = False

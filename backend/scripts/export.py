@@ -1,4 +1,4 @@
-"""Export documents as searchable PDFs, into the library's Exports folder.
+"""Complete and export documents: searchable PDFs, into the output folder (settings' output_dir).
 
     python scripts/export.py [--settings settings.json]             # list documents
     python scripts/export.py --doc ID [ID...] [--settings ...]      # export these
@@ -7,8 +7,10 @@
     python scripts/export.py --all [--settings ...]                 # every document
 
 Each PDF holds the document's pages in order, each scan with what Lindley read from it as
-searchable text over the writing. Exporting marks a document Completed. Exporting it again
-replaces its PDF.
+searchable text over the writing. A document whose original scans Lindley holds (move mode) gets
+a folder of its own, with the PDF and those originals. Naming a document here is the word that
+it's right: it's completed, then exported. One exported already is left: reopen it in the app to
+export it again.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ from pathlib import Path
 from lindley.config import load_settings
 from lindley.db.database import connect, init_db
 from lindley.db.progress import document_progress
-from lindley.export import export_document
+from lindley.export import complete_document, export_document
 
 
 def main() -> int:
@@ -50,7 +52,9 @@ def main() -> int:
             print("No documents yet.")
         for d in docs:
             p = progress[d["id"]]
-            state = "completed" if d["status"] == "complete" else "ready" if p.ready else ""
+            state = {"complete": "completed", "exported": "exported"}.get(d["status"]) or (
+                "ready" if p.ready else ""
+            )
             todo = "; ".join(c.detail or c.label for c in p.checks if not c.done)
             print(
                 f"  {d['id']:>4}  {d['name']}  ({d['pages']} pages{', ' + state if state else ''})"
@@ -66,7 +70,11 @@ def main() -> int:
             return 1
         ids = a.doc
     else:
-        ids = [d["id"] for d in docs if a.all or progress[d["id"]].ready]
+        ids = [
+            d["id"]
+            for d in docs
+            if d["status"] != "exported" and (a.all or progress[d["id"]].ready)
+        ]
     if not ids:
         print("Nothing to export.")
         return 0
@@ -74,7 +82,8 @@ def main() -> int:
     failed = 0
     for doc_id in ids:
         try:
-            e = export_document(conn, settings.library_dir, doc_id, settings.ocr.review_below)
+            complete_document(conn, doc_id, settings.ocr.review_below)
+            e = export_document(conn, settings.output_dir, doc_id, settings.ocr.review_below)
         except ValueError as err:
             failed += 1
             print(f"  {doc_id}: not exported: {err}")
@@ -84,7 +93,13 @@ def main() -> int:
             notes.append(f"{len(e.to_review)} not yet reviewed")
         if e.unplaced:
             notes.append(f"{len(e.unplaced)} with text not over the writing")
+        if e.originals:
+            notes.append(f"{len(e.originals)} originals beside it")
+        if e.kept:
+            notes.append(f"{len(e.kept)} originals kept: they have pages elsewhere")
         print(f"  {doc_id}: {e.pdf_path} ({'; '.join(notes)})")
+        for problem in e.problems:
+            print(f"        {problem}")
     return 1 if failed else 0
 
 

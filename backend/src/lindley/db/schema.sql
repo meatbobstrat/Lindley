@@ -1,4 +1,4 @@
--- Lindley schema, version 16 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
+-- Lindley schema, version 17 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
 -- Applied idempotently at startup by lindley.db.database.init_db.
 -- Design notes: design/database.md.
 --
@@ -197,7 +197,10 @@ CREATE TABLE IF NOT EXISTS documents (
     name                TEXT NOT NULL,
     name_source         TEXT NOT NULL DEFAULT 'lindley' CHECK (name_source IN ('lindley', 'user')),
     origin              TEXT NOT NULL DEFAULT 'lindley' CHECK (origin IN ('lindley', 'user')),
-    status              TEXT NOT NULL DEFAULT 'progress' CHECK (status IN ('progress', 'complete')),
+    -- progress: being worked on; complete: a person said it's right, and it's locked;
+    -- exported: its PDF (and in move mode its originals) went to the output folder
+    status              TEXT NOT NULL DEFAULT 'progress'
+                        CHECK (status IN ('progress', 'complete', 'exported')),
     folder_id           INTEGER REFERENCES folders(id),   -- NULL: In progress / Completed
     doc_type            TEXT,                       -- letter, deed, receipt, diary, ...
     doc_date            TEXT,                       -- partial ISO 8601: 1892, 1892-03, 1892-03-04
@@ -232,6 +235,7 @@ CREATE TABLE IF NOT EXISTS exports (
     document_id  INTEGER NOT NULL REFERENCES documents(id),
     pdf_path     TEXT NOT NULL,
     page_ids     TEXT NOT NULL,                     -- JSON snapshot of the pages, in order
+    originals    TEXT,                              -- JSON: the originals it gave back (move mode)
     exported_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

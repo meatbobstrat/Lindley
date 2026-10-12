@@ -1,5 +1,6 @@
 """Documents: listing and viewing them, starting one, naming and filing it, putting its pages
-in order, exporting it as a searchable PDF, and reopening it.
+in order, completing it, exporting it (a searchable PDF, and in move mode its originals,
+to the output folder), and reopening it.
 
 Each change returns `undo`: the batch to send to POST /api/undo/{batch} to take it back.
 """
@@ -15,7 +16,13 @@ from pydantic import BaseModel, Field
 from lindley import browse, organise
 from lindley.api.deps import Conn
 from lindley.api.library import change_json, errors, review_below
-from lindley.export import export_document, latest_export, reopen_document
+from lindley.export import (
+    Exported,
+    complete_document,
+    export_document,
+    latest_export,
+    reopen_document,
+)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -80,23 +87,64 @@ def reorder(doc_id: int, body: Order, conn: Conn) -> dict:
     return change_json(c)
 
 
-@router.post("/{doc_id}/export")
-def export(doc_id: int, conn: Conn, request: Request) -> dict:
+@router.post("/{doc_id}/complete")
+def complete(doc_id: int, conn: Conn, request: Request) -> dict:
+    """A person says the document is right: it's locked, ready to export."""
     try:
-        settings = request.app.state.settings
-        e = export_document(conn, settings.library_dir, doc_id, settings.ocr.review_below)
+        to_review = complete_document(conn, doc_id, request.app.state.settings.ocr.review_below)
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
     except ValueError as err:
         raise HTTPException(409, str(err)) from err
+    return {"document_id": doc_id, "status": "complete", "to_review": to_review}
+
+
+class Many(BaseModel):
+    document_ids: list[int] = Field(min_length=1)
+
+
+@router.post("/export")
+def export_many(body: Many, conn: Conn, request: Request) -> dict:
+    """Export several completed documents at once: each that can be is, and each that can't
+    says why."""
+    exported, failed = [], []
+    for doc_id in dict.fromkeys(body.document_ids):
+        try:
+            exported.append(_exported_json(_export(conn, request, doc_id)))
+        except (LookupError, ValueError) as err:
+            failed.append({"document_id": doc_id, "error": str(err)})
+    return {"exported": exported, "failed": failed}
+
+
+@router.post("/{doc_id}/export")
+def export(doc_id: int, conn: Conn, request: Request) -> dict:
+    try:
+        e = _export(conn, request, doc_id)
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+    except ValueError as err:
+        raise HTTPException(409, str(err)) from err
+    return _exported_json(e)
+
+
+def _export(conn, request: Request, doc_id: int) -> Exported:
+    settings = request.app.state.settings
+    return export_document(conn, settings.output_dir, doc_id, settings.ocr.review_below)
+
+
+def _exported_json(e: Exported) -> dict:
     return {
         "document_id": e.document_id,
         "pdf_path": str(e.pdf_path),
         "file_name": e.pdf_path.name,
+        "folder": str(e.folder) if e.folder else None,
         "exported_at": e.exported_at,
         "pages": e.pages,
         "to_review": e.to_review,
         "unplaced": e.unplaced,
+        "originals": [p.name for p in e.originals],
+        "kept": e.kept,
+        "problems": e.problems,
     }
 
 

@@ -13,7 +13,10 @@ export interface Actions {
   /** Move pages one place earlier or later in their document. */
   shift: (docId: number, order: number[], ids: number[], dir: -1 | 1) => void
   newDocument: (ids: number[], name?: string, lindley?: boolean) => void
-  confirmExport: (doc: { id: number; name: string; pages: number; suggested: boolean; folder_id: number | null }, toReview: number) => void
+  /** Ask before marking a document complete: it's locked, ready to export. */
+  confirmComplete: (doc: { id: number; name: string; pages: number; suggested: boolean; folder_id: number | null }, toReview: number) => void
+  /** Export completed documents: each PDF (and in move mode its originals) to the output folder. */
+  exportDocs: (docs: { id: number; name: string }[]) => void
   editDetails: (doc: { id: number; name: string; doc_type: string | null; doc_date: string | null }) => void
   addScans: (files: File[]) => void
   fileDoc: (doc: { id: number; name: string; folder_id: number | null; status: string }, folderId: number | null) => void

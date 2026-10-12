@@ -78,7 +78,7 @@ _LAST_VISION = (
 )
 # The page `p` is in a document a person completed
 _COMPLETED = (
-    "coalesce((SELECT d.status = 'complete' FROM documents d WHERE d.id = p.document_id), 0)"
+    "coalesce((SELECT d.status != 'progress' FROM documents d WHERE d.id = p.document_id), 0)"
 )
 # A person checked or corrected the page's text (v is a _LAST_VISION row): the vision model has
 # nothing to add, so the page no longer waits for it.

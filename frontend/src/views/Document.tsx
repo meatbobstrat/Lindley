@@ -68,7 +68,8 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
   const [thumb] = useThumb()
   const [zoom, setZoom] = useState(1)
 
-  const done = d.status === 'complete'
+  const done = d.status !== 'progress'
+  const exported = d.status === 'exported'
   const order = d.pages.map((p) => p.id)
   const page = d.pages[cur]
   const toReview = d.pages.filter((p) => p.state === 'review')
@@ -76,7 +77,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
   const crumbs = d.folder_id != null ? ['My folders', ...folderPath(d.folder_id)] : [done ? 'Completed' : 'In progress']
   const targets = view === 'grid' ? order.filter((id) => sel.has(id)) : page ? [page.id] : []
   const t = targets.length
-  const checksLeft = d.progress.checks.filter((c) => !c.done && c.key !== 'exported')
+  const checksLeft = d.progress.checks.filter((c) => !c.done && c.key !== 'completed' && c.key !== 'exported')
 
   const reorderDrop = (ids: number[], target: number, after: boolean) => {
     if (ids.includes(target)) return
@@ -84,8 +85,8 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
     rest.splice(rest.indexOf(target) + (after ? 1 : 0), 0, ...order.filter((x) => ids.includes(x)))
     run(api.reorder(d.id, rest), `Moved ${plural(ids.length, 'page')}.`)
   }
-  const exportIt = () =>
-    acts.confirmExport({ id: d.id, name: d.name, pages: d.pages.length, suggested: d.suggested, folder_id: d.folder_id }, toReview.length)
+  const completeIt = () =>
+    acts.confirmComplete({ id: d.id, name: d.name, pages: d.pages.length, suggested: d.suggested, folder_id: d.folder_id }, toReview.length)
 
   return (
     <>
@@ -143,16 +144,29 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
             />
           )}
         </div>
-        {done && (
+        {exported && (
           <Banner
             kind="ok"
             actions={
-              <a className="btn" href={`/api/documents/${d.id}/export`} download data-tip="Download the searchable PDF from your library’s Exports folder">
+              <a className="btn" href={`/api/documents/${d.id}/export`} download data-tip="Download a copy of the searchable PDF">
                 <Icon name="pdf" /> Download PDF
               </a>
             }
           >
-            <b>Completed {when(d.export?.exported_at, false)}.</b> Exported as a searchable PDF: <span className="mono">{d.export?.file_name}</span>
+            <b>Exported {when(d.export?.exported_at, false)}.</b> Saved as <span className="mono">{d.export?.pdf_path}</span>
+            {d.export?.originals ? `, with ${plural(d.export.originals, 'original scan')} beside it` : ''}.
+          </Banner>
+        )}
+        {done && !exported && (
+          <Banner
+            kind="ok"
+            actions={
+              <button className="btn primary" onClick={() => acts.exportDocs([d])} data-tip="Save the searchable PDF, and your original scans if Lindley has been keeping them, in your Exported folder">
+                <Icon name="pdf" /> Export
+              </button>
+            }
+          >
+            <b>Completed.</b> Ready to export whenever you are.
           </Banner>
         )}
         {!done && toRead.length > 0 && (
@@ -198,13 +212,13 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
           <Banner
             kind="ok"
             actions={
-              <button className="btn" onClick={exportIt} data-tip="Look it over, then make the searchable PDF">
-                Review and export
+              <button className="btn" onClick={completeIt} data-tip="Look it over, then mark it complete">
+                Look over and complete
               </button>
             }
           >
-            <b>Lindley thinks this document is complete.</b> Every page is read and checked, and it has a name, a date and a type. Look it over, then export it
-            when you’re ready.
+            <b>Lindley thinks this document is complete.</b> Every page is read and checked, and it has a name, a date and a type. Look it over, then mark it
+            complete when you’re ready.
           </Banner>
         )}
         {!done && d.inbox_hints.length > 0 && (
@@ -291,21 +305,18 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
       <Dock label="Document actions">
         <DBtn icon="folder" label="Move to folder…" tip="File this document in one of your folders" onClick={(e) => acts.folderMenu(d, e.currentTarget)} />
         {done ? (
-          <DBtn
-            icon="back"
-            label="Reopen for changes"
-            tip="Make the document editable again. The exported PDF is kept until you export again."
-            onClick={() => run(api.reopen(d.id), `Reopened ${quoted(d.name)}. The exported PDF is kept until you export again.`)}
-          />
+          <>
+            {!exported && <DBtn icon="pdf" label="Export" kind="primary" tip="Save the searchable PDF, and your original scans if Lindley has been keeping them, in your Exported folder" onClick={() => acts.exportDocs([d])} />}
+            <DBtn
+              icon="back"
+              label="Reopen for changes"
+              tip={exported ? 'Make the document editable again. What was exported stays where it is until you export again.' : 'Make the document editable again.'}
+              onClick={() => run(api.reopen(d.id), `Reopened ${quoted(d.name)}.${exported ? ' What was exported stays where it is until you export again.' : ''}`)}
+            />
+          </>
         ) : (
           <>
-            <DBtn
-              icon="pdf"
-              label="Export PDF"
-              kind="primary"
-              tip="Make one searchable PDF of the pages in this order, in your library’s Exports folder"
-              onClick={exportIt}
-            />
+            <DBtn icon="checkc" label="Mark complete" kind="primary" tip="Say the document is right: Lindley locks it, ready to export" onClick={completeIt} />
             <Sep />
             <DockText>{view === 'grid' ? (t ? `${t} selected` : 'None selected') : `Page ${cur + 1}`}</DockText>
             <DBtn icon="rotL" label="Turn left" iconOnly disabled={!t} tip={t ? 'Turn a quarter turn left' : 'Select pages to turn them'} onClick={() => acts.rotate(targets, -90)} />
@@ -430,7 +441,7 @@ function Side({ d, cur, setCur }: { d: DocFull; cur: number; setCur: (i: number)
   const full = useApi(`page:${p.id}`, () => api.page(p.id))
   const { run } = useFeedback()
   const text = useRef<HTMLDivElement>(null)
-  const done = d.status === 'complete'
+  const done = d.status !== 'progress'
   const nextReview = d.pages.findIndex((x, i) => i !== cur && x.state === 'review')
   return (
     <div className="side" style={{ flex: 1, minHeight: 0 }}>

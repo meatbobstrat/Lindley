@@ -134,7 +134,7 @@ def import_file(
     if existing and not (existing["status"] == "failed" and existing["n"] == 0):
         if settings.move_files:
             kept = existing["original_state"] in ("held", "exported") and existing["original_path"]
-            if kept and _same_file(Path(existing["original_path"]), sha):
+            if kept and same_file(Path(existing["original_path"]), sha):
                 _remove_original(path)  # an exact copy of an original that's safe: nothing is lost
             else:
                 _hold(conn, settings, existing["id"], path, st, sha)
@@ -296,7 +296,7 @@ def _hold(
             log.warning("%s changed while it was read in, so it's left where it is", path)
             return False
         dest = held_path(settings, sha, path.suffix)
-        _move_checked(path, dest, sha)
+        move_checked(path, dest, sha)
     except OSError as e:
         log.warning("Couldn't take %s into Lindley's keeping, so it's left there: %s", path, e)
         return False
@@ -312,12 +312,12 @@ def _held_at(conn: sqlite3.Connection, scan_id: int, where: Path) -> None:
         )
 
 
-def _move_checked(src: Path, dest: Path, sha: str) -> None:
+def move_checked(src: Path, dest: Path, sha: str) -> None:
     """Move a file, unchanged. On another drive it's copied, the copy checked against `sha`,
     and only then is `src` removed. If `dest` is there already and the same, `src` is an exact
     copy of it and is removed; if it isn't the same, nothing is touched. Raises OSError."""
     if dest.exists():
-        if not _same_file(dest, sha):
+        if not same_file(dest, sha):
             raise OSError(f"{dest} is there already, and isn't the same file")
         src.unlink()
         return
@@ -339,7 +339,7 @@ def _move_checked(src: Path, dest: Path, sha: str) -> None:
     src.unlink()
 
 
-def _same_file(path: Path, sha: str) -> bool:
+def same_file(path: Path, sha: str) -> bool:
     try:
         return path.is_file() and sha256_of(path) == sha
     except OSError:

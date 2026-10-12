@@ -58,7 +58,8 @@ export interface DocBase {
   name: string
   suggested: boolean
   origin: 'lindley' | 'user'
-  status: 'progress' | 'complete'
+  /** progress: being worked on; complete: you said it's right (locked); exported: its PDF was saved out */
+  status: 'progress' | 'complete' | 'exported'
   folder_id: number | null
   doc_type: string | null
   doc_date: string | null
@@ -75,6 +76,23 @@ export interface DocSummary extends DocBase {
   first_page: number | null
 }
 
+/** What exporting a document did: its PDF, and in move mode the originals given back beside it. */
+export interface Exported {
+  document_id: number
+  pdf_path: string
+  file_name: string
+  /** The document's own folder, when its originals went with it */
+  folder: string | null
+  pages: number[]
+  to_review: number[]
+  unplaced: number[]
+  /** Originals now beside the PDF */
+  originals: string[]
+  /** Originals Lindley still holds: some of their pages are in other documents */
+  kept: string[]
+  problems: string[]
+}
+
 export interface Check { key: string; label: string; done: boolean; detail: string }
 
 export interface DocFull extends DocBase {
@@ -82,7 +100,7 @@ export interface DocFull extends DocBase {
   summary: string | null
   pages: Page[]
   progress: { ready: boolean; checks: Check[] }
-  export: { file_name: string; exported_at: string } | null
+  export: { file_name: string; exported_at: string; pdf_path: string; originals: number } | null
   inbox_hints: number[]
 }
 
@@ -258,6 +276,7 @@ export interface Settings {
   processing_dir: string
   quarantine_dir: string
   library_dir: string
+  output_dir: string
   db_path: string
   move_files: boolean
   add_mode: 'ask' | 'copy' | 'move'
@@ -441,8 +460,10 @@ export const api = {
   updateDocument: (id: number, changes: { name?: string; doc_type?: string | null; doc_date?: string | null; folder_id?: number | null }) =>
     send<Change>('PATCH', `/documents/${id}`, changes),
   reorder: (id: number, page_ids: number[]) => send<Change>('PUT', `/documents/${id}/order`, { page_ids }),
-  exportDocument: (id: number) =>
-    send<{ file_name: string; pages: number[]; to_review: number[]; unplaced: number[] }>('POST', `/documents/${id}/export`),
+  completeDocument: (id: number) => send<{ document_id: number; to_review: number[] }>('POST', `/documents/${id}/complete`),
+  exportDocument: (id: number) => send<Exported>('POST', `/documents/${id}/export`),
+  exportDocuments: (document_ids: number[]) =>
+    send<{ exported: Exported[]; failed: { document_id: number; error: string }[] }>('POST', '/documents/export', { document_ids }),
   reopen: (id: number) => send<{ document_id: number }>('POST', `/documents/${id}/reopen`),
   newFolder: (name: string, parent_id: number | null) => send<Change>('POST', '/folders', { name, parent_id }),
   renameFolder: (id: number, name: string) => send<Change>('PATCH', `/folders/${id}`, { name }),

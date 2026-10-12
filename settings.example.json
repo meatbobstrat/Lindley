@@ -5,6 +5,7 @@
   "processing_dir": "./data/processing",
   "quarantine_dir": "./data/quarantine",
   "library_dir": "./data/library",
+  "output_dir": "./data/exported",
   "db_path": "./data/lindley.db",
   "move_files": false,
   "add_mode": "ask",

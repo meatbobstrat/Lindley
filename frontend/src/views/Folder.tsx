@@ -97,8 +97,8 @@ export function FolderView() {
               <span>
                 <b style={d.suggested ? { fontStyle: 'italic' } : undefined}>{d.name}</b>
                 <small>
-                  <Icon name={d.status === 'complete' ? 'checkc' : 'doc'} />
-                  {d.status === 'complete' ? 'Completed' : d.ready ? 'Ready to export' : 'In progress'}
+                  <Icon name={d.status !== 'progress' ? 'checkc' : 'doc'} />
+                  {d.status === 'exported' ? 'Exported' : d.status === 'complete' ? 'Completed, not exported' : d.ready ? 'Ready to complete' : 'In progress'}
                 </small>
                 {d.to_review > 0 && (
                   <small>

@@ -1,6 +1,6 @@
 # Lindley database design
 
-Schema version 16. The source of truth is [backend/src/lindley/db/schema.sql](../backend/src/lindley/db/schema.sql).
+Schema version 17. The source of truth is [backend/src/lindley/db/schema.sql](../backend/src/lindley/db/schema.sql).
 This document explains why the schema is shaped the way it is.
 
 ## Goals
@@ -42,7 +42,7 @@ erDiagram
 | `documents` | document | Name (and whether a person chose it), status, folder, type, date, grouping confidence, summary. |
 | `folders` | folder | The user's folder tree. |
 | `suggestions` | proposal | "Add to document", "reorder", "name", "complete", and so on, with reasons shown in the UI. |
-| `exports` | PDF made | When a document was exported, where to, and which pages were in it. |
+| `exports` | PDF made | When a document was exported, where to, which pages were in it, and which original scans went beside it (move mode). |
 | `intake_steps` | step run | Progress, errors, and the extractor version for each step, so a step can be re-run later. |
 | `seen_files` | file in a watched folder | Its path, size, time and hash, so the start-up sweep needn't hash a file it has met before. |
 | `history` | action | Who did what (a person or Lindley), with before and after. A person's decision is one `batch` of rows, undone together. Used for undo and the audit trail. |
@@ -639,13 +639,20 @@ Every change is written to `history` with its before and after, one batch per de
 | Date known | `doc_date` is set (partial dates like `1892-03` count) |
 | Type known | `doc_type` is set |
 | Page order settled | no open `reorder` suggestion |
-| Exported | an `exports` row exists |
+| Marked complete by you | `status` is `complete` or `exported` |
+| Exported | `status` is `exported` |
 
-`ready` means everything except the export is done (`pages_to_review` lists the pages behind "Nothing waiting for review"). That drives the mockup's banner, "Lindley thinks this document is complete." The review threshold comes from settings, so it's passed in rather than stored. Changing the threshold changes the checklist straight away.
+`ready` means everything except completing and exporting it is done (`pages_to_review` lists the pages behind "Nothing waiting for review"). That drives the mockup's banner, "Lindley thinks this document is complete." The review threshold comes from settings, so it's passed in rather than stored. Changing the threshold changes the checklist straight away.
 
 ## Export
 
-`lindley.export.export_document(conn, library_dir, doc_id)` makes one searchable PDF of a document's pages, in order, at `<library_dir>/Exports/<name>.pdf` (`POST /api/documents/{id}/export`, or `scripts/export.py`). It's built from Lindley's own data, with no Ghostscript and no second OCR pass.
+Two steps. **Completing** (`lindley.export.complete_document`, `POST /api/documents/{id}/complete`) is a person's word that the document is right: its `status` becomes `complete`, it's locked, and Lindley leaves it alone. **Exporting** (`export_document(conn, output_dir, doc_id)`, `POST /api/documents/{id}/export`, several at once with `POST /api/documents/export`, or `scripts/export.py`, which completes and exports) gives it back, into the output folder (`output_dir`, `Documents/Lindley/Exported` out of the box), and its `status` becomes `exported`:
+
+- A document whose original scans Lindley holds (move mode, `scans.original_state = 'held'`) gets a folder of its own, `<output_dir>/<name>/`, with `<name>.pdf` and those originals, moved there unchanged (checked against their sha256 when they cross drives) under the names the person gave them, numbered when two share one. Each original's `original_path` follows it, and its `original_state` becomes `exported`.
+- An original some of whose pages are in another document, or in the Inbox or Set aside, stays held, and the export lists it (`kept`): what happens to it is the person's to decide.
+- Otherwise the PDF goes in the output folder itself, `<output_dir>/<name>.pdf`.
+
+The PDF is built from Lindley's own data, with no Ghostscript and no second OCR pass.
 
 - **Words and where they sit** (`textlayer.py`). The current reading is used, so a person's correction wins.
   - Tesseract's words come with boxes, used as they are.
@@ -658,10 +665,10 @@ Every change is written to `history` with its before and after, one batch per de
   - The text is in the viewer's built-in Helvetica, so it's limited to Windows-1252: other characters become their plain letter, else "?".
   - Title is the document's name, Subject its type and date.
 - **Saving.**
-  - The export is refused while a page is still being read or a page's scan is missing. Pages waiting for review are exported with Lindley's best reading, and reported.
+  - Completing (and exporting) is refused while a page is still being read or a page's scan is missing; exporting is refused until the document is completed, and once it's exported. Pages waiting for review are exported with Lindley's best reading, and reported.
   - The file is written in full, then moved into place. It's named after the document (made safe for Windows), with ` (2)` and so on when another document's PDF, or any file Lindley didn't make, has that name.
-  - In one transaction, an `exports` row records the pages in order, the document becomes `complete` (Lindley never touches it again), and `history` gets an `export` row outside any batch, since an export isn't undone. Reopening (`reopen_document`, `POST /api/documents/{id}/reopen`) is how to take it back. The PDF is kept until the next export replaces it.
-  - Exporting a renamed document removes its earlier PDF, unless another document's PDF is at that path now.
+  - In one transaction, an `exports` row records the pages in order and the originals given back, the document becomes `exported`, and `history` gets an `export` row outside any batch (as completing gets a `complete` row), since neither is undone. Reopening (`reopen_document`, `POST /api/documents/{id}/reopen`) is how to take it back. What was exported stays where it is until the next export replaces it.
+  - Exporting a renamed document removes its earlier PDF, unless another document's PDF is at that path now; its originals move to its new folder, and a folder left empty is removed.
   - Undoing the grouping that made the document is refused once it's exported.
 
 ## The Details tab (future UI round)

@@ -110,8 +110,11 @@ watched folders ─► watcher ─► intake ───────────�
    unsure or illegible. A reading that's mostly `[illegible]` doesn't replace Tesseract's. The
    80% bar was measured: against Claude, Tesseract got 16% of characters wrong on pages it read
    at 70–79%, 9% at 80–89% and 2% at 90% or more.
-4. **Export.** A finished document becomes a searchable PDF in your library: each page is its
-   scan, with what Lindley read from it as invisible text over the writing. Corrections and
+4. **Complete, then export.** You mark a finished document complete, and Lindley locks it.
+   Exporting it saves a searchable PDF in your Exported folder: each page is its scan, with what
+   Lindley read from it as invisible text over the writing. If Lindley has been keeping your
+   original scans (move mode), the document gets a folder of its own there, holding the PDF and
+   those originals, unchanged. Corrections and
    the vision model's readings are laid over Tesseract's word positions, so search and
    selection land on the right words.
 
@@ -317,7 +320,8 @@ tries again the ones whose vision call failed.
 
 ### Make PDFs
 
-`scripts/export.py` turns documents into searchable PDFs, in the library's `Exports` folder:
+`scripts/export.py` completes documents and exports them as searchable PDFs, into the output
+folder (`output_dir`):
 
 ```powershell
 cd backend
@@ -327,9 +331,13 @@ python scripts\export.py --ready --settings D:\scratch\settings.json    # every 
 python scripts\export.py --all --settings D:\scratch\settings.json      # every document
 ```
 
-Each PDF holds the document's pages in order, named after the document, and exporting marks
-the document Completed. Exporting it again replaces the PDF. In the app, it's Export PDF in a
-document's toolbar (`POST /api/documents/<id>/export`).
+Each PDF holds the document's pages in order, named after the document. A document whose
+original scans Lindley holds (move mode) gets a folder of its own, `<output_dir>/<name>/`, with
+the PDF and those originals; an original with pages in another document too stays with Lindley,
+and the export says so. In the app it's two steps: Mark complete, then Export, in a document's
+toolbar (`POST /api/documents/<id>/complete`, then `/export`), or Export for every completed
+document at once under Completed. Exporting a document again (reopen it first) replaces its
+PDF.
 - **What's in it.** Each page is its scan, turned upright, at its size on paper (from the
   scan's dpi). What Lindley read from it is invisible text over the writing: a person's
   correction if there is one, else the vision model's reading or Tesseract's.
@@ -360,7 +368,8 @@ the program.
 | `watch_folders` | Folders to watch for new scans (`Documents/Lindley/Inbox`, made the first time it's watched). Setup won't start with a folder it can't find; Settings and the status bar mark one that isn't there (a path typed wrong, a drive unplugged), and it's watched once it's back |
 | `processing_dir` | Working area for files being processed (`processing` in the data folder) |
 | `quarantine_dir` | Where files that fail processing are put (`quarantine` in the data folder) |
-| `library_dir` | Lindley's library (`Documents/Lindley/Library`): its working copies of scans (in `scans`), each page as an image (in `pages`), the originals it took in move mode, unchanged (in `originals`), and exported PDFs (in `Exports`) |
+| `library_dir` | Lindley's library (`Documents/Lindley/Library`): its working copies of scans (in `scans`), each page as an image (in `pages`), and the originals it took in move mode, unchanged (in `originals`), until they're exported |
+| `output_dir` | Where documents go when they're exported (`Documents/Lindley/Exported`): each PDF, or in move mode a folder per document with its PDF and original scans |
 | `db_path` | SQLite database location (`lindley.db` in the data folder). It's kept outside the library, which is often in a synced folder, where SQLite isn't safe. Back up both. To move it, copy it to the new place first (with its `-wal` file, if there is one): Settings refuses a place that doesn't hold Lindley's database |
 | `move_files` | `true` moves scans out of watched folders into Lindley's keeping (the library's `originals`), unchanged; `false` copies them and leaves the originals where they are |
 | `add_mode` | Files added with Add scans… in the Inbox: `ask` each time (the default), or always `copy` or `move` them |
@@ -589,9 +598,11 @@ and you can ask it about them. All of it from a one-click install.
   - [x] move mode no longer deletes originals: each is moved, unchanged, into Lindley's keeping
     (the library's `originals`), and only if it's still the file that was read in, so a scan a
     scanner is still writing (a TIFF has no ending to check) stays where it is
-  - [ ] Complete, then Export, as two steps: export to an output folder in Settings (a native
-    Save dialog once Lindley is a desktop app), with Lindley's folders as folders on disk; in
-    move mode the document's originals go with its PDF
+  - [x] Complete, then Export, as two steps. Export saves to the Exported folder in Settings
+    (`Documents/Lindley/Exported`; a native Save dialog once Lindley is a desktop app): copy
+    mode, the PDF; move mode, a folder per document with its PDF and its originals. An original
+    with pages in another document too stays with Lindley for now, and the export says so.
+    Every completed document can be exported at once
   - [ ] after export, Lindley drops its working copies and page images, and keeps the text,
     fingerprints, history and where the files went, so search, Ask Lindley and duplicate checks
     still work, and copy-mode originals aren't imported again

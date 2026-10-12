@@ -29,8 +29,9 @@ class Progress:
 
     @property
     def ready(self) -> bool:
-        """Everything but the export itself is done: Lindley can suggest exporting."""
-        return all(c.done for c in self.checks if c.key != "exported")
+        """Everything but completing and exporting it is done: Lindley can suggest it's
+        complete."""
+        return all(c.done for c in self.checks if c.key not in ("completed", "exported"))
 
 
 def _plural(n: int, word: str) -> str:
@@ -53,7 +54,7 @@ def pages_to_review(conn: sqlite3.Connection, doc_id: int, review_below: float) 
 def document_progress(conn: sqlite3.Connection, doc_id: int, review_below: float) -> Progress:
     """Checklist for one document. `review_below` is the review threshold from settings."""
     doc = conn.execute(
-        "SELECT name_source, doc_date, doc_type FROM documents WHERE id = ?", (doc_id,)
+        "SELECT name_source, doc_date, doc_type, status FROM documents WHERE id = ?", (doc_id,)
     ).fetchone()
     if doc is None:
         raise KeyError(f"No document {doc_id}")
@@ -103,6 +104,7 @@ def document_progress(conn: sqlite3.Connection, doc_id: int, review_below: float
             not reorder_open,
             "Lindley suggests a different order" if reorder_open else "",
         ),
-        Check("exported", "Exported as a PDF", exported is not None, exported or ""),
+        Check("completed", "Marked complete by you", doc["status"] != "progress"),
+        Check("exported", "Exported", doc["status"] == "exported", exported or ""),
     ]
     return p

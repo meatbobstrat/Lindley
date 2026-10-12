@@ -40,6 +40,20 @@ def no_activity_left():
 
 
 @pytest.fixture(autouse=True)
+def no_real_folders(monkeypatch, tmp_path_factory):
+    """Tests never write to the person's own folders: a setting a test leaves out (a new one,
+    say) falls back to a temporary Documents and data folder, not the real ones."""
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setattr("lindley.config.user_documents_dir", lambda: str(home / "Documents"))
+    monkeypatch.setattr(
+        "lindley.config.user_data_dir", lambda *a, **k: str(home / "AppData" / "Lindley")
+    )
+    monkeypatch.setattr(
+        "lindley.config.user_config_dir", lambda *a, **k: str(home / "Config" / "Lindley")
+    )
+
+
+@pytest.fixture(autouse=True)
 def keys():
     """Tests never touch the real credential store."""
     before = keyring.get_keyring()
@@ -56,6 +70,7 @@ def settings(tmp_path: Path) -> Settings:
         processing_dir=tmp_path / "processing",
         quarantine_dir=tmp_path / "quarantine",
         library_dir=tmp_path / "library",
+        output_dir=tmp_path / "exported",
         db_path=tmp_path / "lindley.db",
         # One AI connection, the fake one, doing every job; it asks first, as out of the box.
         # Not checking whether pages carry on (tests of that give it the job themselves).

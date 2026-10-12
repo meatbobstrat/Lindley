@@ -103,7 +103,7 @@ def _open_document(conn: sqlite3.Connection, doc_id: int) -> sqlite3.Row:
     doc = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
     if doc is None:
         raise LookupError(f"There's no document {doc_id}")
-    if doc["status"] == "complete":
+    if doc["status"] != "progress":
         raise ValueError(f"“{doc['name']}” is completed. Reopen it to change it.")
     return doc
 
@@ -292,7 +292,7 @@ def update_document(conn: sqlite3.Connection, doc_id: int, changes: dict) -> Cha
         doc = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
         if doc is None:
             raise LookupError(f"There's no document {doc_id}")
-        if doc["status"] == "complete" and set(changes) - {"folder_id"}:
+        if doc["status"] != "progress" and set(changes) - {"folder_id"}:
             raise ValueError(f"“{doc['name']}” is completed. Reopen it to change it.")
         if changes.get("folder_id") is not None and not _folder(conn, changes["folder_id"]):
             raise LookupError(f"There's no folder {changes['folder_id']}")

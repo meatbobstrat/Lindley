@@ -24,6 +24,10 @@ export function Setup({ settings, connectors, tiers, helps }: { settings: Settin
   // Lindley's own Inbox, in Documents, to start with: it's made the first time it's watched
   const [folders, setFolders] = useState<string[]>(settings.watch_folders)
   const [move, setMove] = useState(settings.move_files)
+  // Where exported documents go: the person's choice, starting from the folder Lindley offers
+  const offered = useApi('setup', api.setupNeeded).data?.output_dir
+  const [out, setOut] = useState<string | null>(settings.output_dir)
+  const output = out ?? offered ?? ''
   // The tier this computer suits, once Lindley has looked at it (Middle until then), unless the
   // person has chosen one
   const computer = useApi('computer', api.computer).data
@@ -56,9 +60,15 @@ export function Setup({ settings, connectors, tiers, helps }: { settings: Settin
       document.getElementById('su-path')?.focus()
       return
     }
+    if (!output.trim()) {
+      toast('Choose a folder for the documents you export.')
+      document.getElementById('su-out-in')?.focus()
+      return
+    }
     const next: Settings = JSON.parse(JSON.stringify(settings))
     next.watch_folders = folders
     next.move_files = move
+    next.output_dir = output.trim()
     next.ai.providers = {}
     JOBS.forEach((j) => (next.ai.jobs[j] = { connection: null, model: null }))
     let key: [string, string] | null = null
@@ -129,12 +139,23 @@ export function Setup({ settings, connectors, tiers, helps }: { settings: Settin
           <h3 id="su-2">2. When a scan arrives</h3>
           <ModeChoices ctx="su" move={move} set={setMove} />
         </section>
+        <section aria-labelledby="su-out">
+          <h3 id="su-out">3. Where finished documents go</h3>
+          <p>
+            When you export a finished document, Lindley saves it here as a searchable PDF. If Lindley moves your scans in, each document gets a folder of its own
+            here, with the PDF and your original scans.
+          </p>
+          <label className="fld" htmlFor="su-out-in">
+            Exported folder
+          </label>
+          <input id="su-out-in" className="fld-in" value={output} onChange={(e) => setOut(e.target.value)} spellCheck={false} data-tip="A full path. Lindley makes the folder if it isn’t there." />
+        </section>
         <section aria-labelledby="su-3">
-          <h3 id="su-3">3. When Lindley needs your help</h3>
+          <h3 id="su-3">4. When Lindley needs your help</h3>
           <p>Lindley flags any page it read with less than {settings.ocr.review_below}% confidence so you can check it. You can change this in Settings.</p>
         </section>
         <section aria-labelledby="su-4">
-          <h3 id="su-4">4. How much AI can this computer run?</h3>
+          <h3 id="su-4">5. How much AI can this computer run?</h3>
           <p>
             An AI reads handwriting, helps sort pages into documents, and answers your questions. The more this computer can do itself, the more private your
             scans stay and the less each page costs.
@@ -144,7 +165,7 @@ export function Setup({ settings, connectors, tiers, helps }: { settings: Settin
           <LocalModels tier={tier} now={download} setNow={setDownload} />
         </section>
         <section aria-labelledby="su-5">
-          <h3 id="su-5">5. Who does the rest?</h3>
+          <h3 id="su-5">6. Who does the rest?</h3>
           <p>What this computer doesn’t do itself can go to another computer you own, or to a cloud AI, or wait for you.</p>
           <HelpChoices ctx="su" helps={helps} value={help} onChoose={chooseHelp} />
           {help !== 'none' && <ConnEditor e={edit} set={(e) => setEdit(e)} connectors={connectors} inSetup saved={false} />}

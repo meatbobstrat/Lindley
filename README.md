@@ -369,7 +369,7 @@ the program.
 | `processing_dir` | Working area for files being processed (`processing` in the data folder) |
 | `quarantine_dir` | Where files that fail processing are put (`quarantine` in the data folder) |
 | `library_dir` | Lindley's library (`Documents/Lindley/Library`): its working copies of scans (in `scans`), each page as an image (in `pages`), and the originals it took in move mode, unchanged (in `originals`), until they're exported |
-| `output_dir` | Where documents go when they're exported (`Documents/Lindley/Exported`): each PDF, or in move mode a folder per document with its PDF and original scans |
+| `output_dir` | Where documents go when they're exported: each PDF, or in move mode a folder per document with its PDF and original scans. A person chooses it in Setup (which offers `Documents/Lindley/Exported`) or Settings; until then (`null`) nothing is exported |
 | `db_path` | SQLite database location (`lindley.db` in the data folder). It's kept outside the library, which is often in a synced folder, where SQLite isn't safe. Back up both. To move it, copy it to the new place first (with its `-wal` file, if there is one): Settings refuses a place that doesn't hold Lindley's database |
 | `move_files` | `true` moves scans out of watched folders into Lindley's keeping (the library's `originals`), unchanged; `false` copies them and leaves the originals where they are |
 | `add_mode` | Files added with Add scans… in the Inbox: `ask` each time (the default), or always `copy` or `move` them |
@@ -598,8 +598,8 @@ and you can ask it about them. All of it from a one-click install.
   - [x] move mode no longer deletes originals: each is moved, unchanged, into Lindley's keeping
     (the library's `originals`), and only if it's still the file that was read in, so a scan a
     scanner is still writing (a TIFF has no ending to check) stays where it is
-  - [x] Complete, then Export, as two steps. Export saves to the Exported folder in Settings
-    (`Documents/Lindley/Exported`; a native Save dialog once Lindley is a desktop app): copy
+  - [x] Complete, then Export, as two steps. Export saves to the Exported folder a person
+    chooses in Setup or Settings (a native Save dialog once Lindley is a desktop app): copy
     mode, the PDF; move mode, a folder per document with its PDF and its originals. An original
     with pages in another document too stays with Lindley for now, and the export says so.
     Every completed document can be exported at once

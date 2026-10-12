@@ -26,6 +26,8 @@ from lindley.export import (
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
+NO_OUTPUT = "Choose where exported documents go first, in Settings › Library: the Exported folder."
+
 
 class NewDocument(BaseModel):
     page_ids: list[int] = Field(min_length=1)
@@ -129,6 +131,8 @@ def export(doc_id: int, conn: Conn, request: Request) -> dict:
 
 def _export(conn, request: Request, doc_id: int) -> Exported:
     settings = request.app.state.settings
+    if settings.output_dir is None:
+        raise ValueError(NO_OUTPUT)
     return export_document(conn, settings.output_dir, doc_id, settings.ocr.review_below)
 
 

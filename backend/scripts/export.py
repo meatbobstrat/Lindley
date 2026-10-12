@@ -38,6 +38,9 @@ def main() -> int:
     a = ap.parse_args()
 
     settings = load_settings(a.settings)
+    if settings.output_dir is None and (a.doc or a.ready or a.all):
+        print("Choose where exported documents go first: output_dir in settings.json.")
+        return 1
     init_db(settings.db_path)
     conn = connect(settings.db_path)
     print(f"Database: {settings.db_path.resolve()}")

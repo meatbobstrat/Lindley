@@ -2,7 +2,7 @@
 
 Two steps. Completing is a person's word that the document is right: it's locked, and Lindley
 leaves it alone. Exporting gives it back: the PDF goes to the output folder (settings'
-`output_dir`, Documents/Lindley/Exported out of the box). A document whose original scans
+`output_dir`, which a person chooses in Setup or Settings). A document whose original scans
 Lindley holds (move mode) gets a folder of its own there, `<name>/`, with the PDF and those
 originals, unchanged and under the names the person gave them. Otherwise the PDF goes in the
 output folder itself, as `<name>.pdf`. An original some of whose pages are in another document,

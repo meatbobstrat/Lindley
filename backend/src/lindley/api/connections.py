@@ -6,7 +6,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from lindley.config import ProviderConfig, Settings, resolve_settings_path
+from lindley.config import ProviderConfig, Settings, resolve_settings_path, suggested_output
 from lindley.providers import keys
 from lindley.providers.base import JOBS, Job, ProviderError
 from lindley.providers.registry import connectors
@@ -63,8 +63,12 @@ def list_tiers() -> dict:
 
 @router.get("/setup")
 def setup_needed(request: Request) -> dict:
-    """First-run setup is needed until there's a settings file."""
-    return {"needed": not resolve_settings_path(request.app.state.settings_path).exists()}
+    """First-run setup is needed until there's a settings file. `output_dir`: the folder
+    offered for exported documents."""
+    return {
+        "needed": not resolve_settings_path(request.app.state.settings_path).exists(),
+        "output_dir": str(suggested_output()),
+    }
 
 
 class Key(BaseModel):

@@ -276,7 +276,8 @@ export interface Settings {
   processing_dir: string
   quarantine_dir: string
   library_dir: string
-  output_dir: string
+  /** Where exported documents go: chosen in Setup or Settings, null until then */
+  output_dir: string | null
   db_path: string
   move_files: boolean
   add_mode: 'ask' | 'copy' | 'move'
@@ -447,7 +448,8 @@ export const api = {
   localAi: () => get<LocalAi>('/local-ai'),
   computer: () => get<Computer>('/local-ai/computer'),
   aiCalls: () => get<AiCalls>('/settings/ai-calls'),
-  setupNeeded: () => get<{ needed: boolean }>('/setup'),
+  /** Whether first-run setup is needed, and the folder it offers for exported documents */
+  setupNeeded: () => get<{ needed: boolean; output_dir: string }>('/setup'),
   quit: () => send<{ stopping: boolean }>('POST', '/quit'),
 
   movePages: (page_ids: number[], to: Where, document_id?: number) =>

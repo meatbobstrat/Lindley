@@ -29,6 +29,12 @@ def documents_folder() -> Path:
     return Path(user_documents_dir()) / APP_NAME
 
 
+def suggested_output() -> Path:
+    """The folder Setup offers for exported documents: Exported, beside the Inbox. A person
+    chooses; nothing is exported until they have."""
+    return documents_folder() / "Exported"
+
+
 def default_inbox() -> Path:
     """The folder watched out of the box. Unlike one a person chose, it's made if it's missing."""
     return documents_folder() / "Inbox"
@@ -195,8 +201,9 @@ class Settings(BaseModel):
     quarantine_dir: Path = Field(default_factory=lambda: data_folder() / "quarantine")
     library_dir: Path = Field(default_factory=lambda: documents_folder() / "Library")
     # Where exported documents go: each PDF, and in move mode a folder of its own holding the
-    # PDF and the person's original scans.
-    output_dir: Path = Field(default_factory=lambda: documents_folder() / "Exported")
+    # PDF and the person's original scans. A person's choice, in Setup or Settings
+    # (suggested_output is offered); None until they've made it, and nothing is exported.
+    output_dir: Path | None = None
     db_path: Path = Field(default_factory=lambda: data_folder() / "lindley.db")
     # Files arriving in a watched folder are moved into the library, or else copied.
     move_files: bool = False

@@ -27,9 +27,9 @@ def test_connectors_offered(client):
 
 
 def test_setup_is_needed_until_settings_are_saved(client):
-    assert client.get("/api/setup").json() == {"needed": True}
+    assert client.get("/api/setup").json()["needed"] is True
     assert client.put("/api/settings", json=client.get("/api/settings").json()).status_code == 200
-    assert client.get("/api/setup").json() == {"needed": False}
+    assert client.get("/api/setup").json()["needed"] is False
 
 
 def test_keys_go_in_the_credential_store_and_never_come_back(client, keys):

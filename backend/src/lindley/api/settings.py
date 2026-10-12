@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from lindley.api.deps import Conn
-from lindley.config import Settings, default_inbox, save_settings
+from lindley.config import Settings, default_inbox, save_settings, suggested_output
 from lindley.db.database import connect, init_db, not_lindleys
 from lindley.localai import server as local_server
 from lindley.providers import allowance, keys
@@ -39,6 +39,8 @@ def _problems(new: Settings) -> list[str]:
             out.append(f"{info.company or info.label} can't do the job {job!r}")
     if new.ai.tier is not None and new.ai.tier not in TIER_IDS:
         out.append(f"There's no performance tier called {new.ai.tier!r}")
+    if new.output_dir is not None and not new.output_dir.is_absolute():
+        out.append(f"The Exported folder needs a full path, such as {suggested_output()}")
     if new.ai.help is not None and new.ai.help not in new.ai.providers:
         out.append(f"The help, {new.ai.help!r}, isn't an AI connection that's set up")
     return out

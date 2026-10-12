@@ -417,3 +417,26 @@ def test_the_api_exports_several_at_once(client, settings, tmp_path):
     assert [e["file_name"] for e in r["exported"]] == ["Done.pdf"]
     assert [f["document_id"] for f in r["failed"]] == [todo, 999]
     assert "isn't completed yet" in r["failed"][0]["error"]
+
+
+def test_nothing_is_exported_until_a_person_chooses_where(client, settings, tmp_path):
+    c = connect(settings.db_path)
+    doc = document(c)
+    page(c, tmp_path, doc, 1, "Dear Sister")
+    c.close()
+    client.app.state.settings.output_dir = None  # Setup or Settings hasn't been through it
+    client.post(f"/api/documents/{doc}/complete")
+    r = client.post(f"/api/documents/{doc}/export")
+    assert r.status_code == 409 and "Choose where exported documents go" in r.json()["detail"]
+    many = client.post("/api/documents/export", json={"document_ids": [doc]}).json()
+    assert many["exported"] == [] and "Choose where" in many["failed"][0]["error"]
+    # Setup offers a folder, and Settings takes only a full path
+    assert client.get("/api/setup").json()["output_dir"].endswith("Exported")
+    body = client.get("/api/settings").json()
+    assert body["output_dir"] is None
+    r = client.put("/api/settings", json=body | {"output_dir": "Exported"})
+    assert r.status_code == 422 and "full path" in str(r.json()["detail"])
+    chosen = str(tmp_path / "Finished")
+    assert client.put("/api/settings", json=body | {"output_dir": chosen}).status_code == 200
+    r = client.post(f"/api/documents/{doc}/export").json()
+    assert Path(r["pdf_path"]).parent == Path(chosen).resolve()

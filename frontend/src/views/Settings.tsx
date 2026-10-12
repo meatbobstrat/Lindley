@@ -1239,6 +1239,7 @@ function SetReading({ d, set, reviewNow, saved }: SetProps & { reviewNow: number
 }
 
 function SetLibrary({ d, set }: SetProps) {
+  const offered = useApi('setup', api.setupNeeded).data?.output_dir
   const sep = d.library_dir.includes('/') && !d.library_dir.includes('\\') ? '/' : '\\'
   return (
     <>
@@ -1269,13 +1270,14 @@ function SetLibrary({ d, set }: SetProps) {
       <input
         className="fld-in"
         id="st-out"
-        value={d.output_dir}
-        onChange={(e) => set({ ...d, output_dir: e.target.value })}
+        value={d.output_dir ?? ''}
+        placeholder={offered ? `Choose a folder, such as ${offered}` : 'Choose a folder'}
+        onChange={(e) => set({ ...d, output_dir: e.target.value.trim() ? e.target.value : null })}
         spellCheck={false}
         aria-describedby="st-outh"
       />
       <p className="fld-note" id="st-outh">
-        Where documents go when you export them. Each PDF goes in this folder. When Lindley has been keeping your original scans (it moves new scans in), each
+        Where documents go when you export them. Nothing is exported until you’ve chosen it. Each PDF goes in this folder. When Lindley has been keeping your original scans (it moves new scans in), each
         document gets a folder of its own here, with the PDF and those originals.
       </p>
       <label className="fld" htmlFor="st-db">

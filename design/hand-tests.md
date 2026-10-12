@@ -16,14 +16,17 @@ done, what each run found, and what's left to fix.
 4. **First start** from the menu: the browser opens on Setup, and Lindley's icon is in the
    tray. Starting it again opens the same Lindley.
 5. **Setup.** Note what it says about the computer and the tier it suggests. Choose the tier and
-   help the run is for, and check the settings file it writes.
+   help the run is for, copy or move mode, and the Exported folder, and check the settings file
+   it writes.
 6. **Scans in,** some through the watched Inbox folder and some through Add scans….
 7. **What Lindley made of them,** against the batch's answer key: documents, hints, Needs AI,
    Needs your review, pages turned upright, duplicates.
 8. **Sort by hand:** accept a suggestion, make a document, move and reorder pages, rename, Undo.
 9. **Search** for words you know are on a page, and a word you corrected.
-10. **Export a PDF** and open it in the system's viewer: pages upright, Ctrl+F finds words, and
-    selecting text lands on them.
+10. **Complete, then export** a document, and open its PDF in the system's viewer: pages upright,
+    Ctrl+F finds words, and selecting text lands on them. In move mode, its folder in the Exported
+    folder holds the original scans too, byte for byte as they were dropped in (`sha256sum`); in
+    copy mode the originals are still where they were dropped.
 11. **Ask Lindley** a question.
 12. **Quit** from the header and from the tray: no Lindley or `llama-server` left running. Start
     again: no Setup, and the work is still there.

@@ -102,7 +102,7 @@ export function Setup({ settings, connectors, tiers, helps }: { settings: Settin
       const cloud = cloudInUse(saved, connectors)
       invalidate()
       toast(
-        `Lindley is watching ${plural(folders.length, 'folder')} and will ${move ? 'move new scans into its library' : 'copy new scans, leaving your folders untouched'}.${
+        `Lindley is watching ${plural(folders.length, 'folder')} and will ${move ? 'move new scans in, unchanged, and give them back with each document you export' : 'copy new scans, leaving your folders untouched'}.${
           cloud.length ? ` Your scans will be sent to ${cloud.join(' and ')}.` : ''
         }${fetching ? ' Its own AI is downloading: the status bar shows how far it’s got.' : ''}`,
       )

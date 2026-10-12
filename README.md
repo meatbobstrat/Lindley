@@ -47,16 +47,16 @@ find their way. Those come next, then Windows and the Mac (see the Roadmap and
 | --- | --- |
 | Project scaffolding, CI | Done |
 | UI design | Clickable mockup, close to MVP ([design/mockup](design/mockup/index.html)) |
-| Database | Schema v5 designed and tested ([design/database.md](design/database.md)) |
+| Database | Schema v17 designed and tested ([design/database.md](design/database.md)) |
 | Assembler (Inbox pages → documents) | Built; scored on synthetic batches and on real assembled typescripts |
-| Intake (hash, EXIF, split) and Tesseract reading | Built; try it on your scans with `scripts/intake.py` |
+| Intake (hash, EXIF, split) and Tesseract reading | Built; try it on your scans with `scripts/intake.py`. Originals are never changed or deleted: move mode keeps them, unchanged, until they're exported |
 | Lindley's own AI (llama.cpp's llama-server, with models downloaded when a tier is chosen) | Built: started when a job first needs it, offline, on this computer only; downloads resume and are checked |
 | AI connections (Lindley's own, a local AI, Anthropic, OpenAI, Google) | Built: one file per connector, each calling its AI through the company's own library; a connection per job, limits and throttling, keys in Windows Credential Manager. Tried against made-up servers; not yet on real scans with each AI |
 | Vision model reading (handwriting) | Built into intake, through any AI connection that can read pages |
 | Folder watcher | Built; runs with the backend |
 | Image checks (blank pages, rotation, handwriting or print) | Built, and tried on a first sample of real typewritten scans |
 | Duplicates (pages and documents scanned more than once) | Detection, decisions, API and the app's screen built |
-| Searchable PDF export | Built: one PDF per document, from Lindley's own readings, with people's corrections; try it with `scripts/export.py` |
+| Complete, then export | Built: a person marks a document complete, then exports it to the Exported folder they chose: one searchable PDF, from Lindley's own readings with people's corrections, and in move mode the original scans beside it; try it with `scripts/export.py`. Lindley letting go of its working copies after export is next |
 | Search | Built: every page's text as it reads now, with the words found marked |
 | Ask Lindley (AI chat) | Built: questions about your documents, answered by the chat AI from the pages Lindley finds, citing each page; kept as conversations. With no AI for it, the pane finds words and what's waiting for review |
 | Real UI (React) | Built from the mockup: every view, on the real API, with a tooltip for every control |
@@ -184,7 +184,9 @@ button, icon and status has a tooltip, shown on hover and on keyboard focus and 
 Escape. The fonts are bundled, so the app never asks another site for anything.
 
 The design itself is a single-file clickable mockup: [design/mockup/index.html](design/mockup/index.html).
-Open it in a browser; it uses sample data and saves nothing. It covers:
+Open it in a browser; it uses sample data and saves nothing. The app has moved on from it in one
+place: the mockup exports a document in one step, while the app marks it complete, then exports
+it (to the Exported folder chosen in Setup). The mockup covers:
 - first-run setup and Settings,
 - the Inbox and adding scans,
 - documents in three views (pages, reader, scan and text side by side),

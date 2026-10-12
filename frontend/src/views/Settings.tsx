@@ -672,7 +672,7 @@ function SettingsScreen({ settings }: { settings: Settings }) {
                   ai: 'Which AIs Lindley may use, for what, and who sees your scans',
                   scans: 'The folders Lindley watches, and what happens to new files',
                   reading: 'When pages wait for your review, and how printed and handwritten pages are read',
-                  library: 'Where Lindley keeps its copies, page images, PDFs and database',
+                  library: 'Where Lindley keeps its working copies and database, and where exported documents go',
                   look: 'Theme and toolbar',
                 }[k]
               }

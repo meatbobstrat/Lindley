@@ -59,7 +59,7 @@ export function DocumentView() {
 }
 
 function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cur: number; setView: (v: View, p?: number) => void; setCur: (i: number) => void }) {
-  const { folderPath, ai } = useApp()
+  const { folderPath, ai, settings } = useApp()
   const acts = useActions()
   const { run } = useFeedback()
   const nav = useNavigate()
@@ -106,7 +106,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
         </div>
         <div className="meta">
           {d.suggested && (
-            <span className="chip ai" data-tip="Lindley made up this name from the pages. It stays in italics until you rename it or export the document.">
+            <span className="chip ai" data-tip="Lindley made up this name from the pages. It stays in italics until you rename it.">
               <Mark /> Name suggested by Lindley. Click it to rename.
             </span>
           )}
@@ -157,7 +157,19 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
             {d.export?.originals ? `, with ${plural(d.export.originals, 'original scan')} beside it` : ''}.
           </Banner>
         )}
-        {done && !exported && (
+        {done && !exported && !settings?.output_dir && (
+          <Banner
+            kind="ok"
+            actions={
+              <button className="btn" onClick={() => nav('/settings/library')} data-tip="Choose the folder exported documents go to, in Settings › Library">
+                Choose the Exported folder
+              </button>
+            }
+          >
+            <b>Completed.</b> Before you export it, choose where exported documents go.
+          </Banner>
+        )}
+        {done && !exported && !!settings?.output_dir && (
           <Banner
             kind="ok"
             actions={
@@ -166,7 +178,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
               </button>
             }
           >
-            <b>Completed.</b> Ready to export whenever you are.
+            <b>Completed.</b> Ready to export to <span className="mono">{settings.output_dir}</span> whenever you are.
           </Banner>
         )}
         {!done && toRead.length > 0 && (

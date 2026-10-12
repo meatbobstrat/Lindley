@@ -249,6 +249,12 @@ def _undo_text(conn: sqlite3.Connection, page_id: int, before: dict, after: dict
             "UPDATE transcriptions SET confirmed_at = ? WHERE id = ?",
             (before["confirmed_at"], before["current"]),
         )
+    else:  # the page has no text again: its scan is unread again (organise.check_text)
+        conn.execute(
+            "UPDATE scans SET status = 'queued'"
+            " WHERE status = 'read' AND id = (SELECT scan_id FROM pages WHERE id = ?)",
+            (page_id,),
+        )
 
 
 def _undo_document_fields(conn: sqlite3.Connection, doc_id: int, before: dict, after: dict) -> None:

@@ -313,15 +313,21 @@ def test_checking_and_correcting_text(client, settings, tmp_path):
 
 def test_a_page_waiting_for_the_ai_that_a_person_types_is_read(client, settings, tmp_path):
     conn = db(client, settings)
-    pid = add_page(conn, tmp_path, "unused")
+    d = document(conn)
+    pid = add_page(conn, tmp_path, "unused", d, 0)
     # Read by the AI alone (ocr.engine "vision"): nothing yet, and the scan waits for it
     conn.execute("DELETE FROM transcriptions")
     conn.execute("UPDATE scans SET status = 'queued'")
     conn.commit()
     assert client.get(f"/api/pages/{pid}").json()["state"] == "reading"
-    client.put(f"/api/pages/{pid}/text", json={"text": "Dear Sister"})
+    typed = client.put(f"/api/pages/{pid}/text", json={"text": "Dear Sister"}).json()
     assert client.get(f"/api/pages/{pid}").json()["state"] == "checked"
     assert conn.execute("SELECT status FROM scans").fetchone()[0] == "read"
+    # Undone, the page has no text again: its scan waits for the AI again, and so does export
+    undo(client, typed)
+    assert conn.execute("SELECT status FROM scans").fetchone()[0] == "queued"
+    r = client.post(f"/api/documents/{d}/export")
+    assert r.status_code == 409 and "still being read" in r.json()["detail"]
 
 
 def test_search_finds_words_on_the_reading_in_use(client, settings, tmp_path):

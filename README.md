@@ -543,9 +543,11 @@ and you can ask it about them. All of it from a one-click install.
   watcher's calls failing until Lindley restarts; a change of nothing (pages moved to where they
   are, text checked again) has nothing to undo; keeping one of two duplicate documents when one
   is completed says to reopen it, rather than failing; stopping Lindley drops the AI work still
-  queued, rather than sending it as Lindley closes. Still to decide: whether a document waits to
-  export for its scan or only its own pages, how a scan that failed part way shows the pages it
-  did read, and whether undoing the text typed for an unread page should leave its scan unread
+  queued, rather than sending it as Lindley closes; undoing the text a person typed for a page
+  the AI hadn't read yet leaves its scan unread again, so the document can't be exported without
+  that page's text. Still to decide: whether a document waits to export for its scan or only its
+  own pages, and how a scan that failed part way shows the pages it did read (and a page waiting
+  for the AI alone shows "reading", not "needs AI")
 - [ ] Tried by hand on a clean computer of each kind: install, first-run setup, scans read and
   sorted, a PDF made, a question answered, then uninstall ([design/hand-tests.md](design/hand-tests.md)):
   - [x] Ubuntu 26.04, on a 2019 laptop with 7 GB (October 8, Low tier): installing, Setup,

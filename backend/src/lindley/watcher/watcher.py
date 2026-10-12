@@ -302,7 +302,8 @@ class FolderWatcher:
                 except OSError:
                     del self._pending[path]  # gone, or a folder
                     continue
-                # Move mode never skips one: a file still there wasn't removed yet.
+                # Move mode never skips one: a file still there wasn't taken into Lindley's
+                # keeping yet (another program had it open, or it changed as it was read in).
                 if (
                     seen.size == -1
                     and not self.settings.move_files

@@ -1,4 +1,4 @@
--- Lindley schema, version 12 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
+-- Lindley schema, version 16 (database.SCHEMA_VERSION; init_db sets PRAGMA user_version).
 -- Applied idempotently at startup by lindley.db.database.init_db.
 -- Design notes: design/database.md.
 --
@@ -19,7 +19,14 @@ CREATE TABLE IF NOT EXISTS scans (
     source_path      TEXT NOT NULL,                 -- where it was found
     origin           TEXT NOT NULL CHECK (origin IN ('watched', 'added')),
     import_mode      TEXT NOT NULL CHECK (import_mode IN ('copy', 'move')),
-    library_path     TEXT,                          -- Lindley's own copy, never altered
+    library_path     TEXT,                          -- Lindley's working copy, never altered
+    -- The person's original, never altered or deleted: where it is now, and whose it is.
+    -- in_place: where the person had it (copy mode; NULL path: added from their computer);
+    -- held: moved into Lindley's keeping (move mode, or quarantine); exported: given back with
+    -- its PDF; missing: gone from where Lindley left it.
+    original_path    TEXT,
+    original_state   TEXT NOT NULL DEFAULT 'in_place'
+                     CHECK (original_state IN ('in_place', 'held', 'exported', 'missing')),
     mime_type        TEXT,
     file_size        INTEGER,
     page_count       INTEGER,

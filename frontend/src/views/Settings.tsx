@@ -396,8 +396,8 @@ export function ModeChoices({ ctx, move, set }: { ctx: string; move: boolean; se
       <label className="choice">
         <input type="radio" name={`${ctx}-mode`} checked={move} onChange={() => set(true)} />
         <span>
-          <b>Move it into Lindley</b> and empty my scan folder. Handy when the folder is only a drop-off spot for the scanner. A file is removed only once
-          Lindley’s copy is checked.
+          <b>Move it into Lindley</b> and empty my scan folder. Handy when the folder is only a drop-off spot for the scanner. Lindley keeps your scan,
+          unchanged, in its library: nothing is deleted.
         </span>
       </label>
     </fieldset>

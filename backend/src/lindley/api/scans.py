@@ -28,8 +28,9 @@ def add_scans(files: list[UploadFile], request: Request, conn: Conn) -> dict:
     settings: Settings = request.app.state.settings
     drop = settings.processing_dir / "added" / uuid.uuid4().hex
     drop.mkdir(parents=True)
-    # Moving takes the temporary copy away once it's safe in the library
-    taking = settings.model_copy(update={"move_files": True})
+    # Copied as any scan is; the upload's temporary copy goes with its folder, below. The
+    # person's original, on their computer, is out of Lindley's reach: none to keep.
+    taking = settings.model_copy(update={"move_files": False})
     added, to_read = [], []
     try:
         for i, f in enumerate(files):
@@ -41,9 +42,9 @@ def add_scans(files: list[UploadFile], request: Request, conn: Conn) -> dict:
                     shutil.copyfileobj(f.file, out)
                 r = import_file(conn, taking, path, origin="added")
                 if r.status == "new":
-                    with conn:  # the person's own file stays where it was: a copy
+                    with conn:  # the person's own file stays where it was, on their computer
                         conn.execute(
-                            "UPDATE scans SET import_mode = 'copy', source_path = ? WHERE id = ?",
+                            "UPDATE scans SET source_path = ?, original_path = NULL WHERE id = ?",
                             (name, r.scan_id),
                         )
                 if needs_reading(conn, r):

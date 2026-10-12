@@ -35,7 +35,8 @@
     (`GET /api/local-ai/computer`, shown in Setup and Settings).
     Test Lindley with its own engine and models, not Ollama. How to bench them, where the kept
     answers and Claude's reference readings are, and what was learned: design/benches.md
-  - `worker/`: `intake.py` (hash, library copy, EXIF, split; `ingest` = import + read),
+  - `worker/`: `intake.py` (hash, working copy, EXIF, split; move mode holds the original in
+    `<library>/originals`, `scans.original_path`/`original_state`; `ingest` = import + read),
     `pipeline.py` (step records, Tesseract/vision reading; `read_turned_again`: pages a person
     turned since Tesseract read them, read again by the watcher), `ocr/` engines (`margins.py`:
     page numbers in the margins, read again on their own as part of each Tesseract reading), `ai_work.py` (AI
@@ -85,6 +86,9 @@
 - Frontend: `cd frontend; npm run dev | npm run lint | npm run build`
 
 ## Conventions
+- A person's original scans are never altered or deleted. Lindley works on its own copy; copy
+  and move mode differ only in where the originals end up (in place, or held and later given
+  back with the PDF). Only an exact copy (same sha256) of an original that's safe may be removed.
 - The repo is **public**. Never commit `settings.json`, `.env`, databases or scanned data.
   API keys live in the credential store (`providers/keys.py`), or the env var named by a
   provider's `api_key_env`. Tests use an in-memory keyring (conftest).

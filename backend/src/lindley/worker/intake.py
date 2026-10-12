@@ -1,14 +1,18 @@
 """Intake: bring one scan file into Lindley, then split it into pages.
 
-Steps (each recorded in intake_steps): hash, a verified copy into the library, exif, split.
-The original file is never altered. In move mode it is removed once its pages are in the
-library (reading works from Lindley's own copy), and a file already there is removed when it
-turns up again. A file that fails is copied (or, in move mode, moved) to the quarantine folder,
-once: the same file failing again isn't copied again.
+Steps (each recorded in intake_steps): hash, a verified working copy into the library, exif,
+split. Lindley works only on its copy. The person's original is never altered or deleted:
+copy mode leaves it where it was; move mode moves it, unchanged, into Lindley's keeping
+(`<library>/originals`) once its pages are in the library, and only if it's still the file that
+was read in (scans.original_path and original_state say where it is). A file that turns up again
+in move mode is taken into Lindley's keeping too, unless the same file is held already: then
+it's an exact copy of one that's safe, and removed. A file that fails is copied (or, in move
+mode, moved) to the quarantine folder, once: the same file failing again isn't copied again.
 """
 
 from __future__ import annotations
 
+import errno
 import glob
 import hashlib
 import json
@@ -39,6 +43,7 @@ PDF_DPI = 300
 MAX_RENDER_PX = 40_000_000
 _PNG_MODES = frozenset({"1", "L", "LA", "I", "I;16", "P", "RGB", "RGBA"})
 _EXIF_IFD = 0x8769
+_NOT_SAME_DEVICE = 17  # Windows' ERROR_NOT_SAME_DEVICE: a move to another drive
 # EXIF tags that say when the page was scanned, best first.
 _SCAN_TIME_TAGS = (36867, 36868, 306)  # DateTimeOriginal, DateTimeDigitized, DateTime
 
@@ -51,6 +56,7 @@ class ImportResult:
     pages: int = 0
     error: str | None = None
     reading: str | None = None  # after ingest: 'read' or 'failed'; None if nothing to read
+    quarantined: Path | None = None  # failed: the copy of it (or, in move mode, it) in quarantine
 
 
 def is_supported(path: Path) -> bool:
@@ -119,16 +125,19 @@ def import_file(
         )
 
     existing = conn.execute(
-        "SELECT s.id, s.status, s.library_path,"
+        "SELECT s.id, s.status, s.original_path, s.original_state,"
         " (SELECT COUNT(*) FROM pages p WHERE p.scan_id = s.id) AS n"
         " FROM scans s WHERE s.sha256 = ?",
         (sha,),
     ).fetchone()
     # A file that failed before it was split can be tried again; anything else is a duplicate.
     if existing and not (existing["status"] == "failed" and existing["n"] == 0):
-        lib = existing["library_path"]
-        if settings.move_files and lib and Path(lib).is_file() and sha256_of(Path(lib)) == sha:
-            _remove_original(path)  # it's safe in the library already
+        if settings.move_files:
+            kept = existing["original_state"] in ("held", "exported") and existing["original_path"]
+            if kept and _same_file(Path(existing["original_path"]), sha):
+                _remove_original(path)  # an exact copy of an original that's safe: nothing is lost
+            else:
+                _hold(conn, settings, existing["id"], path, st, sha)
         return ImportResult(path, "duplicate", existing["id"], existing["n"])
 
     try:
@@ -147,7 +156,8 @@ def import_file(
         else:
             scan_id = conn.execute(
                 "INSERT INTO scans (sha256, original_name, source_path, origin, import_mode,"
-                " library_path, mime_type, file_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " library_path, mime_type, file_size, original_path, original_state)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_place')",
                 (
                     sha,
                     path.name,
@@ -157,6 +167,7 @@ def import_file(
                     str(copy),
                     mime,
                     copy.stat().st_size,
+                    str(path.resolve()),
                 ),
             ).lastrowid
         record_step(conn, scan_id, Step.HASH, StepStatus.DONE, started_at=started)
@@ -183,10 +194,13 @@ def import_file(
             conn.execute(
                 "UPDATE scans SET status = 'failed', error = ? WHERE id = ?", (error, scan_id)
             )
-        return _quarantine(settings, path, ImportResult(path, "failed", scan_id, error=error))
+        result = _quarantine(settings, path, ImportResult(path, "failed", scan_id, error=error))
+        if settings.move_files and result.quarantined:
+            _held_at(conn, scan_id, result.quarantined)
+        return result
 
     if settings.move_files:
-        _remove_original(path)
+        _hold(conn, settings, scan_id, path, st, sha)
     return ImportResult(path, "new", scan_id, pages)
 
 
@@ -258,19 +272,93 @@ def _library_copy(settings: Settings, path: Path, sha: str) -> Path:
     return dest
 
 
+def held_path(settings: Settings, sha: str, suffix: str) -> Path:
+    """Where Lindley keeps an original it took in move mode: named, like its working copy, by
+    its fingerprint."""
+    return settings.library_dir.resolve() / "originals" / sha[:2] / f"{sha}{suffix.lower()}"
+
+
+def _hold(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    scan_id: int,
+    path: Path,
+    st: os.stat_result,
+    sha: str,
+) -> bool:
+    """Move mode: take the original into Lindley's keeping, unchanged. Only the file that was
+    read in is taken: one whose size, time or contents changed since (a scanner still writing
+    it) stays where it is, and is noticed again. One another program has open stays too, and is
+    taken when it's next seen. True if it was taken."""
+    try:
+        now = path.stat()
+        if (now.st_size, now.st_mtime_ns) != (st.st_size, st.st_mtime_ns) or sha256_of(path) != sha:
+            log.warning("%s changed while it was read in, so it's left where it is", path)
+            return False
+        dest = held_path(settings, sha, path.suffix)
+        _move_checked(path, dest, sha)
+    except OSError as e:
+        log.warning("Couldn't take %s into Lindley's keeping, so it's left there: %s", path, e)
+        return False
+    _held_at(conn, scan_id, dest)
+    return True
+
+
+def _held_at(conn: sqlite3.Connection, scan_id: int, where: Path) -> None:
+    with conn:
+        conn.execute(
+            "UPDATE scans SET original_path = ?, original_state = 'held' WHERE id = ?",
+            (str(where), scan_id),
+        )
+
+
+def _move_checked(src: Path, dest: Path, sha: str) -> None:
+    """Move a file, unchanged. On another drive it's copied, the copy checked against `sha`,
+    and only then is `src` removed. If `dest` is there already and the same, `src` is an exact
+    copy of it and is removed; if it isn't the same, nothing is touched. Raises OSError."""
+    if dest.exists():
+        if not _same_file(dest, sha):
+            raise OSError(f"{dest} is there already, and isn't the same file")
+        src.unlink()
+        return
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(src, dest)  # the same drive: renamed, not copied
+        return
+    except OSError as e:
+        if e.errno != errno.EXDEV and getattr(e, "winerror", None) != _NOT_SAME_DEVICE:
+            raise
+    part = dest.with_name(dest.name + ".part")
+    try:
+        shutil.copy2(src, part)
+        if sha256_of(part) != sha:
+            raise OSError(f"The copy of {src.name} didn't match it")
+        os.replace(part, dest)
+    finally:
+        part.unlink(missing_ok=True)
+    src.unlink()
+
+
+def _same_file(path: Path, sha: str) -> bool:
+    try:
+        return path.is_file() and sha256_of(path) == sha
+    except OSError:
+        return False
+
+
 def _remove_original(path: Path) -> None:
-    """Move mode: remove the original. One another program has open stays for now; it's a
-    duplicate when it's next seen, and removed then."""
+    """Move mode: remove a file that's an exact copy of an original Lindley holds safe already.
+    One another program has open stays for now, and is removed when it's next seen."""
     try:
         path.unlink()
     except OSError as e:
-        log.warning("Couldn't remove %s after reading it in: %s", path, e)
+        log.warning("Couldn't remove %s, a copy of a scan Lindley has: %s", path, e)
 
 
 def _quarantine(settings: Settings, path: Path, result: ImportResult) -> ImportResult:
     """Put a failed file aside. Copy mode keeps the original where it was. A file already in
     quarantine (copy mode tries a failed file again each time Lindley starts) isn't copied
-    again."""
+    again. `result.quarantined` says where it is in quarantine."""
     if not path.exists():
         return result
     folder = settings.quarantine_dir
@@ -279,20 +367,22 @@ def _quarantine(settings: Settings, path: Path, result: ImportResult) -> ImportR
         dest = dest.with_name(f"{path.stem}-{datetime.now(UTC):%Y%m%d%H%M%S%f}{path.suffix}")
     try:
         folder.mkdir(parents=True, exist_ok=True)
-        if _in_quarantine(folder, path):
+        if there := _in_quarantine(folder, path):
+            dest = there
             if settings.move_files:
-                path.unlink()
+                path.unlink()  # an exact copy of the one in quarantine
         elif settings.move_files:
             shutil.move(path, dest)
         else:
             shutil.copy2(path, dest)
+        result.quarantined = dest
     except OSError as e:
         result.error = f"{result.error}; also couldn't quarantine it: {e}"
     return result
 
 
-def _in_quarantine(folder: Path, path: Path) -> bool:
-    """A copy of this file is in quarantine already, under its name or a dated one."""
+def _in_quarantine(folder: Path, path: Path) -> Path | None:
+    """The copy of this file in quarantine already, under its name or a dated one, if there is."""
     stem, suffix = glob.escape(path.stem), glob.escape(path.suffix)
     try:
         size, sha = path.stat().st_size, None
@@ -300,10 +390,10 @@ def _in_quarantine(folder: Path, path: Path) -> bool:
             if q.is_file() and q.stat().st_size == size:
                 sha = sha or sha256_of(path)
                 if sha256_of(q) == sha:
-                    return True
+                    return q
     except OSError:
         pass  # it can't be read: quarantine it anyway
-    return False
+    return None
 
 
 def _iso(ts: float) -> str:

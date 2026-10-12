@@ -369,7 +369,7 @@ class NoTesseract:
 
 
 def test_a_scan_whose_reading_failed_is_read_when_lindley_starts_again(settings, inbox):
-    settings.move_files = True  # the original goes once imported: only Lindley's copy is left
+    settings.move_files = True  # the original is taken into Lindley's keeping once imported
     (inbox / "a.png").write_bytes(png_bytes())
     first = make_watcher(settings, pipeline=Pipeline(settings, NoTesseract()))
     first.sweep([inbox])
@@ -469,18 +469,21 @@ def test_a_file_changed_in_place_at_the_same_size_is_read_again(settings, inbox)
     assert len(scans(settings)) == 2
 
 
-def test_move_mode_takes_a_file_it_couldnt_remove_again(settings, inbox, monkeypatch):
+def test_move_mode_takes_a_file_it_couldnt_move_again(settings, inbox, monkeypatch):
+    import os
+
     settings.move_files = True
     path = inbox / "a.png"
     path.write_bytes(png_bytes())
-    unlink = watcher_mod.Path.unlink
+    before = path.read_bytes()
+    replace = os.replace
     monkeypatch.setattr(
-        watcher_mod.Path,
-        "unlink",
-        lambda self, *a, **k: (
+        os,
+        "replace",
+        lambda a, b: (
             (_ for _ in ()).throw(PermissionError("in use"))
-            if self.name == "a.png"
-            else unlink(self, *a, **k)
+            if os.path.basename(a) == "a.png"
+            else replace(a, b)
         ),
     )
     first = make_watcher(settings)
@@ -493,7 +496,9 @@ def test_move_mode_takes_a_file_it_couldnt_remove_again(settings, inbox, monkeyp
     later.sweep([inbox])
     later.tick()
     later.tick()
-    assert not path.exists()  # seen before, but still there: removed now
+    assert not path.exists()  # seen before, but still there: taken now
+    held = list((settings.library_dir / "originals").rglob("*.png"))
+    assert [h.read_bytes() for h in held] == [before]
 
 
 def test_the_vision_queue_is_found_by_index(settings, inbox):

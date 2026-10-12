@@ -494,3 +494,29 @@ def test_document_progress(conn):
 
     conn.execute("INSERT INTO suggestions (kind, document_id) VALUES ('reorder', ?)", (doc,))
     assert not document_progress(conn, doc, 90).ready
+
+
+def test_v15_database_says_where_each_original_is(tmp_path):
+    db = tmp_path / "lindley.db"
+    init_db(db)
+    c = sqlite3.connect(db)
+    # As v15 made them: no original_path or original_state
+    c.executescript(
+        "ALTER TABLE scans DROP COLUMN original_path; ALTER TABLE scans DROP COLUMN original_state;"
+        "INSERT INTO scans (sha256, original_name, source_path, origin, import_mode, library_path)"
+        " VALUES ('a', 'a.jpg', '/scans/a.jpg', 'watched', 'copy', '/lib/a.jpg'),"
+        " ('b', 'b.jpg', '/scans/b.jpg', 'watched', 'move', '/lib/b.jpg'),"
+        " ('c', 'c.jpg', 'c.jpg', 'added', 'copy', '/lib/c.jpg');"
+        "PRAGMA user_version = 15;"
+    )
+    c.close()
+    init_db(db)
+    c = connect(db)
+    rows = c.execute("SELECT sha256, original_path, original_state FROM scans ORDER BY sha256")
+    assert [tuple(r) for r in rows] == [
+        ("a", "/scans/a.jpg", "in_place"),  # copy mode: where it was found
+        ("b", "/lib/b.jpg", "held"),  # move mode deleted it: Lindley's copy is the original now
+        ("c", None, "in_place"),  # added from the person's computer
+    ]
+    assert c.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    c.close()

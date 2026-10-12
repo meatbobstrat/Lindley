@@ -1,13 +1,13 @@
 # Lindley database design
 
-Schema version 14. The source of truth is [backend/src/lindley/db/schema.sql](../backend/src/lindley/db/schema.sql).
+Schema version 16. The source of truth is [backend/src/lindley/db/schema.sql](../backend/src/lindley/db/schema.sql).
 This document explains why the schema is shaped the way it is.
 
 ## Goals
 
 1. **Intake keeps everything that could help match pages.** Each incoming file is squeezed for every clue it holds: what the file says about itself, what the image looks like, what the text says. All of it is kept with its source and confidence.
 2. **Records fill in over time.** A document starts as a few pages and a guessed name. It gets closer to complete as pages are read, reviewed, dated and named. Completeness is worked out from the data, so it can never drift out of step.
-3. **Nothing is destroyed.** Originals are never altered, and pages and readings are never deleted. A person's correction is added as a new reading.
+3. **Nothing is destroyed.** A person's original scans are never altered or deleted: Lindley works on a copy of its own. In copy mode the original stays where it was found; in move mode it's moved, unchanged, into Lindley's keeping. Pages and readings are never deleted, and a person's correction is added as a new reading.
 4. **Every page is in one place.** A page is in the Inbox, in a document, or Set aside, and the database enforces it.
 5. **Lindley suggests and people decide.** Anything Lindley proposes is stored as a suggestion, with its reasons, until a person accepts or dismisses it.
 
@@ -33,7 +33,7 @@ erDiagram
 
 | Table | One row per | Why it exists |
 |---|---|---|
-| `scans` | incoming file | Where the file came from, its hash (to catch duplicates), EXIF data and import mode. A multi-page PDF or TIFF is one scan. |
+| `scans` | incoming file | Where the file came from, its hash (to catch duplicates), EXIF data and import mode, Lindley's working copy, and where the person's original is now (`original_path`, `original_state`: where they had it, held in Lindley's keeping, given back with its PDF, or missing). A multi-page PDF or TIFF is one scan. |
 | `pages` | page image | The unit people move around. Holds the image measurements and where the page lives (a document and position, Set aside, or neither, which means the Inbox). |
 | `transcriptions` | reading of a page | Every reading from Tesseract, the vision model, or a person's correction. Exactly one is current. `confirmed_at` records that a person checked it. |
 | `facts` | thing found | Dates, names, places, letterheads and so on, each with a source, a confidence, and its position on the page. Belongs to a page or to a document. |
@@ -61,7 +61,7 @@ Each step writes an `intake_steps` row, so the UI can show "Reading…" and a fa
 
 | Step | Reads | Writes |
 |---|---|---|
-| `hash` | the file | `scans.sha256`. A known hash is flagged as a duplicate rather than imported twice. |
+| `hash` | the file | `scans.sha256`. A known hash is flagged as a duplicate rather than imported twice. Then Lindley's working copy, checked against the hash. In move mode, once the pages are split, the original is moved into the library's `originals` folder, only if its size, time and hash still match (a file a scanner is still writing stays where it is, to be noticed again); `scans.original_path` and `original_state` say where it is. |
 | `exif` | file system, EXIF | file created and modified times, `scanner_make` and `scanner_model`, `scanned_at`, `exif_json`, and a `file` fact from the file name (`scan_0042` is a sequence number) |
 | `split` | PDF or TIFF | one `pages` row per page, with `page_index` |
 | `image` | the page image | size, DPI, colour mode, `phash`, `paper_color`, `blank_score`, `detected_rotation`, `script` (handwritten, printed, typed, mixed or none) |

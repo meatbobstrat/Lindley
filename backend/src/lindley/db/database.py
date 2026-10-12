@@ -7,7 +7,7 @@ from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 # Numbered migrations from one version to the next: {2: "ALTER TABLE ...", ...}, or a function
 # given the connection.
@@ -35,6 +35,7 @@ MIGRATIONS: dict[int, str | Callable[[sqlite3.Connection], None]] = {
     13: lambda conn: _read_turned(conn),
     14: "",  # new tables only (chats, chat_messages)
     15: lambda conn: _continues(conn),
+    16: lambda conn: _originals(conn),
 }
 
 # Tables from the pre-release placeholder schema (user_version 0). They never held real data.
@@ -132,6 +133,31 @@ def _continues(conn: sqlite3.Connection) -> None:
         conn.commit()
     finally:
         conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _originals(conn: sqlite3.Connection) -> None:
+    """v16: where each scan's original is. Copy mode left it where it was found; move mode
+    deleted it once imported, so Lindley's own copy, identical to it, is the only one left: it's
+    the original Lindley holds. Scans added from a person's computer were never Lindley's to
+    keep."""
+    if "scans" not in _tables(conn):
+        return
+    has = {r[1] for r in conn.execute("PRAGMA table_info(scans)")}
+    if "original_path" not in has:
+        conn.execute("ALTER TABLE scans ADD COLUMN original_path TEXT")
+    if "original_state" not in has:
+        conn.execute(
+            "ALTER TABLE scans ADD COLUMN original_state TEXT NOT NULL DEFAULT 'in_place'"
+            " CHECK (original_state IN ('in_place', 'held', 'exported', 'missing'))"
+        )
+    conn.execute(
+        "UPDATE scans SET original_path = CASE WHEN origin = 'watched' THEN source_path END,"
+        " original_state = 'in_place' WHERE import_mode = 'copy' AND original_path IS NULL"
+    )
+    conn.execute(
+        "UPDATE scans SET original_path = library_path, original_state = 'held'"
+        " WHERE import_mode = 'move' AND original_path IS NULL"
+    )
 
 
 def _drop_placeholder(conn: sqlite3.Connection) -> None:

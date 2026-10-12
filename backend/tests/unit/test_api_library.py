@@ -379,5 +379,10 @@ def test_adding_scans_imports_them_into_the_inbox(client, settings):
     [p] = client.get("/api/inbox").json()["pages"]
     assert (p["file"], p["origin"], p["state"]) == ("letter.png", "added", "reading")
     assert not any((settings.processing_dir / "added").iterdir())  # the upload is cleared away
+    # The original is on the person's computer: Lindley has its own copy, and none to keep
+    conn = connect(settings.db_path)
+    scan = conn.execute("SELECT import_mode, original_path, original_state FROM scans").fetchone()
+    assert tuple(scan) == ("copy", None, "in_place")
+    assert not (settings.library_dir / "originals").exists()
     again = client.post("/api/scans", files=files).json()
     assert again["added"][0]["status"] == "duplicate"

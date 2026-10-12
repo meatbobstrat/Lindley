@@ -296,7 +296,9 @@ python scripts\intake.py D:\scans --settings D:\scratch\settings.json --ai      
 
 Folders are searched recursively in natural name order (`scan_2` before `scan_10`). It's safe
 to run again: files already read are skipped, and failed ones are tried again. Originals are
-never changed, and with `move_files` they're removed only once their copy is checked.
+never changed or deleted: with `move_files` each is moved, unchanged, into the library's
+`originals` folder once Lindley's own copy is checked, and only if it's still the file that was
+read in (one a scanner is still writing stays where it is).
 
 Before a page is read, Lindley checks the image. Blank pages are noted and aren't sent to the
 vision model. Tesseract finds which way up a page is as it reads it; an upside-down page's words
@@ -358,9 +360,9 @@ the program.
 | `watch_folders` | Folders to watch for new scans (`Documents/Lindley/Inbox`, made the first time it's watched). Setup won't start with a folder it can't find; Settings and the status bar mark one that isn't there (a path typed wrong, a drive unplugged), and it's watched once it's back |
 | `processing_dir` | Working area for files being processed (`processing` in the data folder) |
 | `quarantine_dir` | Where files that fail processing are put (`quarantine` in the data folder) |
-| `library_dir` | Lindley's library (`Documents/Lindley/Library`): its copies of scans (in `scans`), each page as an image (in `pages`), and exported PDFs (in `Exports`) |
+| `library_dir` | Lindley's library (`Documents/Lindley/Library`): its working copies of scans (in `scans`), each page as an image (in `pages`), the originals it took in move mode, unchanged (in `originals`), and exported PDFs (in `Exports`) |
 | `db_path` | SQLite database location (`lindley.db` in the data folder). It's kept outside the library, which is often in a synced folder, where SQLite isn't safe. Back up both. To move it, copy it to the new place first (with its `-wal` file, if there is one): Settings refuses a place that doesn't hold Lindley's database |
-| `move_files` | `true` moves scans out of watched folders; `false` copies them and leaves the originals |
+| `move_files` | `true` moves scans out of watched folders into Lindley's keeping (the library's `originals`), unchanged; `false` copies them and leaves the originals where they are |
 | `add_mode` | Files added with Add scans… in the Inbox: `ask` each time (the default), or always `copy` or `move` them |
 | `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this (20 to 95; 70), a page needs the vision model. `review_below`: a page whose reading falls below this (50 to 99; 80) waits for a person's review. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000). `workers`: scans read at once; Tesseract uses one core a page, so a few side by side finish sooner (`null`: one fewer than the computer's cores, at most 3) |
 | `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" or "Do these go together?" hint (45). `offer_at`: a group the AI checked, at or above this but below `group_at`, is offered for one-click accept (60). `ai_band`: which uncertain breaks may be sent to the AI. `ask_ai_after_days`: when the sorting AI may run on its own, how long pages wait for a person first (0: at once) |
@@ -581,6 +583,21 @@ and you can ask it about them. All of it from a one-click install.
     hovering (tooltips, right-click menus), pinch to zoom page images, and dragging (the
     toolbar, the Ask Lindley window, pages) that ends cleanly when the browser cancels a touch
     (`pointercancel`), which today can leave the window "dragging"
+- [ ] Scans in; originals untouched and a PDF out. Either mode ends with the person's original
+  scans, unchanged, and a PDF; copy and move mode differ only in where the originals end up.
+  Lindley works on a copy of its own, and lets it go once the document is exported:
+  - [x] move mode no longer deletes originals: each is moved, unchanged, into Lindley's keeping
+    (the library's `originals`), and only if it's still the file that was read in, so a scan a
+    scanner is still writing (a TIFF has no ending to check) stays where it is
+  - [ ] Complete, then Export, as two steps: export to an output folder in Settings (a native
+    Save dialog once Lindley is a desktop app), with Lindley's folders as folders on disk; in
+    move mode the document's originals go with its PDF
+  - [ ] after export, Lindley drops its working copies and page images, and keeps the text,
+    fingerprints, history and where the files went, so search, Ask Lindley and duplicate checks
+    still work, and copy-mode originals aren't imported again
+  - [ ] the loose ends, each the person's to decide: a scan whose pages are in more than one
+    document; Set aside pages Lindley is done with; reopening an exported document (back to
+    the Inbox, or add pages to its PDF)
 - [ ] The frontend, tested and trimmed:
   - tests of its logic with Vitest (it has none today; lint and the type check are all that
     run): the parser that reads Ask Lindley's answer as it streams (`ask` in `api/client.ts`),

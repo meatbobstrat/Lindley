@@ -6,7 +6,7 @@ from PIL import Image
 
 from lindley.config import Settings
 from lindley.db.database import connect, init_db
-from lindley.worker.intake import import_file, looks_complete, sha256_of
+from lindley.worker.intake import held_path, import_file, looks_complete, sha256_of
 
 
 @pytest.fixture
@@ -85,14 +85,70 @@ def test_the_library_copy_matches_and_the_original_is_left_alone(conn, settings,
     assert settings.library_dir in lib.parents and lib.read_bytes() == before
 
 
-def test_move_mode_removes_the_original_only_after_success(conn, settings, inbox):
+def test_copy_mode_says_the_original_is_where_it_was(conn, settings, inbox):
+    src = make_jpeg(inbox / "a.jpg")
+    import_file(conn, settings, src)
+    scan = conn.execute("SELECT original_path, original_state FROM scans").fetchone()
+    assert tuple(scan) == (str(src.resolve()), "in_place") and src.exists()
+
+
+def test_move_mode_takes_the_original_into_lindleys_keeping_unchanged(conn, settings, inbox):
     settings.move_files = True
     src = make_jpeg(inbox / "a.jpg")
+    before = src.read_bytes()
     r = import_file(conn, settings, src)
     assert r.status == "new" and not src.exists()
     scan = conn.execute("SELECT * FROM scans").fetchone()
-    assert scan["import_mode"] == "move"
+    held = Path(scan["original_path"])
+    assert scan["import_mode"] == "move" and scan["original_state"] == "held"
+    assert held.read_bytes() == before and held == held_path(settings, scan["sha256"], ".jpg")
+    # Lindley works on a copy of its own; the original it holds is a file apart
+    assert Path(scan["library_path"]) != held
     assert sha256_of(Path(scan["library_path"])) == scan["sha256"]
+
+
+def test_move_mode_leaves_a_file_that_changed_while_it_was_read_in(
+    conn, settings, inbox, monkeypatch
+):
+    """A scanner still writing it, say: it stays where it is, and is noticed again."""
+    from lindley.worker import intake
+
+    settings.move_files = True
+    src = make_jpeg(inbox / "a.jpg")
+    split = intake._split
+
+    def still_writing(*a):
+        n = split(*a)
+        with src.open("ab") as f:
+            f.write(b"the rest of the scan")
+        return n
+
+    monkeypatch.setattr(intake, "_split", still_writing)
+    assert import_file(conn, settings, src).status == "new"
+    assert src.exists() and src.read_bytes().endswith(b"the rest of the scan")
+    scan = conn.execute("SELECT original_path, original_state FROM scans").fetchone()
+    assert tuple(scan) == (str(src.resolve()), "in_place")
+
+
+def test_move_mode_to_another_drive_copies_checks_then_removes(conn, settings, inbox, monkeypatch):
+    import errno
+    import os
+
+    settings.move_files = True
+    src = make_jpeg(inbox / "a.jpg")
+    before = src.read_bytes()
+    replace = os.replace
+
+    def other_drive(a, b):
+        if Path(a) == src:
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        return replace(a, b)
+
+    monkeypatch.setattr(os, "replace", other_drive)
+    import_file(conn, settings, src)
+    held = Path(conn.execute("SELECT original_path FROM scans").fetchone()[0])
+    assert not src.exists() and held.read_bytes() == before
+    assert not list(held.parent.glob("*.part"))
 
 
 def test_the_same_file_twice_is_a_duplicate(conn, settings, inbox):
@@ -212,33 +268,43 @@ def test_a_file_that_fails_again_isnt_quarantined_again(conn, settings, inbox):
     assert len(list(settings.quarantine_dir.iterdir())) == 2
 
 
-def test_move_mode_keeps_going_when_the_original_cant_be_removed(
-    conn, settings, inbox, monkeypatch
-):
+def test_move_mode_keeps_going_when_the_original_cant_be_moved(conn, settings, inbox, monkeypatch):
+    import os
+
     settings.move_files = True
     src = make_jpeg(inbox / "a.jpg")
-    unlink = Path.unlink
+    replace = os.replace
 
-    def locked(self, *a, **k):
-        if self == src:
+    def locked(a, b):
+        if Path(a) == src:
             raise PermissionError("in use by another process")
-        return unlink(self, *a, **k)
+        return replace(a, b)
 
-    monkeypatch.setattr(Path, "unlink", locked)
+    monkeypatch.setattr(os, "replace", locked)
     r = import_file(conn, settings, src)
     assert r.status == "new" and r.pages == 1 and src.exists()
+    state = "SELECT original_state FROM scans"
+    assert conn.execute(state).fetchone()[0] == "in_place"
     monkeypatch.undo()
     again = import_file(conn, settings, src)  # seen again once the other program let go
     assert again.status == "duplicate" and not src.exists()
+    assert conn.execute(state).fetchone()[0] == "held"
 
 
-def test_move_mode_removes_a_file_already_in_the_library(conn, settings, inbox):
+def test_move_mode_takes_a_file_seen_before_in_copy_mode_and_removes_only_exact_copies(
+    conn, settings, inbox
+):
     first = make_jpeg(inbox / "a.jpg")
-    import_file(conn, settings, first)  # read in copy mode
+    import_file(conn, settings, first)  # read in copy mode: the original stays where it is
     settings.move_files = True
     copy = make_jpeg(inbox / "copy of a.jpg")
     assert import_file(conn, settings, copy).status == "duplicate"
-    assert not copy.exists()
+    held = Path(conn.execute("SELECT original_path FROM scans").fetchone()[0])
+    assert not copy.exists() and held.read_bytes() == first.read_bytes()
+    # Once one is held, another exact copy adds nothing: it's removed
+    again = make_jpeg(inbox / "another copy of a.jpg")
+    assert import_file(conn, settings, again).status == "duplicate"
+    assert not again.exists() and held.is_file() and first.exists()
 
 
 def test_a_scan_put_in_a_pdf_at_72_dpi_isnt_rendered_enormous(conn, settings, inbox):

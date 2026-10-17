@@ -264,6 +264,33 @@ def test_with_no_vision_model_hard_pages_wait_for_a_person_instead(conn, setting
     assert waiting_for_vision(conn) == 1
 
 
+def test_with_no_vision_model_hard_pages_are_listed_till_one_is_chosen(
+    client, conn, settings, scan
+):
+    """Handwriting with no AI to read it shows in Needs AI too, saying so (the Ubuntu hand
+    test): it's in Needs your review as well, but nothing there says an AI could read it."""
+    queue_hard_pages(conn, settings, scan)
+    settings.ai.jobs["vision"].connection = None
+    follow_settings(conn, settings)
+    body = client.get("/api/needs-ai").json()
+    assert body["count"] == 1 and body["read"]["connection"] is None
+    [page] = body["read"]["pages"]
+    assert page["why"] == "No AI is set up to read hard pages"
+    assert page["confidence"] == 41.0 and not page["failed"] and not page["sending"]
+    assert client.get("/api/overview").json()["counts"]["needs_ai"] == 1
+    [state] = {p["state"] for p in client.get("/api/inbox").json()["pages"]}
+    assert state == "review"
+    assert client.post("/api/needs-ai/read", json={}).status_code == 400  # nothing to send to
+    settings.ocr.engine = "tesseract"  # a person chose Tesseract alone: it isn't asked for
+    assert client.get("/api/needs-ai").json()["count"] == 0
+    assert client.get("/api/overview").json()["counts"]["needs_ai"] == 0
+    settings.ocr.engine = "hybrid"
+    settings.ai.jobs["vision"].connection = "local"  # chosen: it waits for it, listed once
+    follow_settings(conn, settings)
+    [page] = client.get("/api/needs-ai").json()["read"]["pages"]
+    assert page["why"] != "No AI is set up to read hard pages"
+
+
 def test_pages_the_rules_cant_sort_wait_for_the_ai(conn):
     a, b = story(conn)
     report = assemble(conn)  # no AI may be called

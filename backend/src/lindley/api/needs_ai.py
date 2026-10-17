@@ -2,8 +2,9 @@
 
 Two kinds, like the two kinds of Duplicates:
 - read: pages Tesseract read with less than ocr.confidence_threshold, waiting for the vision
-  model (or whose vision call failed). A person may send a page under review too (read with
-  less than ocr.review_below), though it doesn't wait here;
+  model (or whose vision call failed). With no vision model set up, they're listed too, so a
+  person knows an AI could read them (pipeline.unread_without_ai). A person may send a page
+  under review too (read with less than ocr.review_below), though it doesn't wait here;
 - sort: pages the rules couldn't sort into documents, one item per question the sorting AI
   would be asked, with the rules' own guess at the documents in it. A proposal marked
   "question": "place" asks which of a few likely documents (its "candidates") the pages
@@ -31,7 +32,7 @@ from lindley.providers import allowance
 from lindley.providers.base import ProviderError
 from lindley.providers.registry import connectors, get_provider
 from lindley.worker.ai_work import AiWork, connection_label
-from lindley.worker.pipeline import Pipeline, vision_queue
+from lindley.worker.pipeline import Pipeline, unread_without_ai, vision_queue
 
 router = APIRouter(prefix="/needs-ai", tags=["needs-ai"])
 
@@ -106,7 +107,7 @@ def list_needs_ai(request: Request, conn: Conn) -> dict:
             "position": r["position"],
             "sending": r["status"] == "running" or r["page_id"] in sending,
         }
-        for r in vision_queue(conn, running=True)
+        for r in [*vision_queue(conn, running=True), *unread_without_ai(conn, settings)]
     ]
     sort = sort_items(conn)
     for item in sort:

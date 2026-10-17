@@ -16,12 +16,12 @@ import { needs, plural, quoted, sentences, them, when } from '../lib/words'
 import { DBtn, Dock, DockProgress, Sep } from '../ui/Dock'
 import { Icon, Mark } from '../ui/icons'
 
-function ConnLine({ c, what }: { c: Conn | null; what: string }) {
+function ConnLine({ c, what, how }: { c: Conn | null; what: string; how?: string }) {
   const nav = useNavigate()
   if (!c)
     return (
       <p className="na-to">
-        <Icon name="warn" /> No AI is set up for {what}.{' '}
+        <Icon name="warn" /> No AI is set up for {what}.{how ? ` ${how}` : ''}{' '}
         <button className="btn ghost" onClick={() => nav('/settings/ai')} data-tip="Choose an AI connection for this job">
           Choose one
         </button>
@@ -70,7 +70,7 @@ export function NeedsAiList() {
   const groups = new Map<number | null, ReadItem[]>()
   read.pages.forEach((r) => groups.set(r.document_id, [...(groups.get(r.document_id) ?? []), r]))
   const n = read.pages.length + pagesToSort(items)
-  const toRead = read.pages.filter((r) => !r.sending)
+  const toRead = vision ? read.pages.filter((r) => !r.sending) : [] // with no AI, nothing to send them to
   const toSort = items.filter((x) => !x.sending)
   const unsent = toRead.length + pagesToSort(toSort)
   const auto = vision?.cfg.allow === 'auto' || sorter?.cfg.allow === 'auto'
@@ -95,7 +95,11 @@ export function NeedsAiList() {
                   Too hard to read
                 </h2>
                 <p className="sub">Tesseract read these with low confidence, usually handwriting or a faint copy. Its rough reading is used until the AI reads them properly.</p>
-                <ConnLine c={vision} what="reading hard pages" />
+                <ConnLine
+                  c={vision}
+                  what="reading hard pages"
+                  how="Until there is, they wait in Needs your review for you to type or check their text. Lindley’s own AI reads handwriting on this computer at High, or another computer’s AI server or a cloud AI can."
+                />
                 <div className="docs">
                   {[...groups].map(([docId, rows]) => {
                     const d = docId != null ? docs.get(docId) : undefined
@@ -127,20 +131,24 @@ export function NeedsAiList() {
                           </span>
                         </button>
                         <div className="na-acts">
-                          <button
-                            className="btn ai"
-                            disabled={!vision || sending === rows.length}
-                            onClick={() => readThem(rows.filter((r) => !r.sending).map((r) => r.page_id))}
-                            data-tip={
-                              !vision
-                                ? 'Set up an AI for reading hard pages first'
-                                : sending === rows.length
+                          {!vision ? (
+                            <button className="btn ghost" onClick={() => nav('/settings/ai')} data-tip="Choose an AI to read hard pages like these, in Settings">
+                              Choose an AI
+                            </button>
+                          ) : (
+                            <button
+                              className="btn ai"
+                              disabled={sending === rows.length}
+                              onClick={() => readThem(rows.filter((r) => !r.sending).map((r) => r.page_id))}
+                              data-tip={
+                                sending === rows.length
                                   ? 'Sent already. The status bar says when the AI is done.'
                                   : `Send ${them(rows.length - sending)} to ${vision.label} to read now. Sending is your OK.`
-                            }
-                          >
-                            <Mark /> {sending === rows.length ? 'Sent to the AI' : failed.length === rows.length ? 'Try again' : `Ask the AI to read ${them(rows.length - sending)}`}
-                          </button>
+                              }
+                            >
+                              <Mark /> {sending === rows.length ? 'Sent to the AI' : failed.length === rows.length ? 'Try again' : `Ask the AI to read ${them(rows.length - sending)}`}
+                            </button>
+                          )}
                         </div>
                       </div>
                     )

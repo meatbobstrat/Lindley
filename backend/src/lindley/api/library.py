@@ -11,7 +11,7 @@ from lindley.api.needs_ai import sort_items
 from lindley.api.settings import watchable
 from lindley.config import Settings
 from lindley.organise import Change
-from lindley.worker.pipeline import vision_queue
+from lindley.worker.pipeline import unread_without_ai, vision_queue
 
 router = APIRouter(tags=["library"])
 
@@ -41,7 +41,8 @@ def overview(request: Request, conn: Conn) -> dict:
     work = request.app.state.ai_work
     sending = work.pages()  # sent already, on their way to the AI
     sorting = settings.ai.connection_for("assemble") is not None
-    waiting = {r["page_id"] for r in vision_queue(conn)}
+    # Hard pages wait for an AI to read them, and with none set up, for one to be chosen
+    waiting = {r["page_id"] for r in [*vision_queue(conn), *unread_without_ai(conn, settings)]}
     if sorting:  # with no AI to sort with, there's nothing to ask: a person sorts them
         # a page can be in more than one question, and counts once
         waiting |= {p["id"] for i in sort_items(conn) for p in i["pages"]}

@@ -139,6 +139,10 @@ here (`scripts/intake.py --no-ai` on the 14 in a scratch library).
   it. On Windows (Tesseract 5.4) Image (96) was the page called blank, and is `unread` now; Image
   (97)'s gibberish is long enough to count as text. Both stay loose, and A and B are asked about
   as before (68% and 66%).
+- **4 is fixed.** With no AI to read handwriting, Needs AI lists the hard pages too (D's two
+  here), and the status bar and folder tree count them. It says no AI is set up to read them,
+  how to get one (Lindley's own AI at High, another computer's AI server or a cloud AI), and
+  each card offers Choose an AI. They still wait in Needs your review for a person meanwhile.
 
 Then install again on the same laptop, and try the same scans plus the steps not tried
 yet. Then Windows (the build failed on Chocolatey being down, a 503, and needs running again)

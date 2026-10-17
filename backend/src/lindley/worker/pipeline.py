@@ -121,6 +121,38 @@ def vision_queue(conn: sqlite3.Connection, running: bool = False) -> list[sqlite
     ).fetchall()
 
 
+# A hard page (p, with its reading in use c): Tesseract's, unchecked, below
+# ocr.confidence_threshold, not blank, set aside or in a completed document. Takes the threshold
+# and BLANK_AT.
+_HARD = (
+    "c.source = 'tesseract' AND NOT c.reviewed AND coalesce(c.confidence, 0) < ?"
+    " AND p.set_aside_at IS NULL AND coalesce(p.blank_score, 0) < ?"
+    f" AND NOT {_COMPLETED}"
+)
+NO_VISION = "No AI is set up to read hard pages"
+
+
+def unread_without_ai(conn: sqlite3.Connection, settings: Settings) -> list[sqlite3.Row]:
+    """Hard pages with no AI to read them, rows as vision_queue's (status 'none'): what
+    follow_settings would queue if a vision model were set up. Needs AI lists them, so a person
+    knows an AI could read them; nothing is queued until one is chosen. Not when a person chose
+    Tesseract alone, nor when every page goes to the vision model."""
+    ocr = settings.ocr
+    if ocr.engine != "hybrid" or settings.ai.connection_for("vision") is not None:
+        return []
+    return conn.execute(
+        "SELECT p.id AS page_id, 'none' AS status, ? AS error, s.original_name AS file_name,"
+        " c.confidence, p.document_id, d.name AS document_name, p.position"
+        " FROM pages p JOIN scans s ON s.id = p.scan_id"
+        " JOIN v_current_text c ON c.page_id = p.id"
+        " LEFT JOIN documents d ON d.id = p.document_id"
+        f" LEFT JOIN ({_LAST_VISION}) v ON v.page_id = p.id"
+        f" WHERE {_HARD} AND (v.id IS NULL OR v.status = 'skipped')"
+        " ORDER BY p.document_id IS NULL, p.document_id, p.position, s.id, p.page_index",
+        (NO_VISION, ocr.confidence_threshold, pageimage.BLANK_AT),
+    ).fetchall()
+
+
 def queue_vision(conn: sqlite3.Connection, page_ids: list[int]) -> int:
     """Queue these pages for the vision model, as a person asked: pages that read well enough
     not to wait for it, but that a person wants read again (pages under review). One already
@@ -196,11 +228,6 @@ def follow_settings(conn: sqlite3.Connection, settings: Settings) -> tuple[int, 
         return 0, 0  # every page goes to the vision model: the threshold doesn't come into it
     name = settings.ai.connection_for("vision")
     has_model = ocr.engine != "tesseract" and name is not None
-    hard = (
-        "c.source = 'tesseract' AND NOT c.reviewed AND coalesce(c.confidence, 0) < ?"
-        " AND p.set_aside_at IS NULL AND coalesce(p.blank_score, 0) < ?"
-        f" AND NOT {_COMPLETED}"
-    )
     limits = (ocr.confidence_threshold, pageimage.BLANK_AT)
     with conn:
         waiting = conn.execute(
@@ -232,7 +259,7 @@ def follow_settings(conn: sqlite3.Connection, settings: Settings) -> tuple[int, 
         wanted = conn.execute(
             "SELECT p.id, p.scan_id FROM pages p JOIN v_current_text c ON c.page_id = p.id"
             f" LEFT JOIN ({_LAST_VISION}) v ON v.page_id = p.id"
-            f" WHERE {hard} AND (v.id IS NULL OR v.status = 'skipped')"
+            f" WHERE {_HARD} AND (v.id IS NULL OR v.status = 'skipped')"
             " ORDER BY p.scan_id, p.page_index",
             limits,
         ).fetchall()

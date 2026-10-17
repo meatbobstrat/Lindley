@@ -579,8 +579,9 @@ and you can ask it about them. All of it from a one-click install.
   - [x] a handwritten page whose Tesseract reading is gibberish was called blank and offered to
     be set aside. Now the image check alone says whether a page is blank; ink that was read as
     next to nothing waits, loose in the Inbox, for an AI or a person to read it
-  - handwriting with no AI to read it waits only in Review: decide whether it belongs in Needs
-    AI too, saying how to get an AI
+  - [x] handwriting with no AI to read it waited only in Review. Now Needs AI lists it too, and
+    counts it, saying no AI is set up to read it and how to get one (a person who chose
+    Tesseract alone isn't asked)
   - smaller: the main view shows before Setup does; the example folder path is a Windows one on
     Ubuntu and the Mac; the app's icon isn't the app's "L"
 - [ ] The UI, for someone new:

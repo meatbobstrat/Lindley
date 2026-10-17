@@ -576,8 +576,9 @@ and you can ask it about them. All of it from a one-click install.
     put in order by them. Now the margins are read again on their own, and every typed number
     that shows is read (design/database.md, "Page numbers in the margins"); the pencilled ones
     are for the reading AI
-  - a handwritten page whose Tesseract reading is gibberish was called blank and offered to be
-    set aside
+  - [x] a handwritten page whose Tesseract reading is gibberish was called blank and offered to
+    be set aside. Now the image check alone says whether a page is blank; ink that was read as
+    next to nothing waits, loose in the Inbox, for an AI or a person to read it
   - handwriting with no AI to read it waits only in Review: decide whether it belongs in Needs
     AI too, saying how to get an AI
   - smaller: the main view shows before Setup does; the example folder path is a Windows one on

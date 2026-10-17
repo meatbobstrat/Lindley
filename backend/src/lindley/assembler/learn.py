@@ -17,7 +17,7 @@ import math
 import random
 from dataclasses import dataclass
 
-from lindley.assembler.evidence import FEATURES, pair, score
+from lindley.assembler.evidence import FEATURES, SET_APART, UNREAD, pair, score
 from lindley.assembler.model import Page, weigh_terms
 from lindley.assembler.segment import scan_order
 
@@ -52,7 +52,7 @@ def examples(
         p = pair(a, b)
         if not p.features:  # copies of one page: a hard rule, not evidence to weigh
             continue
-        if "a blank page or a separate note" in p.breaks:
+        if SET_APART in p.breaks or UNREAD in p.breaks:
             continue
         (da, ia), (db, ib) = truth[a.id], truth[b.id]
         if da == db and abs(ib - ia) > NEAR:

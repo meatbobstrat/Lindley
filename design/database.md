@@ -80,7 +80,11 @@ on real scans.
 - `blank_score` is how little ink there is, after dust specks are filtered out: 0 means a full
   page of writing and 1 means blank. At 0.97 or above, a page counts as blank. A blank page
   is still read by Tesseract, so it has a current reading, but it isn't sent to the vision model
-  and the assembler only suggests setting it aside.
+  and the assembler only suggests setting it aside. Once the image has been checked, it alone
+  says whether a page is blank: a page with ink whose reading comes to next to nothing (a
+  handwritten letter Tesseract makes gibberish of) is `unread`, not blank. It's never offered to
+  be set aside or grouped by the rules; it waits, loose in the Inbox, for an AI or a person to
+  read it, and is sorted with the rest once it has text.
 - `paper_color` is the mean colour of the background pixels.
 - `phash` is a 64-bit difference hash. Hashes within 4 bits of each other are the same picture
   (a `duplicate` link). Near-empty pages all hash alike, so they're never compared.
@@ -191,7 +195,7 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    - closings and signatures ("Your loving son / John"), "Paid" on a short line of its own ("Paid. Thank you.", not "and paid no attention" in a story) and "Notary Public", which end one;
    - sentences cut off at the bottom of a page and picked up at the top of the next;
    - dates in old spellings, people, places, amounts, and file sequence numbers (`scan_0042` is 42). Scanners and file managers often number only the files after the first (Image, Image (2), Image (3) on Windows; Image, Image 2 on a Mac), so a name without a number is number 1 (`clues.file_series`);
-   - whether a page looks like a letter, receipt, deed, diary, stray note or blank.
+   - whether a page looks like a letter, receipt, deed, diary, stray note or blank, or has ink that wasn't read (`unread`: see `blank_score` above).
 
    All of these are saved as `facts` with `source = 'rule'`.
 2. **Evidence** (`evidence.py`). Each pair of pages gets a same-document score from 0 to 1. Every piece of evidence is a named feature, and a small logistic model adds up their weights (`weights.py`, in log-odds) into the score:
@@ -236,6 +240,7 @@ facts, embeddings, image data  ->  page_links (evidence, one row per signal)
    | A likely match (at or above `hint_at`, default 45) | Suggests it (`add_to_document`), with the likeliest places (`candidates`); the page stays in the Inbox |
    | Pages that may be one document (two or more, going together at or above `hint_at`, whole or not) | Asks "Do these go together?" (`group_pages`, with the pages in order, a name, type and date, and why it may not be the whole document) |
    | A blank page or stray note | Suggests Set aside; never moves it |
+   | A page with ink Tesseract read as next to nothing (`unread`) | Leaves it loose in the Inbox, with no hint, until an AI or a person reads it |
    | A completed document | Never touches it |
    | A suggestion a person dismissed | Never makes it again |
 

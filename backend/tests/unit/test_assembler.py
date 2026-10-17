@@ -91,6 +91,20 @@ def test_a_blank_page_is_only_suggested_for_set_aside(conn):
     assert s["page_id"] == blank
 
 
+def test_a_page_whose_ink_wasnt_read_waits_loose_in_the_inbox(conn):
+    # The image check found writing, but Tesseract read next to nothing: handwriting
+    ids = list(load(conn, pages([*LETTER, LAST, "~ ' ."])))
+    unread = ids[-1]
+    conn.execute("UPDATE pages SET blank_score = 0.4")
+    report = assemble(conn)
+    assert report.documents_created == 1
+    where = {p: doc for p, doc, _ in placement(conn)}
+    assert where[unread] is None and all(where[p] is not None for p in ids if p != unread)
+    assert open_suggestions(conn, "set_aside") == []
+    hinted = [json.loads(s["payload"] or "{}").get("pages", []) for s in open_suggestions(conn)]
+    assert not [ps for ps in hinted if unread in ps]
+
+
 def test_a_late_page_joins_an_untouched_lindley_document(conn):
     load(conn, pages(LETTER))
     assert assemble(conn).documents_created == 1

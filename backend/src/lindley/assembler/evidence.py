@@ -22,6 +22,9 @@ from lindley.worker.image import same_picture
 
 SOURCE = "assembler v2"
 STRONG_KINDS = {"letter", "receipt", "deed", "diary"}
+# Breaks that are rules, not evidence to weigh (lindley.assembler.learn leaves them out)
+SET_APART = "a blank page or a separate note"
+UNREAD = "a page Lindley couldn't read yet"
 
 FEATURES = (
     "bias",
@@ -171,7 +174,12 @@ def pair(a: Page, b: Page, is_adjacent: bool | None = None) -> Pair:
         )
     if "blank" in (ca.kind, cb.kind) or "notes" in (ca.kind, cb.kind):
         p.score = 0.05
-        p.breaks.append("a blank page or a separate note")
+        p.breaks.append(SET_APART)
+        return p
+    # Nothing to go on until it's read: it waits, loose, for an AI or a person to read it
+    if "unread" in (ca.kind, cb.kind):
+        p.score = 0.05
+        p.breaks.append(UNREAD)
         return p
 
     if cb.starts_doc:

@@ -260,6 +260,15 @@ def test_receipts_deeds_diaries_notes_and_blanks():
     assert page_clues("Lots of text here", blank_score=0.99).kind == "blank"
 
 
+def test_ink_read_as_next_to_nothing_is_unread_not_blank():
+    # Handwriting Tesseract makes gibberish of: the image check found ink, so it's not blank
+    assert page_clues("   \n ", blank_score=0.5).kind == "unread"
+    assert page_clues("~ ' . , ;\n- = ~ _ ' ,\n.. ,, '' ~~", blank_score=0.5).kind == "unread"
+    # Before the image is looked at, the text alone says
+    assert page_clues("~ ' . , ;\n- = ~ _ ' ,\n.. ,, '' ~~").kind == "blank"
+    assert page_clues("Mother is well and sends her love.", blank_score=0.5).kind != "unread"
+
+
 @pytest.mark.parametrize(
     ("name", "series"),
     [

@@ -133,6 +133,12 @@ here (`scripts/intake.py --no-ai` on the 14 in a scratch library).
   "Page numbers 2–8 run in order" and "Page numbers run 7 → 8". B's 5 has faded to look like a
   2, so it's left unread, and the pencilled ones are for the reading AI. See design/database.md,
   "Page numbers in the margins".
+- **3 is fixed.** Once the image has been checked, it alone says whether a page is blank. A page
+  with ink whose reading comes to next to nothing is `unread`: it isn't offered to be set aside,
+  or grouped with the pages beside it, and waits loose in the Inbox for an AI or a person to read
+  it. On Windows (Tesseract 5.4) Image (96) was the page called blank, and is `unread` now; Image
+  (97)'s gibberish is long enough to count as text. Both stay loose, and A and B are asked about
+  as before (68% and 66%).
 
 Then install again on the same laptop, and try the same scans plus the steps not tried
 yet. Then Windows (the build failed on Chocolatey being down, a 503, and needs running again)

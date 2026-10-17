@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import PurePath
 
+from lindley.worker.image import BLANK_AT
+
 # ---------------------------------------------------------------- Page numbers
 
 _ROMAN = {
@@ -420,7 +422,7 @@ class PageClues:
     ends_mid: bool = False
     first_line: str = ""
     last_line: str = ""
-    kind: str | None = None  # letter, receipt, deed, diary, notes, blank
+    kind: str | None = None  # letter, receipt, deed, diary, notes, blank, unread
     dates: list[tuple[str, str, int]] = field(default_factory=list)
     people: set[str] = field(default_factory=set)
     places: set[str] = field(default_factory=set)
@@ -546,9 +548,15 @@ def page_clues(
     c = PageClues()
     c.file_prefix, c.file_seq = file_series(file_name)
 
+    # Once the image has been looked at, it says whether the page is blank. Ink with next to
+    # nothing read from it (handwriting Tesseract makes gibberish of) is a page not read yet.
     stripped = re.sub(r"\s+", "", text)
-    if (blank_score is not None and blank_score >= 0.97) or len(stripped) < 15:
+    if blank_score is not None and blank_score >= BLANK_AT:
         c.kind = "blank"
+        return c
+    unread = "blank" if blank_score is None else "unread"
+    if len(stripped) < 15:
+        c.kind = unread
         return c
 
     # A page number is a number with nothing else on its line, at the very top or bottom.
@@ -568,7 +576,7 @@ def page_clues(
                 c.marker, c.marker_sure = m, True
             body.pop(i)
     if not body:
-        c.kind = "blank"
+        c.kind = unread
         return c
 
     c.first_line, c.last_line = body[0][:200], body[-1][:200]

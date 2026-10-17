@@ -87,7 +87,9 @@ def _month(iso: str) -> str:
 
 def describe(pages: list[Page]) -> tuple[str | None, str, bool, str | None]:
     """(kind, name, name is a placeholder, date) for a group, from its clues."""
-    kinds = Counter(p.clues.kind for p in pages if p.clues.kind not in (None, "blank", "notes"))
+    kinds = Counter(
+        p.clues.kind for p in pages if p.clues.kind not in (None, "blank", "notes", "unread")
+    )
     kind = kinds.most_common(1)[0][0] if kinds else None
     dates = [d for p in pages for d in p.clues.dates]
     best = max(dates, key=lambda d: (d[2], len(d[1])), default=None)
@@ -307,6 +309,10 @@ def make_group(
             if pages[0].clues.kind == "blank"
             else "It's a short note that doesn't belong to the pages around it"
         ]
+    elif len(pages) == 1 and pages[0].clues.kind == "unread":
+        # Not set aside, and not a document of its own: it waits in the Inbox to be read
+        g.confidence = 0
+        g.reasons = ["Lindley can't read its writing yet: an AI or you can"]
     return g
 
 

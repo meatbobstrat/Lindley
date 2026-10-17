@@ -7,9 +7,11 @@ Each change returns `undo`: the batch to send to POST /api/undo/{batch} to take 
 
 from __future__ import annotations
 
+import shutil
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -23,7 +25,8 @@ from lindley.export import (
     latest_export,
     reopen_document,
 )
-from lindley.export.keeping import OriginalsNeeded
+from lindley.export.keeping import OriginalsNeeded, let_go_fingerprints
+from lindley.worker.intake import sha256_of
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -180,5 +183,46 @@ def reopen(doc_id: int, conn: Conn, request: Request) -> dict:
     return {"document_id": doc_id, "status": "progress"}
 
 
-def _needed_json(err: OriginalsNeeded) -> dict:
-    return {"message": str(err), "needed": [{"scan_id": i, "file": n} for i, n in err.needed]}
+@router.post("/{doc_id}/reopen/originals")
+def reopen_with_originals(
+    doc_id: int, files: list[UploadFile], conn: Conn, request: Request
+) -> dict:
+    """Reopen, with originals a person showed Lindley because they weren't where it left them.
+    Each file is matched to the document's scans by its sha256: one that matches none is
+    named in `unmatched`. Copied in, never kept, except in move mode, where Lindley holds a copy
+    to give back with the PDF. 409, with what's still `needed`, when one is still missing."""
+    settings = request.app.state.settings
+    folder = settings.processing_dir / "originals" / uuid.uuid4().hex
+    try:
+        wanted = let_go_fingerprints(conn, doc_id)
+        found: dict[int, Path] = {}
+        unmatched = []
+        for i, f in enumerate(files):
+            name = Path(f.filename or "scan").name or "scan"
+            path = folder / str(i) / name
+            path.parent.mkdir(parents=True)
+            with path.open("wb") as out:
+                shutil.copyfileobj(f.file, out)
+            if (scan := wanted.get(sha256_of(path))) is not None:
+                found[scan] = path
+            else:
+                unmatched.append(name)
+        try:
+            reopen_document(conn, doc_id, settings, found)
+        except LookupError as err:
+            raise HTTPException(404, str(err)) from err
+        except OriginalsNeeded as err:
+            raise HTTPException(409, _needed_json(err, unmatched)) from err
+        except (ValueError, OSError) as err:
+            raise HTTPException(409, str(err)) from err
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    return {"document_id": doc_id, "status": "progress", "unmatched": unmatched}
+
+
+def _needed_json(err: OriginalsNeeded, unmatched: list[str] | None = None) -> dict:
+    return {
+        "message": str(err),
+        "needed": [{"scan_id": i, "file": n} for i, n in err.needed],
+        "unmatched": unmatched or [],
+    }

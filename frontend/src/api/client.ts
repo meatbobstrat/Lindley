@@ -95,6 +95,12 @@ export interface Exported {
   copies_kept: string[]
 }
 
+/** An original Lindley needs to reopen an exported document: it isn't where Lindley left it. */
+export interface NeededOriginal {
+  scan_id: number
+  file: string
+}
+
 export interface Check { key: string; label: string; done: boolean; detail: string }
 
 export interface DocFull extends DocBase {
@@ -478,6 +484,12 @@ export const api = {
   exportDocuments: (document_ids: number[]) =>
     send<{ exported: Exported[]; failed: { document_id: number; error: string }[] }>('POST', '/documents/export', { document_ids }),
   reopen: (id: number) => send<{ document_id: number }>('POST', `/documents/${id}/reopen`),
+  /** Reopen with the originals a person shows Lindley; each is matched by its fingerprint. */
+  reopenWithOriginals: (id: number, files: File[]) => {
+    const form = new FormData()
+    files.forEach((f) => form.append('files', f, f.name))
+    return request<{ document_id: number; unmatched: string[] }>(`/documents/${id}/reopen/originals`, { method: 'POST', body: form })
+  },
   newFolder: (name: string, parent_id: number | null) => send<Change>('POST', '/folders', { name, parent_id }),
   renameFolder: (id: number, name: string) => send<Change>('PATCH', `/folders/${id}`, { name }),
   acceptSuggestion: (id: number) => send<{ document_id: number | null; pages: number[]; undo: number }>('POST', `/suggestions/${id}/accept`),
@@ -498,10 +510,12 @@ export const api = {
   saveKey: (name: string, key: string) => send<{ key_hint: string }>('PUT', `/connections/${encodeURIComponent(name)}/key`, { key }),
   testConnection: (connection: ProviderConfig, name: string | null, key: string | null) =>
     send<{ ok: boolean; message: string }>('POST', '/connections/test', { connection, name, key }),
-  addScans: (files: File[]) => {
+  /** `mode`: copy or move them, as the person chose just now; else as Settings says. */
+  addScans: (files: File[], mode?: 'copy' | 'move') => {
     const form = new FormData()
     files.forEach((f) => form.append('files', f, f.name))
-    return request<{ added: { file: string; status: string; pages: number; error: string | null }[]; reading: number }>('/scans', {
+    if (mode) form.append('mode', mode)
+    return request<{ added: { file: string; status: string; pages: number; error: string | null }[]; reading: number; mode: 'copy' | 'move' }>('/scans', {
       method: 'POST',
       body: form,
     })

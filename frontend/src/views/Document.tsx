@@ -14,7 +14,7 @@ import { useActions } from '../lib/actionsContext'
 import { useSelection, useThumb } from '../lib/view'
 import { useApp, useLooking } from '../lib/appContext'
 import { who } from '../lib/ai'
-import { docDate, needs, plural, quoted, sentences, them, when } from '../lib/words'
+import { docDate, needs, plural, sentences, them, when } from '../lib/words'
 import { DBtn, Dock, DockText, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -328,7 +328,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
                   ? 'Make the document editable again. Lindley copies its scans in again from your originals, and what was exported stays where it is until you export again.'
                   : 'Make the document editable again.'
               }
-              onClick={() => run(api.reopen(d.id), `Reopened ${quoted(d.name)}.${exported ? ' What was exported stays where it is until you export again.' : ''}`)}
+              onClick={() => acts.reopen(d)}
             />
           </>
         ) : (

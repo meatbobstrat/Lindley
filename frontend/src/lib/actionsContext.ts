@@ -17,6 +17,9 @@ export interface Actions {
   confirmComplete: (doc: { id: number; name: string; pages: number; suggested: boolean; folder_id: number | null }, toReview: number) => void
   /** Export completed documents: each PDF (and in move mode its originals) to the output folder. */
   exportDocs: (docs: { id: number; name: string }[]) => void
+  /** Make a document editable again. An exported one's scans come back from the originals,
+   * and Lindley asks to be shown any that aren't where it left them. */
+  reopen: (doc: { id: number; name: string; status: string }) => void
   editDetails: (doc: { id: number; name: string; doc_type: string | null; doc_date: string | null }) => void
   addScans: (files: File[]) => void
   fileDoc: (doc: { id: number; name: string; folder_id: number | null; status: string }, folderId: number | null) => void

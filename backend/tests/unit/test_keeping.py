@@ -263,3 +263,85 @@ def test_the_api_says_which_originals_reopening_needs(client, settings, drop):
     assert r.status_code == 409
     assert r.json()["detail"]["needed"] == [{"scan_id": s, "file": "scan 1.png"}]
     assert "scan 1.png" in r.json()["detail"]["message"]
+
+
+def test_a_person_shows_lindley_the_originals_to_reopen(client, settings, drop, tmp_path):
+    c = connect(settings.db_path)
+    doc = document(c)
+    a = scan_file(drop / "scan 1.png")
+    b = scan_file(drop / "scan 2.png", "ivory")
+    scanned(c, settings, a, doc, [0])
+    scanned(c, settings, b, doc, [1])
+    c.close()
+    client.post(f"/api/documents/{doc}/complete")
+    client.post(f"/api/documents/{doc}/export")
+    kept = {p.name: p.read_bytes() for p in (a, b)}
+    a.unlink()
+    b.unlink()  # the person moved both off somewhere Lindley can't see
+    other = scan_file(tmp_path / "unrelated.png", "gray").read_bytes()
+    files = [("files", ("scan 1.png", kept["scan 1.png"])), ("files", ("x.png", other))]
+    r = client.post(f"/api/documents/{doc}/reopen/originals", files=files)
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert [n["file"] for n in detail["needed"]] == ["scan 2.png"]
+    assert detail["unmatched"] == ["x.png"]
+    status = client.get(f"/api/documents/{doc}").json()["status"]
+    assert status == "exported"  # nothing changed
+    files = [("files", (n, data)) for n, data in kept.items()]
+    r = client.post(f"/api/documents/{doc}/reopen/originals", files=files)
+    assert r.status_code == 200 and r.json()["unmatched"] == []
+    full = client.get(f"/api/documents/{doc}").json()
+    assert full["status"] == "progress"
+    image = client.get(f"/api/pages/{full['pages'][0]['id']}/image")
+    assert image.headers["content-type"] == "image/jpeg"  # the scan itself again
+    assert not (settings.processing_dir / "originals").exists() or not any(
+        (settings.processing_dir / "originals").iterdir()
+    )
+
+
+def added(client, settings, mode, name="letter.png", color="white"):
+    """Add a scan with Add scans… and read it, into a new document. Returns (doc, bytes)."""
+    import io
+
+    buf = io.BytesIO()
+    Image.new("L", (600, 800), color).save(buf, "PNG")
+    data = buf.getvalue()
+    body = client.post("/api/scans", files=[("files", (name, data))], data={"mode": mode}).json()
+    assert body["mode"] == mode and body["added"][0]["status"] == "new"
+    c = connect(settings.db_path)
+    doc = document(c, name)
+    pid = c.execute("SELECT id FROM pages").fetchone()[0]
+    c.execute("UPDATE pages SET document_id = ?, position = 0 WHERE id = ?", (doc, pid))
+    c.execute(
+        "INSERT INTO transcriptions (page_id, source, text, confidence, is_current)"
+        " VALUES (?, 'tesseract', 'Dear Sister', 95, 1)",
+        (pid,),
+    )
+    c.execute("UPDATE scans SET status = 'read'")
+    c.commit()
+    c.close()
+    return doc, data
+
+
+def test_added_scans_moved_in_are_given_back_beside_the_pdf(client, settings):
+    doc, data = added(client, settings, "move")
+    c = connect(settings.db_path)
+    state, path = c.execute("SELECT original_state, original_path FROM scans").fetchone()
+    c.close()
+    assert state == "held" and Path(path).read_bytes() == data
+    client.post(f"/api/documents/{doc}/complete")
+    e = client.post(f"/api/documents/{doc}/export").json()
+    assert e["originals"] == ["letter.png"]
+    assert (Path(e["folder"]) / "letter.png").read_bytes() == data
+    assert library_files(settings) == []
+
+
+def test_added_scans_copied_are_let_go_after_export_and_asked_for_on_reopen(client, settings):
+    doc, data = added(client, settings, "copy")
+    client.post(f"/api/documents/{doc}/complete")
+    e = client.post(f"/api/documents/{doc}/export").json()
+    assert e["originals"] == [] and library_files(settings) == []
+    r = client.post(f"/api/documents/{doc}/reopen")  # Lindley can't see where the person has it
+    assert r.status_code == 409 and r.json()["detail"]["needed"][0]["file"] == "letter.png"
+    r = client.post(f"/api/documents/{doc}/reopen/originals", files=[("files", ("x.png", data))])
+    assert r.status_code == 200 and len(library_files(settings)) == 1

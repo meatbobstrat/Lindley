@@ -1127,7 +1127,10 @@ function SetScans({ d, set }: SetProps) {
           </label>
         ))}
       </fieldset>
-      <p className="fld-note">Files added from this browser are always copied: a browser can’t remove the originals. Either way, Lindley never changes the scans themselves.</p>
+      <p className="fld-note">
+        Moved, Lindley keeps the files and gives them back beside the PDF when you export. A browser can’t move or delete files, so yours stay on your computer too.
+        Either way, Lindley never changes the scans themselves.
+      </p>
     </>
   )
 }

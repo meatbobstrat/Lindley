@@ -374,7 +374,7 @@ the program.
 | `output_dir` | Where documents go when they're exported: each PDF, or in move mode a folder per document with its PDF and original scans. A person chooses it in Setup (which offers `Documents/Lindley/Exported`) or Settings; until then (`null`) nothing is exported |
 | `db_path` | SQLite database location (`lindley.db` in the data folder). It's kept outside the library, which is often in a synced folder, where SQLite isn't safe. Back up both. To move it, copy it to the new place first (with its `-wal` file, if there is one): Settings refuses a place that doesn't hold Lindley's database |
 | `move_files` | `true` moves scans out of watched folders into Lindley's keeping (the library's `originals`), unchanged; `false` copies them and leaves the originals where they are |
-| `add_mode` | Files added with Add scans… in the Inbox: `ask` each time (the default), or always `copy` or `move` them |
+| `add_mode` | Files added with Add scans… in the Inbox: `ask` each time (the default), or always `copy` or `move` them. Moved, Lindley keeps the file and gives it back beside the PDF; a browser can't move files, so the person's own stays on their computer too |
 | `ocr` | Reading engine (`hybrid`, `tesseract` or `vision`), languages, and `confidence_threshold`: below this (20 to 95; 70), a page needs the vision model. `review_below`: a page whose reading falls below this (50 to 99; 80) waits for a person's review. `vision_max_side`: pages are reduced to this many pixels on their longer side before sending (2000). `workers`: scans read at once; Tesseract uses one core a page, so a few side by side finish sooner (`null`: one fewer than the computer's cores, at most 3) |
 | `assembler` | `group_at`: confidence needed to create a document (75). `hint_at`: confidence needed for an "Add to …?" or "Do these go together?" hint (45). `offer_at`: a group the AI checked, at or above this but below `group_at`, is offered for one-click accept (60). `ai_band`: which uncertain breaks may be sent to the AI. `ask_ai_after_days`: when the sorting AI may run on its own, how long pages wait for a person first (0: at once) |
 | `ai.providers` | Named AI connections. `type` is a connector (`builtin`, Lindley's own AI; `local`, `anthropic`, `openai`, `google`, `openai_compat`), with `base_url` and `model` where needed. `allow` is `ask` (the default: background work waits for your OK) or `auto` (sent as soon as there is some; the default for `builtin`). `daily_limit` and `monthly_limit` cap the calls it makes on its own. `per_minute` and `at_once` throttle every call |
@@ -609,9 +609,9 @@ and you can ask it about them. All of it from a one-click install.
     checks still work, and copy-mode originals aren't imported again. Only when the original is
     where Lindley left it, unchanged; else it keeps its copy and says so. Reopening brings the
     copies back from the originals, and says which it needs when one isn't there
-  - [ ] Reopen asks for originals that aren't where Lindley left them, so a person can show it
-    where they are; and Add scans… in move mode keeps Lindley's copy as the original, given back
-    beside the PDF
+  - [x] Reopen asks for originals that aren't where Lindley left them, so a person can show it
+    where they are (each checked by its fingerprint); and Add scans… can copy or move: moved,
+    Lindley keeps the file as the original and gives it back beside the PDF
   - [ ] the loose ends, each the person's to decide: a scan whose pages are in more than one
     document; Set aside pages Lindley is done with; reopening an exported document (back to
     the Inbox, or add pages to its PDF)

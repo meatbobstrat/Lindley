@@ -100,6 +100,12 @@ def originals_needed(conn: sqlite3.Connection, doc_id: int) -> list[tuple[int, s
     ]
 
 
+def let_go_fingerprints(conn: sqlite3.Connection, doc_id: int) -> dict[str, int]:
+    """The sha256 of each of the document's scans Lindley let go of, with its scan id: what a
+    file a person shows Lindley is matched by."""
+    return {r["sha256"]: r["id"] for r in _let_go_scans(conn, doc_id)}
+
+
 def bring_back(
     conn: sqlite3.Connection,
     settings: Settings | None,

@@ -1,8 +1,8 @@
 // Actions on pages and documents that several views offer, and the dialogs they open.
 
-import { type ReactNode, useCallback, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { api, type Exported, type Folder, type Sent } from '../api/client'
+import { ApiError, api, type Exported, type Folder, type NeededOriginal, type Sent } from '../api/client'
 import { invalidate } from '../api/store'
 import { Modal } from '../ui/feedback'
 import { type MenuItem, useFeedback } from '../ui/feedbackContext'
@@ -16,6 +16,7 @@ type Dialog =
   | { kind: 'complete'; doc: { id: number; name: string; pages: number; suggested: boolean; folder_id: number | null }; toReview: number }
   | { kind: 'details'; doc: { id: number; name: string; doc_type: string | null; doc_date: string | null } }
   | { kind: 'add'; files: File[] }
+  | { kind: 'originals'; doc: { id: number; name: string }; needed: NeededOriginal[]; unmatched: string[]; message: string }
 
 /** A first guess at a name from a page's text: a printed heading, or "Letter, March 1892". */
 function guessName(text: string): string {
@@ -46,8 +47,8 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
   }
 
   const sendFiles = useCallback(
-    (files: File[]) => {
-      run(api.addScans(files), (r) => {
+    (files: File[], mode?: 'copy' | 'move') => {
+      run(api.addScans(files, mode), (r) => {
         const fresh = r.added.filter((a) => a.status === 'new').length
         const dup = r.added.filter((a) => a.status === 'duplicate').length
         const bad = r.added.filter((a) => a.status === 'failed')
@@ -125,6 +126,17 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
               .filter(Boolean)
               .join(' '),
           )
+      },
+      reopen: async (doc) => {
+        try {
+          await api.reopen(doc.id)
+          invalidate()
+          toast(`Reopened ${quoted(shortName(doc.name))}.${doc.status === 'exported' ? ' What was exported stays where it is until you export again.' : ''}`)
+        } catch (e) {
+          const needed = e instanceof ApiError ? (e.detail?.needed as NeededOriginal[] | undefined) : undefined
+          if (needed?.length) setDialog({ kind: 'originals', doc, needed, unmatched: [], message: (e as Error).message })
+          else toast((e as Error).message)
+        }
       },
       editDetails: (doc) => setDialog({ kind: 'details', doc }),
       addScans: (files) => {
@@ -247,13 +259,14 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
       {dialog?.kind === 'newdoc' && <NewDocDialog d={dialog} close={close} />}
       {dialog?.kind === 'complete' && <CompleteDialog d={dialog} close={close} />}
       {dialog?.kind === 'details' && <DetailsDialog d={dialog} close={close} />}
+      {dialog?.kind === 'originals' && <OriginalsDialog key={dialog.needed.map((n) => n.scan_id).join()} d={dialog} close={close} again={setDialog} />}
       {dialog?.kind === 'add' && (
         <AddDialog
           files={dialog.files}
           close={close}
-          go={() => {
+          go={(mode) => {
             close()
-            sendFiles(dialog.files)
+            sendFiles(dialog.files, mode)
           }}
         />
       )}
@@ -461,8 +474,77 @@ function DetailsDialog({ d, close }: { d: Extract<Dialog, { kind: 'details' }>; 
   )
 }
 
-function AddDialog({ files, close, go }: { files: File[]; close: () => void; go: () => void }) {
+/** Reopening an exported document whose originals aren't where Lindley left them: the person
+ * shows Lindley where they are. Each file is checked against the scan's fingerprint. */
+function OriginalsDialog({ d, close, again }: { d: Extract<Dialog, { kind: 'originals' }>; close: () => void; again: (d: Dialog) => void }) {
+  const { toast } = useFeedback()
+  const [files, setFiles] = useState<File[]>([])
+  const [busy, setBusy] = useState(false)
+  const picker = useRef<HTMLInputElement>(null)
+  const n = d.needed.length
+  const send = async () => {
+    setBusy(true)
+    try {
+      const r = await api.reopenWithOriginals(d.doc.id, files)
+      invalidate()
+      close()
+      toast(`Reopened ${quoted(shortName(d.doc.name))}.${r.unmatched.length ? ` ${plural(r.unmatched.length, 'file')} weren’t needed: ${r.unmatched.join(', ')}.` : ''}`)
+    } catch (e) {
+      const needed = e instanceof ApiError ? (e.detail?.needed as NeededOriginal[] | undefined) : undefined
+      const unmatched = e instanceof ApiError ? ((e.detail?.unmatched as string[] | undefined) ?? []) : []
+      if (needed?.length) again({ ...d, needed, unmatched, message: (e as Error).message })
+      else {
+        close()
+        toast((e as Error).message)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Modal title={`Reopen ${quoted(shortName(d.doc.name))}`} onClose={close}>
+      <p>
+        Lindley let go of its copies of this document’s scans when it was exported. To reopen it, it needs {n === 1 ? 'the original' : 'the originals'} again, and{' '}
+        {n === 1 ? 'this one isn’t' : 'these aren’t'} where Lindley left {n === 1 ? 'it' : 'them'}:
+      </p>
+      <ul className="file-list">
+        {d.needed.slice(0, 8).map((x) => (
+          <li key={x.scan_id} className="mono">
+            {x.file}
+          </li>
+        ))}
+        {n > 8 && <li>and {n - 8} more</li>}
+      </ul>
+      {d.unmatched.length > 0 && (
+        <p>
+          <Icon name="warn" /> {d.unmatched.join(', ')} {d.unmatched.length === 1 ? 'isn’t one of them' : 'aren’t among them'}: the file has to be the same, byte for byte.
+        </p>
+      )}
+      <p>
+        Show Lindley where {n === 1 ? 'it is' : 'they are'}. It checks each one is the same file and copies it in; yours stay where they are. If you deleted{' '}
+        {n === 1 ? 'it' : 'them'}, the document can’t be reopened, but its PDF is still in your Exported folder.
+      </p>
+      <button className="btn" onClick={() => picker.current?.click()} data-tip="Choose the original scans on your computer">
+        <Icon name="upload" /> Choose files…
+      </button>
+      <input ref={picker} type="file" multiple accept="image/*,.pdf,.tif,.tiff" hidden onChange={(e) => setFiles([...(e.target.files ?? [])])} />
+      {files.length > 0 && <p>{plural(files.length, 'file')} chosen.</p>}
+      <div className="actions">
+        <button className="btn" onClick={close}>
+          Cancel
+        </button>
+        <button className="btn primary" disabled={!files.length || busy} onClick={send} data-tip="Check the files and reopen the document">
+          Reopen
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+function AddDialog({ files, close, go }: { files: File[]; close: () => void; go: (mode: 'copy' | 'move') => void }) {
   const n = files.length
+  const [mode, setMode] = useState<'copy' | 'move'>('copy')
+  const it = n === 1 ? 'it' : 'them'
   return (
     <Modal title={`Add ${plural(n, 'scan')} to the Inbox`} onClose={close}>
       <ul className="file-list">
@@ -473,16 +555,29 @@ function AddDialog({ files, close, go }: { files: File[]; close: () => void; go:
         ))}
         {n > 6 && <li>and {n - 6} more</li>}
       </ul>
-      <p>
-        Lindley keeps its own copy of {n === 1 ? 'the scan' : 'each scan'} in its library. The {n === 1 ? 'file stays' : 'files stay'} where{' '}
-        {n === 1 ? 'it is' : 'they are'} on your computer: a browser can copy files, but never move or delete them.
-      </p>
+      <fieldset className="choices">
+        <legend className="sr-only">Copy or move them</legend>
+        <label className="choice">
+          <input type="radio" name="add-mode" checked={mode === 'copy'} onChange={() => setMode('copy')} />
+          <span>
+            <b>Copy {it}.</b> Your {n === 1 ? 'file is' : 'files are'} the original{n === 1 ? '' : 's'}: keep {it}. Lindley works on its own copy, and lets it go once the
+            document is exported.
+          </span>
+        </label>
+        <label className="choice">
+          <input type="radio" name="add-mode" checked={mode === 'move'} onChange={() => setMode('move')} />
+          <span>
+            <b>Move {it} into Lindley.</b> Lindley keeps {it}, unchanged, and gives {it} back beside the PDF when you export the document. A browser can’t move files,
+            so yours stay on your computer too, for you to delete if you like.
+          </span>
+        </label>
+      </fieldset>
       <p>Either way, Lindley never changes the scans themselves.</p>
       <div className="actions">
         <button className="btn" onClick={close}>
           Cancel
         </button>
-        <button className="btn primary" onClick={go} autoFocus data-tip="Upload the files and start reading them">
+        <button className="btn primary" onClick={() => go(mode)} autoFocus data-tip="Upload the files and start reading them">
           <Icon name="upload" /> Add {plural(n, 'scan')}
         </button>
       </div>

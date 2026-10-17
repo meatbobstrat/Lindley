@@ -56,7 +56,7 @@ find their way. Those come next, then Windows and the Mac (see the Roadmap and
 | Folder watcher | Built; runs with the backend |
 | Image checks (blank pages, rotation, handwriting or print) | Built, and tried on a first sample of real typewritten scans |
 | Duplicates (pages and documents scanned more than once) | Detection, decisions, API and the app's screen built |
-| Complete, then export | Built: a person marks a document complete, then exports it to the Exported folder they chose: one searchable PDF, from Lindley's own readings with people's corrections, and in move mode the original scans beside it; try it with `scripts/export.py`. Lindley letting go of its working copies after export is next |
+| Complete, then export | Built: a person marks a document complete, then exports it to the Exported folder they chose: one searchable PDF, from Lindley's own readings with people's corrections, and in move mode the original scans beside it; try it with `scripts/export.py`. after export, Lindley lets go of its own copies of the scans, and reopening brings them back from the originals |
 | Search | Built: every page's text as it reads now, with the words found marked |
 | Ask Lindley (AI chat) | Built: questions about your documents, answered by the chat AI from the pages Lindley finds, citing each page; kept as conversations. With no AI for it, the pane finds words and what's waiting for review |
 | Real UI (React) | Built from the mockup: every view, on the real API, with a tooltip for every control |
@@ -370,7 +370,7 @@ the program.
 | `watch_folders` | Folders to watch for new scans (`Documents/Lindley/Inbox`, made the first time it's watched). Setup won't start with a folder it can't find; Settings and the status bar mark one that isn't there (a path typed wrong, a drive unplugged), and it's watched once it's back |
 | `processing_dir` | Working area for files being processed (`processing` in the data folder) |
 | `quarantine_dir` | Where files that fail processing are put (`quarantine` in the data folder) |
-| `library_dir` | Lindley's library (`Documents/Lindley/Library`): its working copies of scans (in `scans`), each page as an image (in `pages`), and the originals it took in move mode, unchanged (in `originals`), until they're exported |
+| `library_dir` | Lindley's library (`Documents/Lindley/Library`): its working copies of scans (in `scans`), each page as an image (in `pages`), and the originals it took in move mode, unchanged (in `originals`), until they're exported. Once a scan is exported, Lindley lets go of its copies of it |
 | `output_dir` | Where documents go when they're exported: each PDF, or in move mode a folder per document with its PDF and original scans. A person chooses it in Setup (which offers `Documents/Lindley/Exported`) or Settings; until then (`null`) nothing is exported |
 | `db_path` | SQLite database location (`lindley.db` in the data folder). It's kept outside the library, which is often in a synced folder, where SQLite isn't safe. Back up both. To move it, copy it to the new place first (with its `-wal` file, if there is one): Settings refuses a place that doesn't hold Lindley's database |
 | `move_files` | `true` moves scans out of watched folders into Lindley's keeping (the library's `originals`), unchanged; `false` copies them and leaves the originals where they are |
@@ -604,9 +604,14 @@ and you can ask it about them. All of it from a one-click install.
     mode, the PDF; move mode, a folder per document with its PDF and its originals. An original
     with pages in another document too stays with Lindley for now, and the export says so.
     Every completed document can be exported at once
-  - [ ] after export, Lindley drops its working copies and page images, and keeps the text,
-    fingerprints, history and where the files went, so search, Ask Lindley and duplicate checks
-    still work, and copy-mode originals aren't imported again
+  - [x] after export, Lindley lets go of its working copies and page images, and keeps the
+    text, fingerprints, history and where the files went, so search, Ask Lindley and duplicate
+    checks still work, and copy-mode originals aren't imported again. Only when the original is
+    where Lindley left it, unchanged; else it keeps its copy and says so. Reopening brings the
+    copies back from the originals, and says which it needs when one isn't there
+  - [ ] Reopen asks for originals that aren't where Lindley left them, so a person can show it
+    where they are; and Add scans… in move mode keeps Lindley's copy as the original, given back
+    beside the PDF
   - [ ] the loose ends, each the person's to decide: a scan whose pages are in more than one
     document; Set aside pages Lindley is done with; reopening an exported document (back to
     the Inbox, or add pages to its PDF)

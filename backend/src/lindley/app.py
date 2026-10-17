@@ -38,6 +38,7 @@ from lindley.api import history as history_api
 from lindley.api import settings as settings_api
 from lindley.config import Settings, load_settings
 from lindley.db.database import connect, init_db
+from lindley.export.keeping import let_go
 from lindley.localai import server as local_server
 from lindley.localai.download import Downloads
 from lindley.watcher.watcher import FolderWatcher
@@ -132,6 +133,7 @@ def create_app(
             rate_vision_readings(conn)
             absolute_paths(conn)
             follow_settings(conn, settings)  # settings.json may have changed while it was closed
+            let_go(conn, settings.library_dir)  # exported before, or a copy that was open then
         finally:
             conn.close()
         watcher = FolderWatcher(settings) if watch else None

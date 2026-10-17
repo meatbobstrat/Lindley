@@ -141,7 +141,7 @@ def import_file(
         return ImportResult(path, "duplicate", existing["id"], existing["n"])
 
     try:
-        copy = _library_copy(settings, path, sha)
+        copy = library_copy(settings, path, sha)
     except OSError as e:
         return _quarantine(settings, path, ImportResult(path, "failed", error=str(e)))
 
@@ -259,7 +259,7 @@ def needs_reading(conn: sqlite3.Connection, r: ImportResult) -> bool:
     return status != "read"
 
 
-def _library_copy(settings: Settings, path: Path, sha: str) -> Path:
+def library_copy(settings: Settings, path: Path, sha: str) -> Path:
     """Lindley's own copy, named by its hash, checked against the original before it's trusted."""
     # Absolute: the database mustn't depend on the folder Lindley happens to run in.
     dest = settings.library_dir.resolve() / "scans" / sha[:2] / f"{sha}{path.suffix.lower()}"
@@ -536,7 +536,29 @@ def _split(
     conn: sqlite3.Connection, settings: Settings, scan_id: int, copy: Path, mime: str | None
 ) -> int:
     """One pages row per page. Single images are read in place; others become page PNGs."""
-    out = settings.library_dir.resolve() / "pages" / str(scan_id)
+    rows = page_images(settings, scan_id, copy, mime)
+    with conn:
+        conn.executemany(
+            "INSERT INTO pages (scan_id, page_index, image_path, width_px, height_px, dpi,"
+            " color_mode) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(scan_id, i, str(p), w, h, d, m) for i, p, w, h, d, m in rows],
+        )
+        conn.execute("UPDATE scans SET page_count = ? WHERE id = ?", (len(rows), scan_id))
+    return len(rows)
+
+
+def pages_folder(library: Path, scan_id: int) -> Path:
+    """Where a PDF's or TIFF's page images go in the library."""
+    return library.resolve() / "pages" / str(scan_id)
+
+
+def page_images(
+    settings: Settings, scan_id: int, copy: Path, mime: str | None
+) -> list[tuple[int, Path, int, int, int | None, str]]:
+    """The scan's page images, made from its working copy: (page index, image, width, height,
+    dpi, colour mode) each. A single image is its own; a PDF's or TIFF's pages become PNGs.
+    Made the same way each time, so pages let go after export can be made again."""
+    out = pages_folder(settings.library_dir, scan_id)
     rows: list[tuple] = []
     if mime == "application/pdf":
         import pypdfium2 as pdfium
@@ -573,11 +595,4 @@ def _split(
                     rows.append((i, dest, frame.width, frame.height, dpi, _color_mode(frame.mode)))
     if not rows:
         raise ValueError("The file has no pages")
-    with conn:
-        conn.executemany(
-            "INSERT INTO pages (scan_id, page_index, image_path, width_px, height_px, dpi,"
-            " color_mode) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [(scan_id, i, str(p), w, h, d, m) for i, p, w, h, d, m in rows],
-        )
-        conn.execute("UPDATE scans SET page_count = ? WHERE id = ?", (len(rows), scan_id))
-    return len(rows)
+    return rows

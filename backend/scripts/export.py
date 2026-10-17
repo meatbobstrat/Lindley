@@ -86,7 +86,9 @@ def main() -> int:
     for doc_id in ids:
         try:
             complete_document(conn, doc_id, settings.ocr.review_below)
-            e = export_document(conn, settings.output_dir, doc_id, settings.ocr.review_below)
+            e = export_document(
+                conn, settings.output_dir, doc_id, settings.ocr.review_below, settings.library_dir
+            )
         except ValueError as err:
             failed += 1
             print(f"  {doc_id}: not exported: {err}")

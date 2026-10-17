@@ -345,6 +345,9 @@ function exportedNote(name: string, r: Exported): string {
       : `Exported ${quoted(shortName(name))} as ${r.pdf_path}.`,
     r.kept.length ? `${plural(r.kept.length, 'original scan')} ${r.kept.length === 1 ? 'stays' : 'stay'} with Lindley for now: ${r.kept.length === 1 ? 'it has' : 'they have'} pages in other documents too.` : '',
     r.problems.length ? sentences(r.problems) : '',
+    r.copies_kept.length
+      ? `Lindley keeps its own copy of ${plural(r.copies_kept.length, 'scan')} (${r.copies_kept.slice(0, 3).join(', ')}): ${r.copies_kept.length === 1 ? 'the original isn’t' : 'the originals aren’t'} where ${r.copies_kept.length === 1 ? 'it was' : 'they were'}.`
+      : '',
     r.to_review.length ? `${plural(r.to_review.length, 'page')} still waiting for review ${r.to_review.length === 1 ? 'has' : 'have'} Lindley’s best reading.` : '',
     r.unplaced.length ? `${plural(r.unplaced.length, 'page')} read only by the AI ${r.unplaced.length === 1 ? 'is' : 'are'} searchable, but the text isn’t laid over the writing.` : '',
   ]

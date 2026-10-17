@@ -23,6 +23,7 @@ from lindley.export import (
     latest_export,
     reopen_document,
 )
+from lindley.export.keeping import OriginalsNeeded
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -133,7 +134,9 @@ def _export(conn, request: Request, doc_id: int) -> Exported:
     settings = request.app.state.settings
     if settings.output_dir is None:
         raise ValueError(NO_OUTPUT)
-    return export_document(conn, settings.output_dir, doc_id, settings.ocr.review_below)
+    return export_document(
+        conn, settings.output_dir, doc_id, settings.ocr.review_below, settings.library_dir
+    )
 
 
 def _exported_json(e: Exported) -> dict:
@@ -149,6 +152,7 @@ def _exported_json(e: Exported) -> dict:
         "originals": [p.name for p in e.originals],
         "kept": e.kept,
         "problems": e.problems,
+        "copies_kept": e.copies_kept,
     }
 
 
@@ -162,9 +166,19 @@ def download(doc_id: int, conn: Conn) -> FileResponse:
 
 
 @router.post("/{doc_id}/reopen")
-def reopen(doc_id: int, conn: Conn) -> dict:
+def reopen(doc_id: int, conn: Conn, request: Request) -> dict:
+    """Back to In progress. An exported document's scans that Lindley let go of are brought
+    back from their originals first; 409, with the originals `needed`, when one can't be found."""
     try:
-        reopen_document(conn, doc_id)
+        reopen_document(conn, doc_id, request.app.state.settings)
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
+    except OriginalsNeeded as err:
+        raise HTTPException(409, _needed_json(err)) from err
+    except (ValueError, OSError) as err:
+        raise HTTPException(409, str(err)) from err
     return {"document_id": doc_id, "status": "progress"}
+
+
+def _needed_json(err: OriginalsNeeded) -> dict:
+    return {"message": str(err), "needed": [{"scan_id": i, "file": n} for i, n in err.needed]}

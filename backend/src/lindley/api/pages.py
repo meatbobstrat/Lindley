@@ -7,11 +7,12 @@ Each change returns `undo`: the batch to send to POST /api/undo/{batch} to take 
 from __future__ import annotations
 
 import io
+import textwrap
 from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel, Field
 
 from lindley import browse, organise
@@ -100,12 +101,17 @@ def page_image(
     image may be kept a while. One asked for without it is checked each time (its ETag): a
     page turned since is never shown the old way round."""
     row = conn.execute(
-        "SELECT image_path, detected_rotation, user_rotation, detected_mirror, user_mirror"
-        " FROM pages WHERE id = ?",
+        "SELECT p.image_path, p.detected_rotation, p.user_rotation, p.detected_mirror,"
+        " p.user_mirror, p.width_px, p.height_px, d.status AS document_status"
+        " FROM pages p LEFT JOIN documents d ON d.id = p.document_id WHERE p.id = ?",
         (page_id,),
     ).fetchone()
-    if row is None or not row["image_path"] or not Path(row["image_path"]).is_file():
-        raise HTTPException(404, "That page has no image")
+    if row is None:
+        raise HTTPException(404, "There's no such page")
+    if not row["image_path"] or not Path(row["image_path"]).is_file():
+        if row["document_status"] != "exported":
+            raise HTTPException(404, "That page has no image")
+        return _let_go(row, max_side)  # its scan went with the PDF: Lindley let go of its copy
     rotation = row["detected_rotation"] + row["user_rotation"]
     headers = {
         "Cache-Control": "private, max-age=300" if v else "private, no-cache",
@@ -118,3 +124,33 @@ def page_image(
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=85)
     return Response(buf.getvalue(), media_type="image/jpeg", headers=headers)
+
+
+LET_GO = (
+    "Exported. Lindley let go of its copy of this scan: the PDF and your original have it."
+    " Reopen the document to see it here again."
+)
+SMALL = 400  # a sheet narrower than this (a thumbnail) just says Exported
+
+
+def _let_go(row, max_side: int) -> Response:
+    """In place of an exported page's image: a sheet the page's shape, saying where it went."""
+    w, h = row["width_px"] or 850, row["height_px"] or 1100
+    if (row["detected_rotation"] + row["user_rotation"]) % 180:
+        w, h = h, w
+    scale = min(max_side, 800) / max(w, h)
+    w, h = max(1, round(w * scale)), max(1, round(h * scale))
+    img = Image.new("RGB", (w, h), "#efece6")
+    draw = ImageDraw.Draw(img)
+    draw.rectangle((0, 0, w - 1, h - 1), outline="#c9c3b8", width=max(1, w // 200))
+    size = max(9, w // 22) if w >= SMALL else max(9, w // 8)
+    font = ImageFont.load_default(size=size)
+    words = LET_GO if w >= SMALL else "Exported"
+    lines = textwrap.wrap(words, width=max(12, int(w * 0.8 / (size * 0.55))))
+    y = (h - len(lines) * size * 1.3) / 2
+    for line in lines:
+        draw.text((w / 2, y), line, fill="#6b655b", font=font, anchor="ma")
+        y += size * 1.3
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return Response(buf.getvalue(), media_type="image/png", headers={"Cache-Control": "no-cache"})

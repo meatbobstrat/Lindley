@@ -676,6 +676,14 @@ The PDF is built from Lindley's own data, with no Ghostscript and no second OCR 
   - Exporting a renamed document removes its earlier PDF, unless another document's PDF is at that path now; its originals move to its new folder, and a folder left empty is removed.
   - Undoing the grouping that made the document is refused once it's exported.
 
+**Letting go** (`export/keeping.py`). Once every page of a scan is in an exported document, Lindley lets go of its own copies of it: the working copy (`scans.library_path`) and page images (`pages.image_path`) are removed and both become NULL. Its text, words, fingerprints (`scans.sha256`, duplicate checks), history and exports stay, so search, Ask Lindley and duplicate checks still work, and a copy-mode original seen again is a duplicate, not imported again.
+
+- Only an exact copy of an original that's safe goes: the original must be where Lindley left it (`original_path`, in the scans folder in copy mode or beside the PDF in move mode) and still have its sha256. A scan added from the person's computer in copy mode (`original_path` NULL) is theirs, where they keep it. When an original isn't where Lindley left it, or has changed, Lindley keeps its copy and the export says so (`copies_kept`). A scan with pages in the Inbox, Set aside or a document not yet exported keeps its copy (the person decides, phase 4).
+- Only files inside the library are ever removed, and never a file that is an original.
+- It happens after each export, and at start-up for anything not let go of yet (exported before, or a file that was open then).
+- An exported page's image is a sheet the page's shape saying it was exported (`GET /api/pages/{id}/image`); the document's `export.let_go` says so too.
+- **Reopening** an exported document brings them back first: each original is looked for where Lindley left it, checked against its sha256, and copied in again, and its page images are made again (`intake.page_images`, the same way as at intake), so the document keeps its pages, order and text. An original that isn't there is asked for: `POST /api/documents/{id}/reopen` answers 409 with the originals `needed`, and nothing changes. In move mode, an original the person shows Lindley again is kept, held, to give back with the PDF next time.
+
 ## The Details tab (future UI round)
 
 The Details tab reads directly from this data:

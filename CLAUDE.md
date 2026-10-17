@@ -63,7 +63,9 @@
   - `export/`: searchable PDFs. `textlayer.py` (word boxes; other readings aligned to Tesseract's),
     `pdf.py` (fpdf2, invisible text), `document.py` (`complete_document`, then `export_document`
     into `output_dir`: the PDF, or in move mode a folder with the PDF and the held originals;
-    documents.status progress → complete → exported; `exports` row).
+    documents.status progress → complete → exported; `exports` row). `keeping.py`: after export,
+    Lindley lets go of its working copies and page images (only when the original is safe), and
+    reopening brings them back from the originals
     API in `api/documents.py`; `scripts/export.py` exports from the command line
   - `browse.py`: what the UI shows (pages with a `state`, documents, folders, review queue,
     counts); `organise.py`: a person's changes (move, reorder, rotate, flip, new document, rename,

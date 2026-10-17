@@ -91,6 +91,8 @@ export interface Exported {
   /** Originals Lindley still holds: some of their pages are in other documents */
   kept: string[]
   problems: string[]
+  /** Originals that weren't where Lindley left them: it keeps its own copy of them */
+  copies_kept: string[]
 }
 
 export interface Check { key: string; label: string; done: boolean; detail: string }
@@ -100,7 +102,8 @@ export interface DocFull extends DocBase {
   summary: string | null
   pages: Page[]
   progress: { ready: boolean; checks: Check[] }
-  export: { file_name: string; exported_at: string; pdf_path: string; originals: number } | null
+  /** let_go: Lindley let go of its copies of the scans, which the PDF and the originals have */
+  export: { file_name: string; exported_at: string; pdf_path: string; originals: number; let_go: boolean } | null
   inbox_hints: number[]
 }
 
@@ -385,10 +388,13 @@ export interface Change { undo: number | null; document_id?: number | null; fold
 
 export class ApiError extends Error {
   status: number
+  /** The detail the API sent along with its message, when it sent more than words */
+  detail: Record<string, unknown> | null
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, detail: Record<string, unknown> | null = null) {
     super(message)
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -409,15 +415,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 async function errorOf(res: Response): Promise<ApiError> {
   let message = `${res.status} ${res.statusText}`
+  let detail: Record<string, unknown> | null = null
   try {
     const body = await res.json()
     const d = body.detail
     if (typeof d === 'string') message = d
     else if (Array.isArray(d)) message = d.map((x) => (typeof x === 'string' ? x : x.msg)).join('. ')
+    else if (d && typeof d === 'object') {
+      detail = d
+      if (typeof d.message === 'string') message = d.message
+    }
   } catch {
     // not JSON: keep the status
   }
-  return new ApiError(res.status, message)
+  return new ApiError(res.status, message, detail)
 }
 
 const get = <T>(path: string) => request<T>(path)

@@ -155,6 +155,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
           >
             <b>Exported {when(d.export?.exported_at, false)}.</b> Saved as <span className="mono">{d.export?.pdf_path}</span>
             {d.export?.originals ? `, with ${plural(d.export.originals, 'original scan')} beside it` : ''}.
+            {d.export?.let_go && ' Lindley has let go of its own copies of the scans: the PDF and your originals have them. Reopening it brings them back.'}
           </Banner>
         )}
         {done && !exported && !settings?.output_dir && (
@@ -322,7 +323,11 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
             <DBtn
               icon="back"
               label="Reopen for changes"
-              tip={exported ? 'Make the document editable again. What was exported stays where it is until you export again.' : 'Make the document editable again.'}
+              tip={
+                exported
+                  ? 'Make the document editable again. Lindley copies its scans in again from your originals, and what was exported stays where it is until you export again.'
+                  : 'Make the document editable again.'
+              }
               onClick={() => run(api.reopen(d.id), `Reopened ${quoted(d.name)}.${exported ? ' What was exported stays where it is until you export again.' : ''}`)}
             />
           </>

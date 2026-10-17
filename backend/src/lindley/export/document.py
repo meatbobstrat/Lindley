@@ -9,8 +9,10 @@ output folder itself, as `<name>.pdf`. An original some of whose pages are in an
 or in the Inbox or Set aside, stays in Lindley's keeping for now, and the export says so.
 
 Pages still waiting for review don't stop either step; the PDF carries Lindley's best reading
-of them. Reopening a document keeps what was exported until it's exported again, which replaces
-the PDF (under its new name, if it was renamed) and brings its originals along.
+of them. Once every page of a scan is exported, Lindley lets go of its own copy of it
+(lindley.export.keeping). Reopening a document brings those back from the originals, and keeps
+what was exported until it's exported again, which replaces the PDF (under its new name, if it
+was renamed) and brings its originals along.
 
 Every export is recorded in `exports`, with the pages it held and the originals it gave back,
 and in `history`. Neither step is an undoable decision: reopening is how to take it back.
@@ -27,8 +29,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from lindley import history
-from lindley.config import REVIEW_BELOW
+from lindley.config import REVIEW_BELOW, Settings
 from lindley.db.progress import pages_to_review
+from lindley.export.keeping import bring_back, let_go
 from lindley.export.pdf import PdfInfo, PdfPage, build_pdf
 from lindley.export.textlayer import page_text
 from lindley.worker.intake import move_checked, same_file
@@ -52,6 +55,8 @@ class Exported:
     originals: list[Path] = field(default_factory=list)  # the originals beside the PDF
     kept: list[str] = field(default_factory=list)  # originals with pages elsewhere: still held
     problems: list[str] = field(default_factory=list)  # originals that couldn't be given back
+    # Originals not where Lindley left them (copy mode): Lindley keeps its own copy of them
+    copies_kept: list[str] = field(default_factory=list)
 
 
 def complete_document(
@@ -85,9 +90,11 @@ def export_document(
     output_dir: Path,
     doc_id: int,
     review_below: float = REVIEW_BELOW,
+    library: Path | None = None,
 ) -> Exported:
     """Give a completed document back: its PDF, and the originals Lindley holds for it, in the
-    output folder. Raises LookupError for no such document, ValueError when it can't be now."""
+    output folder. With `library` (Lindley's), it then lets go of its copies of the scans now
+    wholly exported. Raises LookupError for no such document, ValueError when it can't be now."""
     doc = _document(conn, doc_id)
     if doc["status"] == "progress":
         raise ValueError(f"“{doc['name']}” isn't completed yet. Complete it, then export it.")
@@ -202,15 +209,27 @@ def export_document(
         "SELECT exported_at FROM exports WHERE id = ?", (export_id,)
     ).fetchone()[0]
     out.to_review = pages_to_review(conn, doc_id, review_below)
+    if library is not None:
+        scans = {r["scan_id"] for r in rows}
+        out.copies_kept = let_go(conn, library, scans).kept
     return out
 
 
-def reopen_document(conn: sqlite3.Connection, doc_id: int) -> None:
+def reopen_document(
+    conn: sqlite3.Connection,
+    doc_id: int,
+    settings: Settings | None = None,
+    found: dict[int, Path] | None = None,
+) -> None:
     """Back to In progress (or its folder) to be worked on. What it exported is kept until it's
-    exported again."""
+    exported again. Scans Lindley let go of are brought back from their originals first (with
+    `settings`; `found`: originals a person showed it): keeping.OriginalsNeeded when one can't be
+    found, and the document stays as it is."""
     doc = _document(conn, doc_id)
     if doc["status"] == "progress":
         return
+    if doc["status"] == "exported":
+        bring_back(conn, settings, doc_id, found)
     with conn:
         conn.execute(
             "UPDATE documents SET status = 'progress', updated_at = datetime('now') WHERE id = ?",
@@ -253,8 +272,8 @@ def _document(conn: sqlite3.Connection, doc_id: int) -> sqlite3.Row:
 def _pages(conn: sqlite3.Connection, doc_id: int) -> list[sqlite3.Row]:
     """The document's pages, in order, once each is read and its scan in the library."""
     rows = conn.execute(
-        "SELECT p.id, p.image_path, p.detected_rotation, p.user_rotation, p.dpi, p.color_mode,"
-        " p.detected_mirror != p.user_mirror AS mirrored,"
+        "SELECT p.id, p.scan_id, p.image_path, p.detected_rotation, p.user_rotation, p.dpi,"
+        " p.color_mode, p.detected_mirror != p.user_mirror AS mirrored,"
         " p.width_px, p.height_px, s.status AS scan_status"
         " FROM pages p JOIN scans s ON s.id = p.scan_id"
         " WHERE p.document_id = ? ORDER BY p.position",

@@ -196,7 +196,7 @@ _TURNED_SINCE_READ = (
     " WHERE CASE WHEN t.read_rotation IS NULL THEN p.user_rotation != 0 OR p.user_mirror != 0"
     "  ELSE t.read_rotation != (p.detected_rotation + p.user_rotation) % 360"
     "  OR coalesce(t.read_mirror, 0) != (p.detected_mirror != p.user_mirror) END"
-    " AND coalesce(p.blank_score, 0) < ?"
+    " AND coalesce(p.blank_score, 0) < ? AND p.image_path IS NOT NULL"
     f" AND NOT {_COMPLETED}"
     " AND NOT EXISTS (SELECT 1 FROM intake_steps s WHERE s.page_id = p.id AND s.step = 'ocr'"
     "  AND s.status = 'failed' AND s.finished_at > p.updated_at)"
@@ -593,7 +593,8 @@ class Pipeline:
             f" coalesce(c.reviewed, 0) AS checked, {_COMPLETED} AS completed"
             " FROM intake_steps s JOIN pages p ON p.id = s.page_id"
             " LEFT JOIN v_current_text c ON c.page_id = p.id"
-            " WHERE s.step = 'ocr' AND s.status = 'queued' ORDER BY s.id"
+            " WHERE s.step = 'ocr' AND s.status = 'queued' AND p.image_path IS NOT NULL"
+            " ORDER BY s.id"
         ).fetchall()
         ocr = self.settings.ocr
         checked, turned = self._run_checks(
@@ -631,7 +632,8 @@ class Pipeline:
             " WHERE t.page_id = p.id AND t.source = 'tesseract' ORDER BY t.id DESC LIMIT 1)"
             " AS confidence FROM intake_steps s JOIN pages p ON p.id = s.page_id"
             " LEFT JOIN v_current_text c ON c.page_id = p.id"
-            " WHERE s.step = 'image' AND s.status = 'queued' ORDER BY s.id"
+            " WHERE s.step = 'image' AND s.status = 'queued' AND p.image_path IS NOT NULL"
+            " ORDER BY s.id"
         ).fetchall()
         ocr = self.settings.ocr
         checked, found = self._run_checks(
@@ -851,6 +853,7 @@ class Pipeline:
             f" FROM ({_LAST_VISION}) v"
             " JOIN pages p ON p.id = v.page_id"
             f" WHERE v.status IN ({', '.join('?' * len(statuses))}) AND {_UNCHECKED}"
+            " AND p.image_path IS NOT NULL"
             " ORDER BY v.scan_id, p.page_index",
             statuses,
         ).fetchall()

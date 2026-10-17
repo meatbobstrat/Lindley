@@ -294,6 +294,11 @@ def document(conn: sqlite3.Connection, doc_id: int, review_below: float) -> dict
             "exported_at": export["exported_at"],
             "pdf_path": export["pdf_path"],
             "originals": len(json.loads(export["originals"] or "[]")),
+            # Lindley let go of its copies of the scans (lindley.export.keeping)
+            "let_go": d["status"] == "exported"
+            and not conn.execute(
+                "SELECT 1 FROM pages WHERE document_id = ? AND image_path IS NOT NULL", (doc_id,)
+            ).fetchone(),
         },
         "inbox_hints": hinted,
     }

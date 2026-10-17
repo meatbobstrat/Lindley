@@ -585,9 +585,6 @@ and you can ask it about them. All of it from a one-click install.
   - smaller: the main view shows before Setup does; the example folder path is a Windows one on
     Ubuntu and the Mac; the app's icon isn't the app's "L"
 - [ ] The UI, for someone new:
-  - grouping is Lindley's most useful feature and nothing points to it: hints and nudges where
-    they apply (select pages and group them, make folders, move documents into them), and a
-    walkthrough the first time
   - the same controls in every view (turning a page is missing from some toolbars)
   - zoom and pan on page images
   - next and previous in a document or scan, without going back to the Inbox
@@ -664,6 +661,10 @@ offered to anyone else, look at each of these and decide what to do:
 
 ### After the MVP
 
+- [ ] A new experience for someone new, designed as a whole, with a hint system. Grouping is
+  Lindley's most useful feature and nothing points to it (the Ubuntu hand test): hints and
+  nudges where they apply (select pages and group them, make folders, move documents into
+  them), and a walkthrough the first time
 - [ ] A desktop app of its own, rather than a tab in the browser. The browser UI stays as it is,
   the same as a web app's, so Lindley could one day run as a service in the cloud
 - [ ] The toolbar floats over the whole app, not only the document pane, and docks to the top,

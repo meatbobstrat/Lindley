@@ -119,8 +119,9 @@ in the exported PDF in Ubuntu's own viewer (the text is in the file).
 
 ### Next
 
-Fix 1 to 3 and make grouping visible (5), using the 14 scans as a test that can be run again
-here (`scripts/intake.py --no-ai` on the 14 in a scratch library).
+Fix 1 to 4, using the 14 scans as a test that can be run again here (`scripts/intake.py
+--no-ai` on the 14 in a scratch library). Making grouping visible (5) moved to after the MVP
+(October 17): it needs a new experience for someone new, designed as a whole, with a hint system.
 
 - **1 is fixed.** "Do these go together?" is now asked by how sure Lindley is that the pages
   belong together, whole document or not (the weakest link inside), not by how sure it is that

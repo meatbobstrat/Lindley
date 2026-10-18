@@ -702,6 +702,25 @@ offered to anyone else, look at each of these and decide what to do:
 - [x] AI spending: a monthly limit, and the tokens and estimated cost of each call, shown in
   Settings. Claude's, OpenAI's and Google's calls are priced from their list prices
   (`providers/prices.py`); a local AI's calls count tokens, at no cost
+- [ ] AI spending, plainly: what each cloud AI has cost, and what's left, where a person can see it
+  - the balance from the provider, where it offers one to an ordinary key: today only OpenRouter
+    (`GET /api/v1/key`: the key's limit, what's left, and use by day, week and month). Anthropic
+    and OpenAI report spending only to an owner's Admin key, and give no balance; Google gives
+    neither
+  - Lindley's own estimate everywhere else, from `ai_calls` and `providers/prices.py`, as Settings
+    shows today. Every figure says whose it is: the provider's, or Lindley's estimate
+  - a link to each provider's billing page (Anthropic's Console, OpenAI's billing, Google AI
+    Studio, OpenRouter's credits), as `billing_url` beside each connector's `key_url`, so a
+    person can check their balance and spending at the source
+  - spending limits in dollars, per connection, a day and a month, beside today's limits on the
+    number of calls: set in Settings, and offered when an API key is first added (in Setup and
+    in Settings) with a suggested amount. Once one is reached, Lindley stops calling that AI on
+    its own, and a call a person asks for says so and asks before going over. Checked against
+    Lindley's estimate, or the provider's own figure where it can be read, and saying which
+- [ ] The status bar's items open an info card on a click, and close it on another click, Escape
+  or a click elsewhere. First, AI spending: the bar shows today's calls and estimated cost; the
+  card shows each connection's spending today and this month, its calls on its own against its
+  limits, the provider's balance where it can be read, and the link to its billing page
 - [ ] Suggest groups of pages Lindley isn't sure of (typescripts, notes) for a person to confirm
 - [ ] Local AI models for intake, tuned on real scans, on more computers. Measured so far
   (design/database.md, "Local models" and "Lindley's own AI, measured"): none makes intake

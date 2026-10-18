@@ -5,17 +5,19 @@ import { useEffect, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { api, type DocFull, imageAt, type Page } from '../api/client'
 import { useApi } from '../api/store'
-import { textOf, typing } from '../lib/view'
+import { textOf } from '../lib/view'
 import { Banner, ConfChip, ErrorBox, Loading, Meter, NameInput } from '../components/bits'
 import { PageGrid } from '../components/PageGrid'
+import { PageTools } from '../components/PageTools'
 import { ScanImage } from '../components/ScanImage'
 import { SizeControl } from '../components/SizeControl'
 import { TextPanel } from '../components/TextPanel'
 import { useActions } from '../lib/actionsContext'
+import { usePageKeys } from '../lib/usePageKeys'
 import { useSelection, useThumb } from '../lib/view'
 import { useApp, useLooking } from '../lib/appContext'
 import { who } from '../lib/ai'
-import { docDate, needs, plural, sentences, them, when } from '../lib/words'
+import { docDate, needs, PDF_TEXT, plural, sentences, them, when } from '../lib/words'
 import { DBtn, Dock, DockText, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -43,16 +45,11 @@ export function DocumentView() {
   useLooking(d ? (onePage ? `${d.name}, page ${cur + 1}` : d.name) : 'A document', { document_id: d?.id, page_id: onePage ? d?.pages[cur]?.id : undefined })
 
   // ← and → move between pages in the reader and beside the text
-  useEffect(() => {
-    if (view === 'grid') return
-    const onKey = (e: KeyboardEvent) => {
-      if (typing(e.target) || (e.target as Element).matches?.('.tab') || document.querySelector('dialog[open], .menu')) return
-      if (e.key === 'ArrowRight' || e.key === 'PageDown') setCur(cur + 1)
-      if (e.key === 'ArrowLeft' || e.key === 'PageUp') setCur(cur - 1)
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  })
+  usePageKeys(
+    () => setCur(cur - 1),
+    () => setCur(cur + 1),
+    view !== 'grid',
+  )
 
   if (doc.error && !d) return <ErrorBox error={doc.error} />
   if (!d) return <Loading />
@@ -155,7 +152,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
           >
             <b>Exported {when(d.export?.exported_at, false)}.</b> Saved as <span className="mono">{d.export?.pdf_path}</span>
             {d.export?.originals ? `, with ${plural(d.export.originals, 'original scan')} beside it` : ''}.
-            {d.export?.let_go && ' Lindley has let go of its own copies of the scans: the PDF and your originals have them. Reopening it brings them back.'}
+            {d.export?.let_go && ' Lindley has let go of its own copies of the scans: the PDF and your originals have them. Reopening it brings them back.'} {PDF_TEXT}
           </Banner>
         )}
         {done && !exported && !settings?.output_dir && (
@@ -174,7 +171,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
           <Banner
             kind="ok"
             actions={
-              <button className="btn primary" onClick={() => acts.exportDocs([d])} data-tip="Save the searchable PDF, and your original scans if Lindley has been keeping them, in your Exported folder">
+              <button className="btn primary" onClick={() => acts.exportDocs([d])} data-tip={`Save the searchable PDF, and your original scans if Lindley has been keeping them, in your Exported folder. ${PDF_TEXT}`}>
                 <Icon name="pdf" /> Export
               </button>
             }
@@ -319,7 +316,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
         <DBtn icon="folder" label="Move to folder…" tip="File this document in one of your folders" onClick={(e) => acts.folderMenu(d, e.currentTarget)} />
         {done ? (
           <>
-            {!exported && <DBtn icon="pdf" label="Export" kind="primary" tip="Save the searchable PDF, and your original scans if Lindley has been keeping them, in your Exported folder" onClick={() => acts.exportDocs([d])} />}
+            {!exported && <DBtn icon="pdf" label="Export" kind="primary" tip={`Save the searchable PDF, and your original scans if Lindley has been keeping them, in your Exported folder. ${PDF_TEXT}`} onClick={() => acts.exportDocs([d])} />}
             <DBtn
               icon="back"
               label="Reopen for changes"
@@ -336,37 +333,30 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
             <DBtn icon="checkc" label="Mark complete" kind="primary" tip="Say the document is right: Lindley locks it, ready to export" onClick={completeIt} />
             <Sep />
             <DockText>{view === 'grid' ? (t ? `${t} selected` : 'None selected') : `Page ${cur + 1}`}</DockText>
-            <DBtn icon="rotL" label="Turn left" iconOnly disabled={!t} tip={t ? 'Turn a quarter turn left' : 'Select pages to turn them'} onClick={() => acts.rotate(targets, -90)} />
-            <DBtn icon="rotR" label="Turn right" iconOnly disabled={!t} tip={t ? 'Turn a quarter turn right' : 'Select pages to turn them'} onClick={() => acts.rotate(targets, 90)} />
-            <DBtn
-              icon="up"
-              label="Move earlier"
-              iconOnly
-              disabled={!t}
-              tip={t ? 'Move one place earlier in the document' : 'Select pages to move them'}
-              onClick={() => {
-                acts.shift(d.id, order, targets, -1)
-                if (view !== 'grid') setCur(cur - 1)
-              }}
-            />
-            <DBtn
-              icon="down"
-              label="Move later"
-              iconOnly
-              disabled={!t}
-              tip={t ? 'Move one place later in the document' : 'Select pages to move them'}
-              onClick={() => {
-                acts.shift(d.id, order, targets, 1)
-                if (view !== 'grid') setCur(cur + 1)
-              }}
-            />
-            <DBtn
-              icon="more"
-              label="More…"
-              disabled={!t}
-              tip={t ? 'Move to another document, a new one, the Inbox or Set aside' : 'Select pages for more actions'}
-              onClick={(e) => acts.pageMenu(targets, 'document', e.currentTarget, { docId: d.id, order, noBasics: true })}
-            />
+            <PageTools ids={targets} where="document" docId={d.id}>
+              <DBtn
+                icon="up"
+                label="Move earlier"
+                iconOnly
+                disabled={!t}
+                tip={t ? 'Move one place earlier in the document' : 'Select pages to move them'}
+                onClick={() => {
+                  acts.shift(d.id, order, targets, -1)
+                  if (view !== 'grid') setCur(cur - 1)
+                }}
+              />
+              <DBtn
+                icon="down"
+                label="Move later"
+                iconOnly
+                disabled={!t}
+                tip={t ? 'Move one place later in the document' : 'Select pages to move them'}
+                onClick={() => {
+                  acts.shift(d.id, order, targets, 1)
+                  if (view !== 'grid') setCur(cur + 1)
+                }}
+              />
+            </PageTools>
           </>
         )}
       </Dock>

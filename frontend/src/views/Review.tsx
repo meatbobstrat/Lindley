@@ -1,15 +1,17 @@
 // Needs your review: pages Lindley read with less than the review threshold, so a person checks
 // them before they're trusted for search and chat. Pick a document, or go through them all.
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { api, imageAt, type Page } from '../api/client'
 import { useApi } from '../api/store'
-import { textOf, typing } from '../lib/view'
+import { textOf } from '../lib/view'
 import { Crumb, Done, ErrorBox, Head, Loading } from '../components/bits'
+import { PageTools } from '../components/PageTools'
 import { ScanImage } from '../components/ScanImage'
 import { TextPanel } from '../components/TextPanel'
 import { useActions } from '../lib/actionsContext'
+import { usePageKeys } from '../lib/usePageKeys'
 import { who } from '../lib/ai'
 import { docHome, useApp, useLooking } from '../lib/appContext'
 import { needs, plural, quoted, shortName } from '../lib/words'
@@ -120,15 +122,10 @@ export function ReviewView() {
     document_id: full.data?.document?.id,
   })
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (typing(e.target) || document.querySelector('dialog[open], .menu')) return
-      if (e.key === 'ArrowRight' || e.key === 'PageDown') go(i + 1)
-      if (e.key === 'ArrowLeft' || e.key === 'PageUp') go(i - 1)
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  })
+  usePageKeys(
+    () => go(i - 1),
+    () => go(i + 1),
+  )
 
   if (review.error && !review.data) return <ErrorBox error={review.error} />
   if (!review.data) return <Loading />
@@ -182,6 +179,8 @@ export function ReviewView() {
   const confirm = () => run(api.checkText(p.id), 'Marked the page as checked.')
   const save = () => run(api.checkText(p.id, textOf(text.current)), 'Saved your correction and marked the page as checked.')
   const doc = full.data?.document
+  // Turned and moved like anywhere else, while the page is loaded and its document isn't locked
+  const changeable = full.data?.id === p.id && (!doc || docs.get(doc.id)?.status === 'progress')
   const where = (
     <div className="rv-where">
       {doc ? (
@@ -230,6 +229,8 @@ export function ReviewView() {
             onClick={() => acts.readWithAi([p.id])}
           />
         )}
+        <Sep />
+        <PageTools ids={changeable ? [p.id] : []} where={doc ? 'document' : 'inbox'} docId={doc?.id} />
         <Sep />
         <DockProgress text={`Page ${i + 1} of ${queue.length} to review`} at={i + 1} of={queue.length} />
         <DBtn icon="chev" label="Next" kind="next" disabled={i >= queue.length - 1} tip="The next page, leaving this one for later (→)" onClick={() => go(i + 1)} />

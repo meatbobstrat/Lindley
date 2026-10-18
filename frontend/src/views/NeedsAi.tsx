@@ -7,8 +7,10 @@ import { api, imageAt, type ReadItem, type SortItem } from '../api/client'
 import { useApi } from '../api/store'
 import { Banner, Crumb, Done, ErrorBox, Head, Loading, PrivTag } from '../components/bits'
 import { PageGrid } from '../components/PageGrid'
+import { PageTools } from '../components/PageTools'
 import { SizeControl } from '../components/SizeControl'
 import { useActions } from '../lib/actionsContext'
+import { usePageKeys } from '../lib/usePageKeys'
 import { useSelection, useThumb } from '../lib/view'
 import { type Conn, pagesToSort } from '../lib/ai'
 import { docHome, useApp, useLooking } from '../lib/appContext'
@@ -273,6 +275,12 @@ export function NeedsAiItem() {
     const want = new Set(x?.pages.map((p) => p.id))
     return (inbox.data?.pages ?? []).filter((p) => want.has(p.id))
   }, [x, inbox.data])
+  const go = (j: number) => items[j] && nav(`/needs-ai/${items[j].id}`)
+  usePageKeys(
+    () => go(k - 1),
+    () => go(k + 1),
+    k >= 0,
+  )
 
   if (waiting.error && !waiting.data) return <ErrorBox error={waiting.error} />
   if (!waiting.data || !inbox.data) return <Loading />
@@ -298,7 +306,7 @@ export function NeedsAiItem() {
   const ids = x.pages.map((p) => p.id)
   const sorter = ai('assemble')
   const cands = x.proposal.flatMap((g) => g.candidates ?? [])
-  const go = (j: number) => items[j] && nav(`/needs-ai/${items[j].id}`)
+  const chosen = pages.filter((p) => sel.has(p.id)).map((p) => p.id)
 
   return (
     <>
@@ -366,7 +374,7 @@ export function NeedsAiItem() {
         />
       </div>
       <Dock label="Pages to sort">
-        <DBtn icon="prev" label="Previous" disabled={k === 0} tip="The question before" onClick={() => go(k - 1)} />
+        <DBtn icon="prev" label="Previous" disabled={k === 0} tip="The question before (←)" onClick={() => go(k - 1)} />
         <Sep />
         <DBtn
           icon="lindley"
@@ -378,8 +386,10 @@ export function NeedsAiItem() {
         />
         <DBtn icon="newdoc" label={place ? 'Start a new document…' : 'Group them myself…'} tip="Make a document of these pages yourself" onClick={() => acts.newDocument(ids)} />
         <Sep />
+        <PageTools ids={chosen} where="inbox" />
+        <Sep />
         <DockProgress text={`${k + 1} of ${items.length} to sort`} at={k + 1} of={items.length} />
-        <DBtn icon="chev" label="Next" kind="next" disabled={k >= items.length - 1} tip="The next question" onClick={() => go(k + 1)} />
+        <DBtn icon="chev" label="Next" kind="next" disabled={k >= items.length - 1} tip="The next question (→)" onClick={() => go(k + 1)} />
       </Dock>
     </>
   )

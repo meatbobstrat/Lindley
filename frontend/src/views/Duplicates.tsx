@@ -9,6 +9,7 @@ import { useApi } from '../api/store'
 import { Banner, Crumb, Done, ErrorBox, Head, Loading } from '../components/bits'
 import { ScanImage } from '../components/ScanImage'
 import { docHome, useApp, useLooking } from '../lib/appContext'
+import { usePageKeys } from '../lib/usePageKeys'
 import { plural, quoted, sentences, when } from '../lib/words'
 import { stepZoom, ZOOM_MAX } from '../lib/zoom'
 import { DBtn, Dock, DockProgress, Sep } from '../ui/Dock'
@@ -173,6 +174,12 @@ export function DupView() {
   const full = useApi(setIds[i] != null ? `dupset:${setIds[i]}` : null, () => api.duplicateSet(setIds[i]))
   const cmp = useRef<HTMLDivElement>(null)
   useLooking('Duplicates')
+  const go = (j: number) => es[j] && nav(`/duplicates/${es[j].key}`)
+  usePageKeys(
+    () => go(k - 1),
+    () => go(k + 1),
+    k >= 0,
+  )
 
   // Zoomed in, the scans of all copies scroll together, so the same spot stays side by side.
   useEffect(() => {
@@ -404,7 +411,7 @@ export function DupView() {
         </div>
       )}
       <Dock label="Compare copies">
-        <DBtn icon="prev" label="Previous" disabled={k === 0} tip="The possible duplicate before" onClick={() => nav(`/duplicates/${es[k - 1].key}`)} />
+        <DBtn icon="prev" label="Previous" disabled={k === 0} tip="The possible duplicate before (←)" onClick={() => go(k - 1)} />
         <Sep />
         <DBtn icon="zout" label="Zoom out" iconOnly disabled={mode === 'text' || zoom <= 1} tip="Zoom out of both scans" onClick={() => setZoom(stepZoom(zoom, -1))} />
         <DBtn icon="zin" label="Zoom in" iconOnly disabled={mode === 'text' || zoom >= ZOOM_MAX} tip="Zoom in on both scans. They scroll together. Ctrl+scroll, a double click or tap, or a pinch on either zooms both." onClick={() => setZoom(stepZoom(zoom, 1))} />
@@ -412,7 +419,7 @@ export function DupView() {
         <DBtn icon="checkc" label={keepBoth} kind={similar ? 'primary' : ''} tip="They aren’t copies of each other: keep them all. Lindley won’t suggest them again." onClick={notDup} />
         <Sep />
         <DockProgress text={`${k + 1} of ${plural(es.length, 'duplicate')}`} at={k + 1} of={es.length} />
-        <DBtn icon="chev" label="Next" kind="next" disabled={k >= es.length - 1} tip="The next possible duplicate" onClick={() => nav(`/duplicates/${es[k + 1].key}`)} />
+        <DBtn icon="chev" label="Next" kind="next" disabled={k >= es.length - 1} tip="The next possible duplicate (→)" onClick={() => go(k + 1)} />
       </Dock>
     </>
   )

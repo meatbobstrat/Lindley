@@ -7,6 +7,9 @@ export const plural = (n: number, w: string, ws = `${w}s`) => `${n.toLocaleStrin
 // US dollars to the cent; a cost too small to show is "under 1¢"
 export const dollars = (n: number) => (n > 0 && n < 0.005 ? 'under 1¢' : `${n.toFixed(2)}`)
 
+// What an exported PDF is, wherever export is offered or done
+export const PDF_TEXT = 'Each page of the PDF is your scan, with the text Lindley read laid invisibly over the writing, so you can search it and select it like typed text.'
+
 // A size on disk: "33 MB", "5.2 GB"
 export const size = (bytes: number) => (bytes < 1e9 ? `${Math.max(1, Math.round(bytes / 1e6))} MB` : `${(bytes / 1e9).toFixed(1)} GB`)
 

@@ -9,7 +9,7 @@ import { type MenuItem, useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
 import { type Actions, ActionsCtx } from './actionsContext'
 import { useApp } from './appContext'
-import { plural, quoted, sentences, shortName } from './words'
+import { PDF_TEXT, plural, quoted, sentences, shortName } from './words'
 
 type Dialog =
   | { kind: 'newdoc'; ids: number[]; name: string; lindley: boolean }
@@ -383,6 +383,7 @@ function CompleteDialog({ d, close }: { d: Extract<Dialog, { kind: 'complete' }>
         You’re saying the {plural(d.doc.pages, 'page')} are all there, in the right order. Lindley locks the document and leaves it alone.{' '}
         {folder ? `It stays in ${folder.name}.` : 'It moves to Completed.'} Then export it whenever you’re ready: a searchable PDF, saved with your original scans if Lindley has been keeping them.
       </p>
+      <p>{PDF_TEXT}</p>
       {d.toReview > 0 && (
         <div className="rv-state flag">
           <Icon name="flag" />

@@ -3,54 +3,35 @@
 // document wait. Nothing is ever deleted.
 
 import { useMemo, useRef } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useNavigate } from 'react-router'
 import { api, type Page, type Suggestion } from '../api/client'
-import { useApi, useLocal } from '../api/store'
+import { useApi } from '../api/store'
 import { Banner, ErrorBox, Head, Loading } from '../components/bits'
 import { PageGrid } from '../components/PageGrid'
+import { PageTools } from '../components/PageTools'
 import { SizeControl } from '../components/SizeControl'
 import { useActions } from '../lib/actionsContext'
 import { useApp, useLooking } from '../lib/appContext'
 import { pagesToSort, who } from '../lib/ai'
+import { useInboxOrder } from '../lib/inboxOrder'
 import { useSelection, useThumb } from '../lib/view'
 import { plural, quoted, sentences, shortName, them } from '../lib/words'
 import { DBtn, Dock, DockText, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
 
-const RANK = { add_to_document: 0, group_pages: 1, set_aside: 2 } as const
-
 export function InboxView() {
-  const inbox = useApi('inbox', api.inbox)
-  const sugs = useApi('suggestions', api.suggestions)
   const waiting = useApi('needs-ai', api.needsAi)
   const { ai } = useApp()
   const acts = useActions()
   const { run, openMenu } = useFeedback()
   const nav = useNavigate()
-  const loc = useLocation()
   const [sel, setSel] = useSelection()
-  const [sort, setSort] = useLocal<'new' | 'old' | 'match'>('sort', (loc.state as { sort?: 'match' } | null)?.sort ?? 'new')
+  const { inbox, sugs, pages, inInbox, hintOf, sort, setSort, shown } = useInboxOrder()
   const [thumb] = useThumb()
   const file = useRef<HTMLInputElement>(null)
 
-  const pages = useMemo(() => inbox.data?.pages ?? [], [inbox.data])
   useLooking(`Inbox, ${plural(pages.length, 'scan')}${sel.size ? `, ${sel.size} selected` : ''}`)
-  const inInbox = useMemo(() => new Set(pages.map((p) => p.id)), [pages])
-
-  // Each page's hint: the best of its open suggestions, while its pages are all still here
-  const hintOf = useMemo(() => {
-    const m = new Map<number, Suggestion>()
-    ;(sugs.data?.suggestions ?? []).forEach((s) => {
-      if (!(s.payload.pages ?? [s.page_id]).every((id) => inInbox.has(id))) return
-      const ids = s.kind === 'group_pages' ? (s.payload.pages ?? [s.page_id]) : [s.page_id]
-      ids.forEach((id) => {
-        const was = m.get(id)
-        if (!was || RANK[s.kind] < RANK[was.kind]) m.set(id, s)
-      })
-    })
-    return m
-  }, [sugs.data, inInbox])
 
   const sorting = ai('assemble')
   const sortOf = useMemo(() => {
@@ -58,13 +39,6 @@ export function InboxView() {
     if (sorting) waiting.data?.sort.items.forEach((x) => x.pages.forEach((p) => m.set(p.id, x.id)))
     return m
   }, [waiting.data, sorting])
-
-  const shown = useMemo(() => {
-    const a = [...pages]
-    if (sort === 'old') a.reverse()
-    if (sort === 'match') a.sort((x, y) => Number(hintOf.has(y.id)) - Number(hintOf.has(x.id)))
-    return a
-  }, [pages, sort, hintOf])
 
   if (inbox.error && !inbox.data) return <ErrorBox error={inbox.error} />
   if (!inbox.data) return <Loading />
@@ -240,29 +214,29 @@ export function InboxView() {
         />
         <Sep />
         <DockText>{n ? `${n} selected` : 'None selected'}</DockText>
-        <DBtn icon="rotL" label="Turn left" iconOnly disabled={!n} tip={n ? 'Turn the selected scans a quarter turn left' : 'Select scans to turn them'} onClick={() => acts.rotate(ids, -90)} />
-        <DBtn icon="rotR" label="Turn right" iconOnly disabled={!n} tip={n ? 'Turn the selected scans a quarter turn right' : 'Select scans to turn them'} onClick={() => acts.rotate(ids, 90)} />
-        <DBtn
-          icon="newdoc"
-          label="Group into document…"
-          disabled={!n}
-          tip={n ? 'Start a new document with the selected scans, in the order shown' : 'Select scans to group them into a document'}
-          onClick={() => acts.newDocument(ids)}
-        />
-        <DBtn
-          icon="move"
-          label="Add to document…"
-          disabled={!n}
-          tip={n ? 'Add the selected scans to a document in progress' : 'Select scans to add them to a document'}
-          onClick={(e) => acts.moveMenu(ids, e.currentTarget)}
-        />
-        <DBtn
-          icon="aside"
-          label="Set aside"
-          disabled={!n}
-          tip={n ? 'For scans that aren’t part of a document. Nothing is deleted.' : 'Select scans to set them aside'}
-          onClick={() => acts.setAside(ids)}
-        />
+        <PageTools ids={ids} where="inbox" noun="scan">
+          <DBtn
+            icon="newdoc"
+            label="Group into document…"
+            disabled={!n}
+            tip={n ? 'Start a new document with the selected scans, in the order shown' : 'Select scans to group them into a document'}
+            onClick={() => acts.newDocument(ids)}
+          />
+          <DBtn
+            icon="move"
+            label="Add to document…"
+            disabled={!n}
+            tip={n ? 'Add the selected scans to a document in progress' : 'Select scans to add them to a document'}
+            onClick={(e) => acts.moveMenu(ids, e.currentTarget)}
+          />
+          <DBtn
+            icon="aside"
+            label="Set aside"
+            disabled={!n}
+            tip={n ? 'For scans that aren’t part of a document. Nothing is deleted.' : 'Select scans to set them aside'}
+            onClick={() => acts.setAside(ids)}
+          />
+        </PageTools>
       </Dock>
     </>
   )
@@ -445,16 +419,16 @@ export function AsideView() {
       </div>
       <Dock label="Set aside actions">
         <DockText>{n ? `${n} selected` : 'None selected'}</DockText>
-        <DBtn icon="rotL" label="Turn left" iconOnly disabled={!n} tip={n ? 'Turn the selected scans a quarter turn left' : 'Select scans to turn them'} onClick={() => acts.rotate(ids, -90)} />
-        <DBtn icon="rotR" label="Turn right" iconOnly disabled={!n} tip={n ? 'Turn the selected scans a quarter turn right' : 'Select scans to turn them'} onClick={() => acts.rotate(ids, 90)} />
-        <DBtn icon="inbox" label="Return to Inbox" disabled={!n} tip={n ? 'Put the selected scans back in the Inbox, for Lindley to sort' : 'Select scans to return them'} onClick={() => acts.toInbox(ids)} />
-        <DBtn
-          icon="move"
-          label="Add to document…"
-          disabled={!n}
-          tip={n ? 'Add the selected scans to a document in progress' : 'Select scans to add them to a document'}
-          onClick={(e) => acts.moveMenu(ids, e.currentTarget)}
-        />
+        <PageTools ids={ids} where="aside" noun="scan">
+          <DBtn icon="inbox" label="Return to Inbox" disabled={!n} tip={n ? 'Put the selected scans back in the Inbox, for Lindley to sort' : 'Select scans to return them'} onClick={() => acts.toInbox(ids)} />
+          <DBtn
+            icon="move"
+            label="Add to document…"
+            disabled={!n}
+            tip={n ? 'Add the selected scans to a document in progress' : 'Select scans to add them to a document'}
+            onClick={(e) => acts.moveMenu(ids, e.currentTarget)}
+          />
+        </PageTools>
       </Dock>
     </>
   )

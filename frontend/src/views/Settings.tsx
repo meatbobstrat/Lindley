@@ -11,6 +11,7 @@ import { cloudInUse, companyOf, connection, hostOf, JOB_WORDS, reachOf } from '.
 import { useApp, useLooking } from '../lib/appContext'
 import { cfgOf, type Edit, editOf, editReady, LANGS, newEdit, newId } from '../lib/connEdit'
 import { helpKind, helpsOf, withTier } from '../lib/tiers'
+import { useSystem } from '../lib/system'
 import { useDockPos, useTheme } from '../lib/view'
 import { dollars, duration, plural, size } from '../lib/words'
 import { DBtn, Dock, DockText } from '../ui/Dock'
@@ -317,8 +318,12 @@ export function ConnEditor({
   )
 }
 
-/** A folder path as people copy it: File Explorer's Copy as path puts it in quotes. */
-const cleanPath = (p: string) => p.trim().replace(/^"(.*)"$/, '$1').trim()
+/** A folder path as people copy it: File Explorer's Copy as path puts it in quotes, and a folder
+ * copied in Ubuntu's Files can paste as a file:// address. */
+const cleanPath = (p: string) => {
+  const v = p.trim().replace(/^"(.*)"$/, '$1').trim()
+  return /^file:\/\/\//i.test(v) ? decodeURIComponent(v.slice(7)) : v
+}
 
 /** The folders Lindley can't find, of these: a path typed wrong, or a drive unplugged. */
 function useMissing(folders: string[]): Set<string> {
@@ -330,6 +335,7 @@ function useMissing(folders: string[]): Set<string> {
 export function FoldersEditor({ ctx, folders, set }: { ctx: string; folders: string[]; set: (f: string[]) => void }) {
   const [path, setPath] = useState('')
   const missing = useMissing(folders)
+  const sys = useSystem()
   const add = () => {
     const v = cleanPath(path)
     if (v && !folders.includes(v)) set([...folders, v])
@@ -372,8 +378,8 @@ export function FoldersEditor({ ctx, folders, set }: { ctx: string; folders: str
               add()
             }
           }}
-          placeholder="Type a folder path, for example E:\Scans"
-          data-tip="The full path of a folder your scanner saves into. Copy it from File Explorer’s address bar."
+          placeholder={sys.folder ? `Type a folder path, for example ${sys.folder}` : 'Type a folder path'}
+          data-tip={`The full path of a folder your scanner saves into. ${sys.copyPath}`.trim()}
         />
         <button className="btn" onClick={add} disabled={!path.trim()} data-tip="Watch this folder for new scans">
           Add
@@ -1137,6 +1143,7 @@ function SetScans({ d, set }: SetProps) {
 
 function SetReading({ d, set, reviewNow, saved }: SetProps & { reviewNow: number | undefined; saved: Settings }) {
   const { connectors } = useApp()
+  const sys = useSystem()
   const v = connection(d, connectors, d.ai.jobs.vision?.connection)
   const ocr = (p: Partial<Settings['ocr']>) => set({ ...d, ocr: { ...d.ocr, ...p } })
   const langs = [...LANGS, ...d.ocr.languages.filter((l) => !LANGS.some(([k]) => k === l)).map((l) => [l, l] as [string, string])]
@@ -1209,7 +1216,7 @@ function SetReading({ d, set, reviewNow, saved }: SetProps & { reviewNow: number
         className="fld-in"
         id="st-tess"
         value={d.ocr.tesseract_path ?? ''}
-        placeholder="Found by itself (for example C:\Program Files\Tesseract-OCR\tesseract.exe)"
+        placeholder={sys.tesseract ? `Found by itself (for example ${sys.tesseract})` : 'Found by itself'}
         onChange={(e) => ocr({ tesseract_path: e.target.value || null })}
         spellCheck={false}
         data-tip="Leave empty unless Lindley can’t find Tesseract by itself"

@@ -9,6 +9,18 @@ def test_health(client):
     assert body["version"] == __version__
 
 
+def test_health_gives_folder_examples_in_this_systems_form(client, monkeypatch):
+    for platform, system, example in (
+        ("win32", "windows", "E:\\Scans"),
+        ("darwin", "mac", "Scans"),
+        ("linux", "linux", "Scans"),
+    ):
+        monkeypatch.setattr("lindley.api.health.sys.platform", platform)
+        body = client.get("/api/health").json()
+        assert body["system"] == system
+        assert body["example_folder"].endswith(example)
+
+
 def test_settings_get_and_put(client, tmp_path):
     current = client.get("/api/settings").json()
     current["move_files"] = True

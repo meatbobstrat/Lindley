@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Request
 
 from lindley import __version__
@@ -17,7 +20,14 @@ def health(request: Request) -> dict:
         "ai": {job: settings.ai.connection_for(job) for job in JOBS},
         # Quit Lindley, in the app: only where it can stop itself (see quit_lindley)
         "can_quit": getattr(request.app.state, "quit", None) is not None,
+        # This computer's system, and a folder path in its own form, for the examples the UI gives
+        "system": system(),
+        "example_folder": r"E:\Scans" if system() == "windows" else str(Path.home() / "Scans"),
     }
+
+
+def system() -> str:
+    return {"win32": "windows", "darwin": "mac"}.get(sys.platform, "linux")
 
 
 @router.post("/quit")

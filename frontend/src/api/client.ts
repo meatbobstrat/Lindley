@@ -11,7 +11,12 @@ export interface Health {
   ai: Record<Job, string | null>
   // Quit Lindley is offered: started from the menu or `python -m lindley`, not with --reload
   can_quit: boolean
+  // The system Lindley runs on, and a folder path in its form, for examples
+  system: System
+  example_folder: string
 }
+
+export type System = 'windows' | 'mac' | 'linux'
 
 // What the UI shows beside a page (lindley.browse.state).
 export type PageState = 'reading' | 'failed' | 'checked' | 'ai_reading' | 'needs_ai' | 'ai_failed' | 'review' | 'ok'

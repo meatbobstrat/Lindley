@@ -597,10 +597,12 @@ and you can ask it about them. All of it from a one-click install.
     aside or added to a document, the scan that followed it opens
   - [x] say that an exported PDF's text is invisible over the scan, ready to search and select:
     where a document is completed, exported, and in the Export button's tip
-  - final polish, touch screens: every control big enough for a finger and reachable without
-    hovering (tooltips, right-click menus), and dragging (the
-    toolbar, the Ask Lindley window, pages) that ends cleanly when the browser cancels a touch
-    (`pointercancel`), which today can leave the window "dragging"
+  - [x] touch screens, on touchscreen laptops and tablets (not phones: Lindley is a desktop
+    app): every control at least 44px when touch is the main input; on any touch screen a
+    page's checkbox shows without hovering, a tip shows by pressing and holding, and every
+    page menu is on the toolbar's More… as well as a long press. Dragging the toolbar or the
+    Ask Lindley window ends cleanly when the browser cancels a touch. Pages, documents and
+    folders still drag by mouse only; each has a button or menu that does the same
 - [ ] Scans in; originals untouched and a PDF out. Either mode ends with the person's original
   scans, unchanged, and a PDF; copy and move mode differ only in where the originals end up.
   Lindley works on a copy of its own, and lets it go once the document is exported:

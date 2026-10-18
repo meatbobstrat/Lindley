@@ -4,6 +4,9 @@
 // - shown on hover (after a short pause) and on keyboard focus, never on a timer;
 // - hoverable: it stays while the pointer moves onto it;
 // - dismissible: Escape closes it without moving focus or the pointer.
+// A touch screen has no hover: pressing and holding (half a second, without moving) shows it
+// instead, and the button isn't pressed when the finger lifts. Where the browser's long press
+// opens a menu of Lindley's own (the page grid's), the menu wins.
 // While it's shown, the element is described by it (aria-describedby), unless the tooltip only
 // repeats the element's own name.
 
@@ -13,6 +16,7 @@ import { createPortal } from 'react-dom'
 const TIP_ID = 'lindley-tip'
 const SHOW_MS = 450 // hover pause before the first tooltip
 const HIDE_MS = 120 // grace to move from the element onto the tooltip
+const HOLD_MS = 500 // press and hold, by touch
 
 interface Shown {
   text: string
@@ -83,21 +87,70 @@ export function TooltipLayer() {
       if (el) show(el, current ? 0 : SHOW_MS)
       else if (current || showT) hideSoon()
     }
+    let touched = false // the last press was a finger
     const onFocus = (e: FocusEvent) => {
       const el = tipFor(e.target)
       if (el && el.matches(':focus-visible')) show(el, 0)
     }
-    const onBlur = () => hideSoon()
+    const onBlur = () => {
+      if (!touched) hideSoon() // a tip held up by touch stays until the next touch
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && current) hideNow()
     }
     const onLeaveWindow = (e: PointerEvent) => {
-      if (!e.relatedTarget) hideSoon()
+      if (!e.relatedTarget && e.pointerType !== 'touch') hideSoon() // a lifted finger "leaves" too
+    }
+    // Press and hold, by touch: the tip, and the button isn't pressed when the finger lifts
+    let held = false
+    let holdT: number | undefined
+    let at = { x: 0, y: 0 }
+    const onDown = (e: PointerEvent) => {
+      hideNow()
+      window.clearTimeout(holdT)
+      touched = e.pointerType === 'touch'
+      held = false
+      const el = tipFor(e.target)
+      if (!touched || !el) return
+      at = { x: e.clientX, y: e.clientY }
+      holdT = window.setTimeout(() => {
+        held = true
+        show(el, 0)
+      }, HOLD_MS)
+    }
+    const onMove = (e: PointerEvent) => {
+      if (touched && Math.hypot(e.clientX - at.x, e.clientY - at.y) > 10) window.clearTimeout(holdT)
+    }
+    const onUp = () => window.clearTimeout(holdT)
+    const onClick = (e: MouseEvent) => {
+      if (!held) return
+      held = false
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    // The browser's own long press: answered by whatever has a menu of its own (the page grid),
+    // else it shows the tip, not the browser's menu.
+    const onHold = (e: MouseEvent) => {
+      const el = tipFor(e.target)
+      if (!touched || !el) return
+      if (e.defaultPrevented) {
+        window.clearTimeout(holdT)
+        hideNow()
+        return
+      }
+      e.preventDefault()
+      held = true
+      show(el, 0)
     }
 
     document.addEventListener('pointerover', onOver)
     document.addEventListener('pointerout', onLeaveWindow)
-    document.addEventListener('pointerdown', hideNow, true)
+    document.addEventListener('pointerdown', onDown, true)
+    document.addEventListener('pointermove', onMove, true)
+    document.addEventListener('pointerup', onUp, true)
+    document.addEventListener('pointercancel', onUp, true)
+    document.addEventListener('click', onClick, true)
+    document.addEventListener('contextmenu', onHold)
     document.addEventListener('focusin', onFocus)
     document.addEventListener('focusout', onBlur)
     document.addEventListener('keydown', onKey, true)
@@ -106,7 +159,12 @@ export function TooltipLayer() {
     return () => {
       document.removeEventListener('pointerover', onOver)
       document.removeEventListener('pointerout', onLeaveWindow)
-      document.removeEventListener('pointerdown', hideNow, true)
+      document.removeEventListener('pointerdown', onDown, true)
+      document.removeEventListener('pointermove', onMove, true)
+      document.removeEventListener('pointerup', onUp, true)
+      document.removeEventListener('pointercancel', onUp, true)
+      document.removeEventListener('click', onClick, true)
+      document.removeEventListener('contextmenu', onHold)
       document.removeEventListener('focusin', onFocus)
       document.removeEventListener('focusout', onBlur)
       document.removeEventListener('keydown', onKey, true)
@@ -114,6 +172,7 @@ export function TooltipLayer() {
       window.removeEventListener('blur', hideNow)
       window.clearTimeout(showT)
       window.clearTimeout(hideT)
+      window.clearTimeout(holdT)
     }
   }, [])
 

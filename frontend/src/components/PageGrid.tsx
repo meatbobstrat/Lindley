@@ -114,7 +114,7 @@ export function PageGrid({ pages, numbered, sel, setSel, onOpen, onMenu, onReord
               aria-pressed={on}
               onClick={(e) => click(e, p)}
               onDoubleClick={() => onOpen(p, i)}
-              data-tip={`${numbered ? `Page ${i + 1}, ${p.file}` : p.file}. Click to select, double-click to open${onMenu ? ', right-click for more' : ''}.`}
+              data-tip={`${numbered ? `Page ${i + 1}, ${p.file}` : p.file}. Click to select, double-click to open${onMenu ? ', right-click (or press and hold) for more' : ''}.`}
               data-tip-side="top"
             >
               <Thumb p={p} size={Math.max(300, thumb * 2)} alt="" />

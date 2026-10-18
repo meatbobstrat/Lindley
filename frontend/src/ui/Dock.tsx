@@ -76,13 +76,15 @@ export function Dock({ label, children }: { label: string; children: ReactNode }
     g.setPointerCapture(e.pointerId)
     d.classList.add('dragging')
     const mv = (ev: PointerEvent) => moveTo(ev.clientX - m.left - ox, ev.clientY - m.top - oy)
-    const up = () => {
+    // However it ends: let go, cancelled by the browser (a touch it took over), or capture lost
+    const ends = ['pointerup', 'pointercancel', 'lostpointercapture'] as const
+    const end = () => {
       g.removeEventListener('pointermove', mv)
-      g.removeEventListener('pointerup', up)
+      ends.forEach((t) => g.removeEventListener(t, end))
       d.classList.remove('dragging')
     }
     g.addEventListener('pointermove', mv)
-    g.addEventListener('pointerup', up)
+    ends.forEach((t) => g.addEventListener(t, end))
   }
 
   const onKey = (e: KeyboardEvent_) => {
@@ -122,7 +124,7 @@ export function Dock({ label, children }: { label: string; children: ReactNode }
           className="dock-grip"
           data-grip
           aria-label="Move toolbar. Arrow keys move it, Home puts it back."
-          data-tip="Drag to move the toolbar. Double-click to put it back at the bottom."
+          data-tip="Drag to move the toolbar. Double-click or double-tap to put it back at the bottom."
           onPointerDown={onGripDown}
           onDoubleClick={() => setPos(null)}
         >

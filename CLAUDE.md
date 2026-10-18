@@ -83,7 +83,10 @@
   (`useApi`, `invalidate` after a change), `lib/` (contexts, actions and dialogs, wording),
   `ui/` (tooltips, toolbar, menus, dialogs), `components/`, `views/` (one per screen).
   Every control gets a tooltip: `data-tip="…"` (ui/Tooltip.tsx shows it on hover and focus).
-  Every full scan is `components/ScanImage.tsx` (zoom and pan by mouse, keys and touch)
+  Every full scan is `components/ScanImage.tsx` (zoom and pan by mouse, keys and touch).
+  Toolbars take their page buttons (turn, flip, More…) from `components/PageTools.tsx`, and
+  views that show one at a time their ← → from `lib/usePageKeys.ts`. Touch means touchscreen
+  laptops and tablets at desktop sizes, not phones
 - `scripts/dev.ps1`: runs both dev servers
 
 ## Commands

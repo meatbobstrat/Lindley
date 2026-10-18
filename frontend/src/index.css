@@ -336,8 +336,22 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
   font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 .scan-pct { min-width: 3.2em; text-align: center; }
+/* Touch as the main input (a tablet, a 2-in-1 without its keyboard): every control at least
+   44px, big enough for a finger. A touchscreen laptop used with its trackpad keeps the desktop
+   sizes; what hover alone shows is shown on any touch screen (any-pointer, below). */
 @media (pointer: coarse) {
-  .scan-bar .icon-btn, .scan-bar .btn { min-width: 44px; min-height: 44px; }
+  .btn, .icon-btn, .ai-h .icon-btn, .dock .btn, .dock .btn.ico, .scan-bar .icon-btn, .scan-bar .btn { min-width: 44px; min-height: 44px; }
+  .btn { justify-content: center; }
+  .dock-grip { width: 44px; }
+  .tab, .t-item, .t-add, .menu button, .status button, .toast button, .crumb,
+  .msg-acts button, .ai-sugg button, .pg-hint, .pg-hint.more { min-height: 44px; }
+  .pg-hint.more { min-width: 44px; }
+  .t-item.t2 { padding-block: 8px; }
+}
+@media (any-pointer: coarse) {
+  .pg-check { opacity: 1; }
+  /* The check box stays small to look at, but takes a finger-sized touch */
+  .pg-check::before { content: ''; position: absolute; inset: -11px; }
 }
 
 /* Side by side */
@@ -574,12 +588,14 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
   border-left: 1px solid var(--line); background: var(--raise);
 }
 .ai-pane.is-float {
+  /* The whole grid as its frame, not column 3: left and top are measured from the app's corner */
+  grid-row: 1 / -1; grid-column: 1 / -1;
   position: absolute; z-index: 30; width: 360px; height: 480px;
   border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow);
   resize: both; overflow: hidden; min-width: 280px; min-height: 300px;
 }
 .ai-h { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); }
-.ai-pane.is-float .ai-h { cursor: move; background: var(--panel); }
+.ai-pane.is-float .ai-h { cursor: move; background: var(--panel); touch-action: none; }
 .ai-h strong { flex: 1; font-family: var(--serif); font-size: 17px; }
 .ai-h .lic { --lic-size: 26px; }
 .ai-h .icon-btn { width: 28px; height: 28px; }
@@ -686,7 +702,8 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
   .app.show-tree .tree { transform: none; }
   .main { grid-column: 1; }
   .ai-pane, .ai-pane.is-float {
-    position: absolute; z-index: 45; top: 49px; bottom: 0; right: 0; left: auto !important;
+    grid-row: 1 / -1; grid-column: 1 / -1; /* measured from the app's corner: just below its top bar */
+    position: absolute; z-index: 45; top: 49px !important; bottom: 0; right: 0; left: auto !important;
     width: min(380px, 92%) !important; height: auto !important; border-radius: 0; resize: none;
     transform: translateX(105%); transition: transform .2s ease;
   }

@@ -250,14 +250,18 @@ export function AskPane({ open, close }: { open: boolean; close: () => void }) {
     if (!app || !r) return
     const ox = e.clientX - r.left
     const oy = e.clientY - r.top
+    const h = e.currentTarget as HTMLElement
+    h.setPointerCapture(e.pointerId)
     const mv = (ev: PointerEvent) =>
       setPos({ x: Math.max(0, Math.min(ev.clientX - app.left - ox, app.width - r.width)), y: Math.max(0, Math.min(ev.clientY - app.top - oy, app.height - 60)) })
-    const up = () => {
-      window.removeEventListener('pointermove', mv)
-      window.removeEventListener('pointerup', up)
+    // However it ends: let go, cancelled by the browser (a touch it took over), or capture lost
+    const ends = ['pointerup', 'pointercancel', 'lostpointercapture'] as const
+    const end = () => {
+      h.removeEventListener('pointermove', mv)
+      ends.forEach((t) => h.removeEventListener(t, end))
     }
-    window.addEventListener('pointermove', mv)
-    window.addEventListener('pointerup', up)
+    h.addEventListener('pointermove', mv)
+    ends.forEach((t) => h.addEventListener(t, end))
   }
 
   if (mode === 'collapsed' && !open)

@@ -102,6 +102,10 @@ scans copied. The 14 scans above.
    - Nothing says the PDF's text is invisible over the scan, so it looks like there is none
      until you search it.
 
+   All four fixed (October 18): only the mark shows until Lindley knows whether Setup comes
+   first; folder examples and where to copy a path from are each system's own; the icon is the
+   "L"; completing and exporting say where the text is. Check each when Ubuntu is tried again.
+
 ### The person's notes on the UI
 
 - Controls differ from view to view: turning a page, for one, is in the toolbar in some views

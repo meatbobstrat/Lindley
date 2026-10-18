@@ -311,6 +311,8 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .stopped { max-width: 32rem; margin: 15vh auto 0; padding: 0 16px; text-align: center; color: var(--ink); }
 .stopped svg { width: 48px; height: 48px; }
 .stopped p { color: var(--muted); }
+.starting { animation: starting-in .3s .4s both; } /* a quick start shows nothing at all */
+@keyframes starting-in { from { opacity: 0; } }
 
 /* Reader */
 .reader { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; }

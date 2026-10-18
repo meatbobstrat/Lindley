@@ -49,7 +49,7 @@ export default function App() {
   const acts = useActions()
   const nav = useNavigate()
   const [params] = useSearchParams()
-  const { settings, connectors, tiers, helps } = useApp()
+  const { settings, connectors, tiers, helps, offline } = useApp()
   const [q, setQ] = useState(params.get('q') ?? '')
   const main = useRef<HTMLElement>(null)
   const setup = useApi('setup', api.setupNeeded)
@@ -108,6 +108,19 @@ export default function App() {
   }, [undo, acts])
 
   if (stopped) return <Stopped />
+  // Nothing but the mark until Lindley knows whether Setup comes first, and Setup has what it
+  // needs: on a slow computer the main view showed for a few seconds before Setup did
+  const setupReady = !!settings && connectors.length > 0 && tiers.length > 0
+  if (!offline && !setup.error && (!setup.data || (setup.data.needed && !setupReady))) return <Starting />
+  // Setup on its own: the main view under it painted a frame before its dialog opened
+  if (setup.data?.needed && settings && setupReady)
+    return (
+      <>
+        <MarkDefs />
+        <Setup settings={settings} connectors={connectors} tiers={tiers} helps={helps} />
+        <TooltipLayer />
+      </>
+    )
 
   return (
     <>
@@ -223,13 +236,22 @@ export default function App() {
           />
         )}
       </div>
-      {setup.data?.needed && settings && connectors.length > 0 && tiers.length > 0 && <Setup settings={settings} connectors={connectors} tiers={tiers} helps={helps} />}
       <TooltipLayer />
     </>
   )
 }
 
 /** After Quit Lindley: nothing here works until it's started again. */
+function Starting() {
+  return (
+    <main className="stopped starting" aria-busy="true">
+      <MarkDefs />
+      <Mark />
+      <p>Lindley is starting…</p>
+    </main>
+  )
+}
+
 function Stopped() {
   return (
     <main className="stopped">

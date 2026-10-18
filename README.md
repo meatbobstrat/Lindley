@@ -567,7 +567,7 @@ and you can ask it about them. All of it from a one-click install.
     reading, turning pages, PDFs, Quit and uninstalling all worked. What it found is below
   - [ ] Ubuntu again, once those are fixed: the same scans, plus search, the tray and Add scans…
   - [ ] Windows and the Mac
-- [ ] What the Ubuntu test found, using its 14 scans as a test to run again:
+- [x] What the Ubuntu test found, using its 14 scans as a test to run again:
   - [x] the rules put a typescript's pages together right, then rated the groups 24–28%, too
     low even for a hint, so nothing showed. Now "Do these go together?" is asked by how sure
     Lindley is that the pages belong together, whole document or not (68% and 65% here), and
@@ -582,9 +582,12 @@ and you can ask it about them. All of it from a one-click install.
   - [x] handwriting with no AI to read it waited only in Review. Now Needs AI lists it too, and
     counts it, saying no AI is set up to read it and how to get one (a person who chose
     Tesseract alone isn't asked)
-  - smaller: the main view shows before Setup does; the example folder path is a Windows one on
-    Ubuntu and the Mac; the app's icon isn't the app's "L"
-- [ ] The UI, for someone new:
+  - [x] smaller things: the main view showed for a few seconds before Setup did; now only
+    Lindley's mark shows ("Lindley is starting…") until it knows whether Setup comes first. The
+    example folder path was a Windows one on Ubuntu and the Mac; now the examples, and where to
+    copy a path from (File Explorer, Finder or Files), are the system's own. The app's icon was
+    a brown page; now it's the app's "L" (`scripts/make_icons.py`, and the favicon)
+- [x] The UI, for someone new:
   - [x] the same controls in every view: wherever pages can be changed (the Inbox, Set aside, a
     scan, a document, Review, Needs AI), the toolbar turns, flips and has More…, the page menu
     without right-clicking (`components/PageTools.tsx`); ← → go to the one before or after in

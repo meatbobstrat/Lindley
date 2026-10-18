@@ -7,8 +7,10 @@ import { useNavigate, useParams } from 'react-router'
 import { api, type DupCopy, type DupDocPair, type Duplicates, type DupSet, imageAt } from '../api/client'
 import { useApi } from '../api/store'
 import { Banner, Crumb, Done, ErrorBox, Head, Loading } from '../components/bits'
+import { ScanImage } from '../components/ScanImage'
 import { docHome, useApp, useLooking } from '../lib/appContext'
 import { plural, quoted, sentences, when } from '../lib/words'
+import { stepZoom, ZOOM_MAX } from '../lib/zoom'
 import { DBtn, Dock, DockProgress, Sep } from '../ui/Dock'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -179,9 +181,9 @@ export function DupView() {
     let syncing = false
     const on = (ev: Event) => {
       const t = ev.target as HTMLElement
-      if (!t.classList?.contains('dup-img') || syncing) return
+      if (!t.classList?.contains('scan-pane') || syncing) return
       syncing = true
-      el.querySelectorAll<HTMLElement>('.dup-img').forEach((o) => {
+      el.querySelectorAll<HTMLElement>('.scan-pane').forEach((o) => {
         if (o !== t) {
           o.scrollTop = t.scrollTop
           o.scrollLeft = t.scrollLeft
@@ -362,9 +364,7 @@ export function DupView() {
                 </div>
                 <p className="dup-note">{note}</p>
                 {mode === 'scan' ? (
-                  <div className={`dup-img${zoom > 1 ? ' zoomed' : ''}`}>
-                    <img src={imageAt(c.image, 2000)} alt={`Scan ${c.file_name}, copy ${n + 1}`} style={{ '--z': zoom } as CSSProperties} />
-                  </div>
+                  <ScanImage className="dup-img" src={c.image} alt={`Scan ${c.file_name}, copy ${n + 1}`} zoom={zoom} setZoom={setZoom} bar={false} />
                 ) : (
                   <div className="dup-tx" role="region" tabIndex={0} aria-label={`Text of copy ${n + 1}`}>
                     {(c.segments ?? [[c.text ?? '', false]]).map(([t, d], j) =>
@@ -406,8 +406,8 @@ export function DupView() {
       <Dock label="Compare copies">
         <DBtn icon="prev" label="Previous" disabled={k === 0} tip="The possible duplicate before" onClick={() => nav(`/duplicates/${es[k - 1].key}`)} />
         <Sep />
-        <DBtn icon="zout" label="Zoom out" iconOnly disabled={mode === 'text' || zoom <= 1} tip="Zoom out of both scans" onClick={() => setZoom(Math.max(1, zoom - 0.5))} />
-        <DBtn icon="zin" label="Zoom in" iconOnly disabled={mode === 'text' || zoom >= 4} tip="Zoom in on both scans. They scroll together." onClick={() => setZoom(Math.min(4, zoom + 0.5))} />
+        <DBtn icon="zout" label="Zoom out" iconOnly disabled={mode === 'text' || zoom <= 1} tip="Zoom out of both scans" onClick={() => setZoom(stepZoom(zoom, -1))} />
+        <DBtn icon="zin" label="Zoom in" iconOnly disabled={mode === 'text' || zoom >= ZOOM_MAX} tip="Zoom in on both scans. They scroll together. Ctrl+scroll, a double click or tap, or a pinch on either zooms both." onClick={() => setZoom(stepZoom(zoom, 1))} />
         <Sep />
         <DBtn icon="checkc" label={keepBoth} kind={similar ? 'primary' : ''} tip="They aren’t copies of each other: keep them all. Lindley won’t suggest them again." onClick={notDup} />
         <Sep />

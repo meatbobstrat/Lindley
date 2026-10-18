@@ -315,8 +315,6 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 /* Reader */
 .reader { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; }
 .rd-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 14px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.rd-stage { overflow: auto; background: var(--stage); display: grid; place-items: center; padding: 24px; }
-.rd-stage img { width: calc(var(--z) * min(560px, 100%)); max-width: none; box-shadow: var(--shadow); }
 .strip { display: flex; gap: 8px; overflow-x: auto; padding: 10px 14px; border-top: 1px solid var(--line); }
 .strip button { flex: none; width: 58px; padding: 2px; border: 2px solid transparent; border-radius: 4px; background: none; }
 .strip button[aria-current="true"] { border-color: var(--accent); }
@@ -324,10 +322,26 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .strip span { display: flex; align-items: center; justify-content: center; gap: 2px; font-size: 12px; color: var(--muted); }
 .strip span .ic { width: 12px; height: 12px; color: var(--warn); }
 
+/* A full scan (components/ScanImage.tsx): fitted to its pane, zoomed and panned inside it.
+   The pane's scroll position is the pan; one finger pans it natively, and the page never zooms. */
+.scan-img { position: relative; display: flex; min-width: 0; min-height: 0; overflow: hidden; background: var(--stage); }
+.scan-pane { flex: 1; min-width: 0; display: flex; overflow: auto; padding: 20px; touch-action: pan-x pan-y; user-select: none; -webkit-user-select: none; }
+.scan-pane:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.scan-pane img { flex: none; margin: auto; max-width: none; box-shadow: var(--shadow); -webkit-touch-callout: none; }
+.scan-pane.zoomed { cursor: grab; }
+.scan-pane.dragging { cursor: grabbing; }
+.scan-bar {
+  position: absolute; top: 10px; right: 18px; display: flex; align-items: center; gap: 2px; padding: 2px 4px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--raise); box-shadow: var(--shadow);
+  font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.scan-pct { min-width: 3.2em; text-align: center; }
+@media (pointer: coarse) {
+  .scan-bar .icon-btn, .scan-bar .btn { min-width: 44px; min-height: 44px; }
+}
+
 /* Side by side */
 .side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); height: 100%; }
-.side-img { background: var(--stage); overflow: auto; display: grid; place-items: center; padding: 20px; }
-.side-img img { max-height: 100%; max-width: 100%; box-shadow: var(--shadow); }
 .side-tx { overflow: auto; padding: 16px 22px 24px; display: flex; flex-direction: column; gap: 10px; border-left: 1px solid var(--line); }
 .side-h { display: flex; align-items: center; gap: 8px; }
 .side-h strong { flex: 1; }
@@ -515,11 +529,8 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
 .dup-col-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px; }
 .dup-col-h h2 { flex: 1 1 auto; margin: 0; font-size: 15px; font-weight: 600; }
 .dup-note { margin: 0; padding: 0 16px 8px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
-/* The scan fits its column; zoomed in, it scrolls, and both columns scroll together. */
-.dup-img { position: relative; flex: 1; min-height: 160px; overflow: hidden; background: var(--stage); }
-.dup-img img { position: absolute; inset: 12px; width: calc(100% - 24px); height: calc(100% - 24px); object-fit: contain; transform: rotate(var(--r, 0deg)) scale(var(--s, 1)); }
-.dup-img.zoomed { overflow: auto; }
-.dup-img.zoomed img { position: static; display: block; margin: 12px auto; width: calc(var(--z) * 100% - 24px); height: auto; }
+/* The scan fits its column; zoomed in, both columns scroll together. */
+.dup-img { min-height: 160px; }
 .dup-tx { flex: 1; min-height: 160px; overflow: auto; padding: 14px 18px; font-family: var(--serif); line-height: 1.6; white-space: pre-wrap; }
 .dup-tx mark, .sub mark { background: var(--warn-soft); color: inherit; text-decoration: underline wavy var(--warn); text-underline-offset: 3px; }
 .dup-facts { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 2px 10px; margin: 0; padding: 8px 16px; border-top: 1px solid var(--line); font-size: 13px; }
@@ -688,7 +699,7 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
   .side { grid-template-columns: minmax(0, 1fr); }
   .dock-wrap { left: 8px; right: 8px; bottom: 8px; }
   .dock-grip { display: none; }
-  .side-img { max-height: 50vh; }
+  .side-img, .main.has-dock .side-img { height: 50vh; padding-bottom: 0; } /* the dock is below it, not over it */
   .side-tx { border-left: 0; border-top: 1px solid var(--line); }
   .status .hide-narrow { display: none; }
 }

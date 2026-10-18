@@ -2,10 +2,11 @@
 
 import { useRef } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router'
-import { api, imageAt } from '../api/client'
+import { api } from '../api/client'
 import { useApi } from '../api/store'
 import { textOf } from '../lib/view'
 import { Banner, Crumb, ErrorBox, Head, Loading } from '../components/bits'
+import { ScanImage } from '../components/ScanImage'
 import { TextPanel } from '../components/TextPanel'
 import { useActions } from '../lib/actionsContext'
 import { useApp, useLooking } from '../lib/appContext'
@@ -145,9 +146,7 @@ export function ScanView() {
         )}
       </Head>
       <div className="side" style={{ flex: 1, minHeight: 0 }}>
-        <div className="side-img">
-          <img src={imageAt(p.image, 1600)} alt={`Scan ${p.file}`} />
-        </div>
+        <ScanImage className="side-img" src={p.image} alt={`Scan ${p.file}`} />
         <div className="side-tx">
           <TextPanel
             page={p}

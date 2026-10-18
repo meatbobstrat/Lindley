@@ -586,11 +586,13 @@ and you can ask it about them. All of it from a one-click install.
     Ubuntu and the Mac; the app's icon isn't the app's "L"
 - [ ] The UI, for someone new:
   - the same controls in every view (turning a page is missing from some toolbars)
-  - zoom and pan on page images
+  - [x] zoom and pan on page images: every full scan (Review, a scan, a document's reader and
+    side view, Duplicates) is one component, zoomed by its buttons, + − 0, Ctrl+wheel, a double
+    click or tap, or a pinch, and panned by scrolling, dragging or a finger
   - next and previous in a document or scan, without going back to the Inbox
   - say that an exported PDF's text is invisible over the scan, ready to search and select
   - final polish, touch screens: every control big enough for a finger and reachable without
-    hovering (tooltips, right-click menus), pinch to zoom page images, and dragging (the
+    hovering (tooltips, right-click menus), and dragging (the
     toolbar, the Ask Lindley window, pages) that ends cleanly when the browser cancels a touch
     (`pointercancel`), which today can leave the window "dragging"
 - [ ] Scans in; originals untouched and a PDF out. Either mode ends with the person's original

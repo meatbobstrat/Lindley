@@ -82,7 +82,8 @@
   The dev server proxies `/api` to `127.0.0.1:8765`. `api/client.ts` (typed API), `api/store.ts`
   (`useApi`, `invalidate` after a change), `lib/` (contexts, actions and dialogs, wording),
   `ui/` (tooltips, toolbar, menus, dialogs), `components/`, `views/` (one per screen).
-  Every control gets a tooltip: `data-tip="…"` (ui/Tooltip.tsx shows it on hover and focus)
+  Every control gets a tooltip: `data-tip="…"` (ui/Tooltip.tsx shows it on hover and focus).
+  Every full scan is `components/ScanImage.tsx` (zoom and pan by mouse, keys and touch)
 - `scripts/dev.ps1`: runs both dev servers
 
 ## Commands

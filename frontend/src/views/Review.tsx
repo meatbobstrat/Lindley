@@ -7,6 +7,7 @@ import { api, imageAt, type Page } from '../api/client'
 import { useApi } from '../api/store'
 import { textOf, typing } from '../lib/view'
 import { Crumb, Done, ErrorBox, Head, Loading } from '../components/bits'
+import { ScanImage } from '../components/ScanImage'
 import { TextPanel } from '../components/TextPanel'
 import { useActions } from '../lib/actionsContext'
 import { who } from '../lib/ai'
@@ -205,9 +206,7 @@ export function ReviewView() {
     <>
       {head}
       <div className="side" style={{ flex: 1, minHeight: 0 }}>
-        <div className="side-img">
-          <img src={imageAt(p.image, 1600)} alt="Scan of the page to review" />
-        </div>
+        <ScanImage className="side-img" src={p.image} alt="Scan of the page to review" />
         <div className="side-tx">
           {full.data && full.data.id === p.id ? (
             <TextPanel page={full.data} textRef={text} label="the page to review" where={where} />

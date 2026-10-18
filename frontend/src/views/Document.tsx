@@ -1,13 +1,14 @@
 // A document, in three views: its pages, a reader, and each scan beside its text. Name it,
 // date it, put its pages in order, then export it as a searchable PDF.
 
-import { type CSSProperties, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { api, type DocFull, imageAt, type Page } from '../api/client'
 import { useApi } from '../api/store'
 import { textOf, typing } from '../lib/view'
 import { Banner, ConfChip, ErrorBox, Loading, Meter, NameInput } from '../components/bits'
 import { PageGrid } from '../components/PageGrid'
+import { ScanImage } from '../components/ScanImage'
 import { SizeControl } from '../components/SizeControl'
 import { TextPanel } from '../components/TextPanel'
 import { useActions } from '../lib/actionsContext'
@@ -66,7 +67,6 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
   const waiting = useApi('needs-ai', api.needsAi)
   const [sel, setSel] = useSelection()
   const [thumb] = useThumb()
-  const [zoom, setZoom] = useState(1)
 
   const done = d.status !== 'progress'
   const exported = d.status === 'exported'
@@ -312,7 +312,7 @@ function DocBody({ d, view, cur, setView, setCur }: { d: DocFull; view: View; cu
           />
         </div>
       )}
-      {view === 'reader' && (page ? <Reader d={d} cur={cur} setCur={setCur} zoom={zoom} setZoom={setZoom} /> : <div className="empty">This document has no pages.</div>)}
+      {view === 'reader' && (page ? <Reader d={d} cur={cur} setCur={setCur} /> : <div className="empty">This document has no pages.</div>)}
       {view === 'side' && (page ? <Side d={d} cur={cur} setCur={setCur} /> : <div className="empty">This document has no pages.</div>)}
 
       <Dock label="Document actions">
@@ -421,33 +421,20 @@ export function Strip({ pages, cur, setCur, label, flag = true }: { pages: Page[
   )
 }
 
-function Reader({ d, cur, setCur, zoom, setZoom }: { d: DocFull; cur: number; setCur: (i: number) => void; zoom: number; setZoom: (z: number) => void }) {
+function Reader({ d, cur, setCur }: { d: DocFull; cur: number; setCur: (i: number) => void }) {
   const p = d.pages[cur]
   const nav = useNavigate()
   return (
     <div className="reader" style={{ minHeight: 0, flex: 1 }}>
       <div className="rd-bar">
         <Pager n={d.pages.length} cur={cur} setCur={setCur} />
-        <span className="sep" style={{ width: 1, height: 18, background: 'var(--line)', margin: '0 6px' }} />
-        <button className="icon-btn" onClick={() => setZoom(Math.max(0.5, +(zoom - 0.25).toFixed(2)))} aria-label="Zoom out" data-tip="Zoom out" disabled={zoom <= 0.5}>
-          <Icon name="zout" />
-        </button>
-        <span>{Math.round(zoom * 100)}%</span>
-        <button className="icon-btn" onClick={() => setZoom(Math.min(3, +(zoom + 0.25).toFixed(2)))} aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= 3}>
-          <Icon name="zin" />
-        </button>
-        <button className="btn ghost" onClick={() => setZoom(1)} data-tip="Fit the page to the window">
-          Fit
-        </button>
         <span className="spacer" />
         <ConfChip p={p} onReview={() => nav(`/review/${d.id}`, { state: { page: p.id } })} />
         <span className="mono" data-tip="The scan file this page came from">
           {p.file}
         </span>
       </div>
-      <div className="rd-stage">
-        <img src={imageAt(p.image, 2000)} alt={`Page ${cur + 1}`} style={{ '--z': zoom } as CSSProperties} />
-      </div>
+      <ScanImage src={p.image} alt={`Page ${cur + 1}`} />
       <Strip pages={d.pages} cur={cur} setCur={setCur} label="Pages" />
     </div>
   )
@@ -462,9 +449,7 @@ function Side({ d, cur, setCur }: { d: DocFull; cur: number; setCur: (i: number)
   const nextReview = d.pages.findIndex((x, i) => i !== cur && x.state === 'review')
   return (
     <div className="side" style={{ flex: 1, minHeight: 0 }}>
-      <div className="side-img">
-        <img src={imageAt(p.image, 1600)} alt={`Page ${cur + 1}`} />
-      </div>
+      <ScanImage className="side-img" src={p.image} alt={`Page ${cur + 1}`} />
       <div className="side-tx">
         {full.data && full.data.id === p.id ? (
           <TextPanel

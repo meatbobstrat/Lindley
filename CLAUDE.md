@@ -88,6 +88,9 @@
   views that show one at a time their ← → from `lib/usePageKeys.ts`. Touch means touchscreen
   laptops and tablets at desktop sizes, not phones
 - `scripts/dev.ps1`: runs both dev servers
+- Docs: `README.md` is for people using Lindley and stays short; detail goes in `ROADMAP.md`,
+  `CONTRIBUTING.md` (development, tests), `ARCHITECTURE.md` (how it works, design decisions,
+  layout), `docs/` (configuration, scripts, connectors) and `design/` (design records)
 
 ## Commands
 - Backend: `cd backend; .venv\Scripts\Activate.ps1; pytest; ruff check .; python -m lindley [--reload]`

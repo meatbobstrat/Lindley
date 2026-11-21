@@ -16,6 +16,7 @@ Closing it part-way (a person pressed Stop) closes the AI's answer too, and save
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Iterator
 
 from lindley.ask import conversation, prompt
@@ -53,6 +54,8 @@ def answer(
 def _answer(conn, settings, question, chat_id, scope, looking) -> Iterator[Event]:
     opened = {k: v for k, v in vars(scope).items() if v is not None} or None
     chat_id, question_id = conversation.add_question(conn, chat_id, question, opened)
+    started = time.monotonic()
+    log.debug("Question %d in chat %d, %d character(s)", question_id, chat_id, len(question))
     yield "chat", {"chat_id": chat_id, "message_id": question_id}
 
     name = settings.ai.connection_for("chat")
@@ -85,6 +88,7 @@ def _answer(conn, settings, question, chat_id, scope, looking) -> Iterator[Event
                 yield "text", {"text": piece}
             failed, worked, status = failed - 1, worked + 1, "done"
     except ProviderError as e:
+        log.warning("Ask Lindley's AI (%s) couldn't answer question %d: %s", name, question_id, e)
         error = str(e)
     except GeneratorExit:
         if stream is not None:  # it had started: it answered, part of the way
@@ -103,6 +107,14 @@ def _answer(conn, settings, question, chat_id, scope, looking) -> Iterator[Event
             answer_id = conversation.add_answer(conn, chat_id, text, sources, status, name, model)
         if worked or failed or used:
             allowance.record_run(conn, name, "chat", False, worked, failed, used)
+        log.debug(
+            "Question %d %s in %.1f s: %d source(s), %d character(s) of answer",
+            question_id,
+            status,
+            time.monotonic() - started,
+            len(sources),
+            len(text),
+        )
     if status == "failed":
         yield "error", {"message": text, "message_id": answer_id}
     else:

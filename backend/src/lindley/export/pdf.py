@@ -11,6 +11,7 @@ characters are reduced to their plain letter where there is one, else to "?".
 from __future__ import annotations
 
 import io
+import logging
 import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,6 +24,8 @@ from PIL import Image
 from lindley import __version__
 from lindley.export.textlayer import Word, same_line
 from lindley.worker.image import exif_orientation, upright_page
+
+log = logging.getLogger(__name__)
 
 ENCODING = "windows-1252"
 DEFAULT_DPI = 300
@@ -60,13 +63,28 @@ def build_pdf(pages: list[PdfPage], info: PdfInfo) -> bytes:
     pdf.set_creator(f"Lindley {__version__}")
     pdf.set_creation_date(datetime.now(UTC))
     pdf.set_font("helvetica")
-    for page in pages:
-        image, (w_px, h_px) = _image(page)
+    for number, page in enumerate(pages, 1):
+        try:
+            image, (w_px, h_px) = _image(page)
+        except (OSError, ValueError, Image.DecompressionBombError) as e:
+            log.error("Page %d of the PDF (%s) couldn't be read: %s", number, page.image_path, e)
+            raise ValueError(
+                f"Page {number} of this document can't be opened ({page.image_path.name}), so"
+                " it can't be exported. Its scan may be damaged or gone."
+            ) from e
         scale = 72 / _dpi(page.dpi, max(w_px, h_px))
         width, height = w_px * scale, h_px * scale
         pdf.add_page(format=(width, height))
         pdf.image(image, x=0, y=0, w=width, h=height)
         _text_layer(pdf, page.words, scale)
+        log.debug(
+            "PDF page %d: %dx%d px at %.0f dpi, %d word(s)",
+            number,
+            w_px,
+            h_px,
+            72 / scale,
+            len(page.words),
+        )
     return bytes(pdf.output())
 
 

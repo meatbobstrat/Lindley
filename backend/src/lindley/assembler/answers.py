@@ -18,15 +18,18 @@ many calls are made of how many are known to be coming, for the status bar.
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
+import logging
 import sqlite3
+import time
 from collections.abc import Callable
 from typing import Literal
 
 from lindley.providers.base import ChatMessage, ChatProvider, ProviderError, Usage
 from lindley.providers.throttle import metered
+
+log = logging.getLogger(__name__)
 
 # grouping pages, naming documents, whether one page carries on from another
 Purpose = Literal["assemble", "name", "continues"]
@@ -93,6 +96,7 @@ class Answers:
         if row:
             if k not in self._fresh:
                 self.reused += 1
+                log.debug("Reused an earlier answer (%s) about %d page(s)", purpose, len(page_ids))
             if row[0].startswith(FAILED):
                 raise ProviderError(row[0].removeprefix(FAILED), answered=True)
             return row[0]
@@ -100,6 +104,7 @@ class Answers:
             return None
         if self.conn.in_transaction:
             if k not in self._waiting:
+                log.debug("Not asking the AI (%s) while the database is held", purpose)
                 self.calls += 1
                 self._waiting[k] = (chat, purpose, messages, page_ids)
             return None
@@ -148,11 +153,20 @@ class Answers:
         page_ids: list[int],
     ) -> str:
         self._fresh.add(k)
+        started = time.monotonic()
+        log.debug("Asking the AI (%s) about %d page(s)", purpose, len(page_ids))
         try:
             with metered(chat) as used:
                 try:
                     reply = chat.chat(messages)
+                    log.debug("The AI answered (%s) in %.1f s", purpose, time.monotonic() - started)
                 except Exception as e:
+                    log.debug(
+                        "The AI call (%s) failed after %.1f s: %s",
+                        purpose,
+                        time.monotonic() - started,
+                        e,
+                    )
                     self.failed += 1
                     self._failed[k] = e
                     answered = getattr(e, "answered", False)  # paid for: not asked again
@@ -208,8 +222,10 @@ class Answers:
         waiting, self._waiting = self._waiting, {}
         self.expect(len(waiting))
         for k, (chat, purpose, messages, page_ids) in waiting.items():
-            with contextlib.suppress(Exception):  # kept in _failed, and met again
+            try:
                 self._call(k, chat, purpose, messages, page_ids)
+            except Exception as e:  # kept in _failed, and met again where it's logged
+                log.debug("The %s question about %d page(s) failed: %s", purpose, len(page_ids), e)
 
     def drop_waiting(self) -> None:
         """Leave the questions waiting unasked (they wait for a later run): never called."""

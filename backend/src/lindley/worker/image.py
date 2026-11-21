@@ -8,10 +8,13 @@ tuned on real scans.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image, ImageFilter, ImageOps, ImageStat
+
+log = logging.getLogger(__name__)
 
 ENGINE = "image v1"  # intake_steps.engine_version for the image step
 WORK_SIZE = 1600  # long side of the reduced copy, in pixels
@@ -81,7 +84,19 @@ def upright_copy(
     """Save the page turned upright (as upright_page)."""
     img = upright_page(src, rotation, mirrored)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    img.save(dest, **({"dpi": (dpi, dpi)} if dpi else {}))
+    try:
+        img.save(dest, **({"dpi": (dpi, dpi)} if dpi else {}))
+    except BaseException as e:  # a full disk leaves half a picture: not left to be read
+        dest.unlink(missing_ok=True)
+        log.warning("Couldn't save a turned copy of %s: %s", src.name, e)
+        raise
+    log.debug(
+        "Turned %s %d degrees%s into %s",
+        src.name,
+        rotation,
+        " (mirrored)" if mirrored else "",
+        dest.name,
+    )
     return dest
 
 

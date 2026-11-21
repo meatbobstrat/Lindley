@@ -7,6 +7,7 @@ response: a person who closes the pane or presses Stop ends the stream, and the 
 
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 from collections.abc import AsyncIterator, Iterator
@@ -23,6 +24,8 @@ from lindley.ask.answer import WENT_WRONG, answer
 from lindley.ask.retrieve import Scope
 from lindley.ask.status import chat_status
 from lindley.db.database import connect
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -100,11 +103,16 @@ async def ask(work: Annotated[Iterator[Event], Depends(asked)]) -> AsyncIterator
                 events.put(event)
                 if stop.is_set():
                     break  # closing `work` stops the AI, and saves what it wrote
-        except Exception:  # noqa: BLE001 - answer() logs and saves its own failures
+        except Exception:  # noqa: BLE001 - answer() logs most of its own failures: not all
+            log.exception("Ask Lindley's answer stopped on an error")
             events.put(("error", {"message": WENT_WRONG}))
         finally:
-            work.close()
-            events.put(_END)
+            try:  # saves what was written: a locked database here must not leave the screen waiting
+                work.close()
+            except Exception:  # noqa: BLE001
+                log.exception("Ask Lindley couldn't save its answer")
+            finally:
+                events.put(_END)
 
     threading.Thread(target=run, name="lindley-ask", daemon=True).start()
     try:

@@ -152,10 +152,12 @@ def rebuild(
     for order, seed in TRIES:
         with tempfile.TemporaryDirectory() as tmp:
             scratch = _scratch(Path(tmp))
-            truth = bench.load_real(scratch, conn, bench.arrange(docs, order, seed))
-            assemble(scratch, AssemblerSettings(), weights=weights)
-            s = bench.score(scratch, truth)
-            scratch.close()
+            try:
+                truth = bench.load_real(scratch, conn, bench.arrange(docs, order, seed))
+                assemble(scratch, AssemblerSettings(), weights=weights)
+                s = bench.score(scratch, truth)
+            finally:  # open, the folder can't be removed on Windows: that would hide the error
+                scratch.close()
         exact += round(s.exact * len(docs))
         wrong += s.wrong_documents
     return exact, wrong

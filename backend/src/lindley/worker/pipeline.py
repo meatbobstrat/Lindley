@@ -415,9 +415,22 @@ def run_step(
             row, claimed = cur.lastrowid, cur.rowcount
     if not claimed:
         raise StepTaken(f"{step} for page {page_id} is already being done")
+    started = time.monotonic()
+    log.debug("Page %s, scan %s: %s started", page_id, scan_id, step)
     try:
         yield
     except Exception as e:
+        if conn.in_transaction:
+            conn.rollback()  # whatever the block left half written: not kept with the failure
+        log.debug(
+            "Page %s, scan %s: %s failed after %.2f s: %s: %s",
+            page_id,
+            scan_id,
+            step,
+            time.monotonic() - started,
+            type(e).__name__,
+            e,
+        )
         with conn:
             conn.execute(
                 "UPDATE intake_steps SET status = 'failed', error = ?,"
@@ -432,6 +445,9 @@ def run_step(
             " WHERE id = ?",
             (row,),
         )
+    log.debug(
+        "Page %s, scan %s: %s done in %.2f s", page_id, scan_id, step, time.monotonic() - started
+    )
 
 
 class Pipeline:
@@ -476,7 +492,8 @@ class Pipeline:
         if use_ai and settings.ocr.engine != "tesseract" and settings.ai.connection_for("vision"):
             try:
                 vision = get_provider(settings.ai, "vision")
-            except ProviderError:
+            except ProviderError as e:
+                log.warning("The vision model can't be used, so hard pages wait: %s", e)
                 vision = None
         return cls(settings, TesseractEngine(settings.ocr), vision)
 
@@ -551,10 +568,21 @@ class Pipeline:
             " ORDER BY p.page_index",
             (scan_id,),
         ).fetchall()
+        page_id = None
         try:
             for page in pages:
-                self._read_page(conn, scan_id, page["id"], Path(page["image_path"]))
+                page_id = page["id"]
+                self._read_page(conn, scan_id, page_id, Path(page["image_path"]))
         except Exception as e:
+            # Said once, here, where the scan and page are known; the steps record it in the
+            # database too. Tesseract missing is expected, and explained: no traceback.
+            log.error(
+                "Reading scan %d failed at page %s: %s",
+                scan_id,
+                page_id,
+                str(e) or type(e).__name__,
+                exc_info=None if isinstance(e, TesseractNotFound) else e,
+            )
             with conn:
                 conn.execute(
                     "UPDATE scans SET status = 'failed', error = ? WHERE id = ?",
@@ -905,7 +933,12 @@ class Pipeline:
                 run.failed += 1
                 in_a_row += 1
                 error = run.error = str(e) or type(e).__name__
-                log.warning("Page %d: the vision call failed: %s", r["page_id"], error)
+                log.warning(
+                    "Page %d: the vision call failed: %s",
+                    r["page_id"],
+                    error,
+                    exc_info=None if isinstance(e, ProviderError) else e,
+                )
                 continue
             log.info(
                 "Page %d read by %s in %.0f s", r["page_id"], model, time.monotonic() - started
@@ -1031,9 +1064,20 @@ class Pipeline:
             or (reading.confidence or 0) >= self.settings.ocr.confidence_threshold
         ):
             return rotation, flip, reading
-        if found := self._orientation(page_id, image, rotation, dpi, flip):
-            rotation, reading = self._try_turning(
-                conn, scan_id, page_id, image, page, reading, found[0] or 180
+        # These two only look for a better reading: the one in hand is good enough to keep if
+        # looking fails (an unreadable temporary copy, say), which is said, not made the page's
+        try:
+            if found := self._orientation(page_id, image, rotation, dpi, flip):
+                rotation, reading = self._try_turning(
+                    conn, scan_id, page_id, image, page, reading, found[0] or 180
+                )
+        except StepTaken:
+            raise
+        except Exception:
+            log.warning(
+                "Page %d: looking for a better turn failed, so it keeps its reading",
+                page_id,
+                exc_info=True,
             )
         if (
             flip
@@ -1041,7 +1085,17 @@ class Pipeline:
             or not hasattr(self.tesseract, "mirrored_reading")
         ):
             return rotation, flip, reading
-        return self._try_mirroring(conn, scan_id, page_id, image, rotation, reading)
+        try:
+            return self._try_mirroring(conn, scan_id, page_id, image, rotation, reading)
+        except StepTaken:
+            raise
+        except Exception:
+            log.warning(
+                "Page %d: looking for a mirror image failed, so it keeps its reading",
+                page_id,
+                exc_info=True,
+            )
+            return rotation, flip, reading
 
     def _try_turning(
         self,
@@ -1279,8 +1333,14 @@ class Pipeline:
                                     ("vision", model, self._vision_reader().recognize(image)[0])
                                 )
                             ok = True
-                        except Exception:
-                            pass  # recorded as failed; the page waits for a person to try again
+                        except Exception as e:
+                            # Recorded as failed: the page waits for a person to try again
+                            log.warning(
+                                "Page %d: the vision call failed: %s",
+                                page_id,
+                                str(e) or type(e).__name__,
+                                exc_info=None if isinstance(e, ProviderError) else e,
+                            )
                     with conn:
                         allowance.record(
                             conn, self.vision_name, "vision", True, page_id, ok, used=used

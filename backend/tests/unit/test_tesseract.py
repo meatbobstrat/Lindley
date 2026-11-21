@@ -282,3 +282,50 @@ def test_an_orientation_check_that_times_out_is_just_unknown(tmp_path, monkeypat
     monkeypatch.setattr(tesseract.subprocess, "run", slow)
     engine = TesseractEngine(OcrSettings(tesseract_path=exe))
     assert engine.orientation(tmp_path / "page.png") is None
+
+
+def test_a_tesseract_that_takes_too_long_is_stopped_and_said_so(tmp_path, monkeypatch):
+    exe = tmp_path / "tesseract.exe"
+    exe.touch()
+
+    def hang(args, **kw):
+        raise subprocess.TimeoutExpired(args, kw["timeout"])
+
+    monkeypatch.setattr(tesseract.subprocess, "run", hang)
+    with pytest.raises(RuntimeError, match=r"took more than \d+ s to read page.png"):
+        TesseractEngine(OcrSettings(tesseract_path=exe)).recognize(tmp_path / "page.png")
+
+
+def test_a_tesseract_that_cant_be_started_is_said_in_words(tmp_path, monkeypatch):
+    exe = tmp_path / "tesseract.exe"
+    exe.touch()
+
+    def refuse(args, **kw):
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(tesseract.subprocess, "run", refuse)
+    with pytest.raises(RuntimeError, match="couldn't be run .Access is denied."):
+        TesseractEngine(OcrSettings(tesseract_path=exe)).recognize(tmp_path / "page.png")
+
+
+def test_a_row_of_its_output_that_isnt_numbers_loses_a_word_not_the_page(caplog):
+    caplog.set_level("DEBUG", logger="lindley")
+    row = "5\t1\t1\t1\t1\t1\tx\t0\t10\t10\tnot-a-number\tBroken"
+    good = "5\t1\t1\t1\t1\t2\t10\t20\t30\t12\t91.5\tfine"
+    text, words, _ = parse_tsv(HEADER + "\n" + row + "\n" + good)
+    assert text == "fine" and [w["text"] for w in words] == ["fine"]
+    assert "Skipping a row" in caplog.text
+
+
+def test_a_failure_reading_the_page_numbers_leaves_the_reading_as_it_was(
+    tmp_path, monkeypatch, caplog
+):
+    page = tmp_path / "page.png"
+    Image.new("L", (200, 300), "white").save(page)
+    engine, _ = fake_tesseract(tmp_path, monkeypatch, 0, TSV)
+    lines = tesseract.tsv_lines(TSV)
+    monkeypatch.setattr(
+        tesseract.margins, "find", lambda *a, **k: (_ for _ in ()).throw(ValueError("bad box"))
+    )
+    assert engine._with_numbers(page, lines, 0) == lines
+    assert "Reading the page numbers in the margins of page.png failed" in caplog.text

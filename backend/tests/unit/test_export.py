@@ -440,3 +440,71 @@ def test_nothing_is_exported_until_a_person_chooses_where(client, settings, tmp_
     assert client.put("/api/settings", json=body | {"output_dir": chosen}).status_code == 200
     r = client.post(f"/api/documents/{doc}/export").json()
     assert Path(r["pdf_path"]).parent == Path(chosen).resolve()
+
+
+def test_a_full_disk_leaves_no_half_a_pdf_and_is_logged(
+    conn, settings, tmp_path, monkeypatch, caplog
+):
+    import errno
+
+    doc = document(conn)
+    page(conn, tmp_path, doc, 1, "Dear Sister")
+
+    def full(*a, **k):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr("lindley.export.document.Path.write_bytes", full)
+    with pytest.raises(OSError, match="No space left"):
+        export(conn, settings, doc)
+    assert not list(settings.output_dir.rglob("*.tmp"))
+    assert "Couldn't write" in caplog.text and "No space left" in caplog.text
+    assert conn.execute("SELECT status FROM documents").fetchone()[0] == "complete"
+
+
+def test_an_export_the_database_cant_record_gives_the_originals_back_to_lindley(
+    conn, settings, tmp_path, monkeypatch
+):
+    inbox = tmp_path / "drop"
+    inbox.mkdir()
+    a = scan_file(inbox / "scan 1.png", "white")
+    doc = document(conn)
+    taken(conn, settings, a, doc, [0])
+    held = Path(conn.execute("SELECT original_path FROM scans").fetchone()[0])
+    assert held.is_file()
+
+    real = history.log
+
+    def refuse(conn, batch, action, *a, **k):
+        if action == "export":
+            raise RuntimeError("the database wouldn't record it")
+        return real(conn, batch, action, *a, **k)
+
+    monkeypatch.setattr("lindley.export.document.history.log", refuse)
+    with pytest.raises(RuntimeError, match="wouldn't record"):
+        export(conn, settings, doc)
+    assert held.is_file()  # back where Lindley keeps it, not left in the output folder
+    assert not list(settings.output_dir.rglob("scan 1.png"))
+    row = conn.execute("SELECT original_path, original_state FROM scans").fetchone()
+    assert (Path(row[0]), row[1]) == (held, "held")
+    assert conn.execute("SELECT status FROM documents").fetchone()[0] == "complete"
+
+
+def test_a_page_that_cant_be_opened_is_named_in_the_export_error(conn, settings, tmp_path, caplog):
+    doc = document(conn)
+    page(conn, tmp_path, doc, 1, "Dear Sister")
+    bad = page(conn, tmp_path, doc, 2, "Yours")
+    path = conn.execute("SELECT image_path FROM pages WHERE id = ?", (bad,)).fetchone()[0]
+    Path(path).write_bytes(b"not an image at all")
+    with pytest.raises(ValueError, match="Page 2 of this document can't be opened"):
+        export(conn, settings, doc)
+    assert "Page 2 of the PDF" in caplog.text
+
+
+def test_damaged_word_boxes_dont_stop_the_export(conn, settings, tmp_path, caplog):
+    doc = document(conn)
+    pid = page(conn, tmp_path, doc, 1, "Dear Sister")
+    conn.execute("UPDATE transcriptions SET words = '[{broken' WHERE page_id = ?", (pid,))
+    conn.commit()
+    e = export(conn, settings, doc)
+    assert e.pdf_path.is_file() and e.unplaced == [pid]  # laid out afresh, not over the writing
+    assert "word boxes are damaged" in caplog.text

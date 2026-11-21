@@ -16,6 +16,7 @@ import logging
 import queue
 import sqlite3
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -163,16 +164,20 @@ class AiWork:
                 job.done.set()
 
     def _do(self, job: Job) -> None:
-        settings = self._settings()
-        conn = connect(settings.db_path)
-        try:
+        conn = None
+        started = time.monotonic()
+        try:  # all of it: a failure to find the settings or the database must still be told
+            settings = self._settings()
+            conn = connect(settings.db_path)
             message, ok = (self._read if job.kind == "read" else self._sort)(conn, settings, job)
             activity.finished(job.kind, message, ok)
+            log.debug("AI work (%s) done in %.1f s: %s", job.kind, time.monotonic() - started, ok)
         except Exception as e:  # noqa: BLE001 - said to the person who asked, and logged
             log.exception("AI work a person asked for failed (%s)", job.kind)
             activity.finished(job.kind, f"The AI couldn't {job.kind} them: {e}", ok=False)
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
 
     def _read(self, conn: sqlite3.Connection, settings: Settings, job: Job) -> tuple[str, bool]:
         pipeline = Pipeline.from_settings(settings)

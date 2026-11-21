@@ -221,3 +221,18 @@ def test_a_page_whose_image_has_gone_doesnt_stop_the_others(conn, tmp_path):
     b = add(conn, ocr_noise(PAGE))
     find_duplicates(conn)
     assert pairs(conn) == {(a, b): "same_page"}
+
+
+def test_an_image_too_big_or_damaged_to_open_doesnt_stop_the_check(conn, tmp_path, monkeypatch):
+    from lindley.duplicates import detect
+
+    add(conn, "Sketch", image=drawing(tmp_path / "a.png"))
+    a = add(conn, PAGE)
+    b = add(conn, ocr_noise(PAGE))
+
+    def too_big(*args, **kw):
+        raise Image.DecompressionBombError("far too many pixels")
+
+    monkeypatch.setattr(detect, "image_signature", too_big)
+    find_duplicates(conn)
+    assert pairs(conn) == {(a, b): "same_page"}

@@ -21,6 +21,7 @@ import mimetypes
 import os
 import shutil
 import sqlite3
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -109,12 +110,15 @@ def import_file(
     """Import one scan file: hash, copy into the library, read EXIF and split into pages."""
     path = Path(path)
     if not is_supported(path):
+        log.debug("%s isn't a kind of file Lindley reads (%s)", path.name, path.suffix)
         return ImportResult(path, "failed", error=f"Not a supported file type: {path.suffix}")
     started = now()
+    timer = time.monotonic()
     try:
         st = path.stat()  # before hashing: a file changed since is noticed again
         sha = sha256_of(path)
     except OSError as e:
+        log.warning("Couldn't read %s to take it in: %s", path, e)
         return _quarantine(settings, path, ImportResult(path, "failed", error=str(e)))
     with conn:
         conn.execute(
@@ -132,6 +136,7 @@ def import_file(
     ).fetchone()
     # A file that failed before it was split can be tried again; anything else is a duplicate.
     if existing and not (existing["status"] == "failed" and existing["n"] == 0):
+        log.debug("%s is scan %d already (%s)", path.name, existing["id"], sha[:12])
         if settings.move_files:
             kept = existing["original_state"] in ("held", "exported") and existing["original_path"]
             if kept and same_file(Path(existing["original_path"]), sha):
@@ -142,7 +147,8 @@ def import_file(
 
     try:
         copy = library_copy(settings, path, sha)
-    except OSError as e:
+    except OSError as e:  # no room in the library, or a copy that didn't match
+        log.warning("Couldn't copy %s into the library: %s", path, e)
         return _quarantine(settings, path, ImportResult(path, "failed", error=str(e)))
 
     mime = mimetypes.guess_type(path.name)[0]
@@ -178,6 +184,7 @@ def import_file(
             exif, exif_error = _exif(copy, mime), None
         except Exception as e:  # metadata it can't make out doesn't stop the pages being read
             exif, exif_error = (None, None, None, None), _in_words(e)
+            log.debug("No metadata read from %s: %s", path.name, exif_error)
         with conn:
             conn.execute(
                 "UPDATE scans SET file_created_at = ?, file_modified_at = ?, scanner_make = ?,"
@@ -190,6 +197,7 @@ def import_file(
             pages = _split(conn, settings, scan_id, copy, mime)
     except Exception as e:
         error = _in_words(e)
+        log.error("Couldn't split %s into pages: %s", path.name, error, exc_info=True)
         with conn:
             conn.execute(
                 "UPDATE scans SET status = 'failed', error = ? WHERE id = ?", (error, scan_id)
@@ -201,6 +209,14 @@ def import_file(
 
     if settings.move_files:
         _hold(conn, settings, scan_id, path, st, sha)
+    log.debug(
+        "Took in %s as scan %d: %d page(s), %s, %.2f s",
+        path.name,
+        scan_id,
+        pages,
+        "moved" if settings.move_files else "copied",
+        time.monotonic() - timer,
+    )
     return ImportResult(path, "new", scan_id, pages)
 
 
@@ -376,7 +392,9 @@ def _quarantine(settings: Settings, path: Path, result: ImportResult) -> ImportR
         else:
             shutil.copy2(path, dest)
         result.quarantined = dest
+        log.info("%s couldn't be taken in, so it's put aside in %s", path.name, folder)
     except OSError as e:
+        log.warning("Couldn't put %s aside in %s: %s", path, folder, e)
         result.error = f"{result.error}; also couldn't quarantine it: {e}"
     return result
 
@@ -391,8 +409,9 @@ def _in_quarantine(folder: Path, path: Path) -> Path | None:
                 sha = sha or sha256_of(path)
                 if sha256_of(q) == sha:
                     return q
-    except OSError:
-        pass  # it can't be read: quarantine it anyway
+    except OSError as e:
+        log.debug("Couldn't compare %s with what's in quarantine: %s", path.name, e)
+        # it can't be read: quarantine it anyway
     return None
 
 

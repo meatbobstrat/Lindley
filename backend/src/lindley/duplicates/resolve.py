@@ -13,11 +13,14 @@ lindley.history.undo can put it all back.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass, field
 
 from lindley import history
 from lindley.organise import close_gaps, move_page, remove_if_empty
+
+log = logging.getLogger(__name__)
 
 KIND_ORDER = {"same_page": 0, "similar": 1}
 
@@ -268,7 +271,11 @@ def keep(conn: sqlite3.Connection, set_id: int, page_id: int) -> Decision:
         s = get_set(conn, set_id)
         if s is None:
             raise LookupError(f"No open duplicate set {set_id}")
-        return _keep(conn, s, page_id, history.new_batch(conn))
+        decision = _keep(conn, s, page_id, history.new_batch(conn))
+    log.info(
+        "Kept page %d of duplicate set %d; %d set aside", page_id, set_id, len(decision.set_aside)
+    )
+    return decision
 
 
 def _keep(conn: sqlite3.Connection, s: DuplicateSet, page_id: int, batch: int) -> Decision:
@@ -341,9 +348,18 @@ def keep_document(conn: sqlite3.Connection, keep_doc: int, other_doc: int) -> De
             s = get_set(conn, set_id)
             if s is None:  # decided with one before it
                 continue
-            kept = next(c for c in s.copies if c.document_id == keep_doc)
+            kept = next((c for c in s.copies if c.document_id == keep_doc), None)
+            if kept is None:  # the sets changed under it: a refusal, not a crash
+                raise ValueError(f"Document {keep_doc} no longer has a copy in every set")
             decision.set_aside += _keep(conn, s, kept.page_id, decision.batch).set_aside
             decision.sets += 1
+    log.info(
+        "Kept document %d over %d: %d set(s) of copies, %d page(s) set aside",
+        keep_doc,
+        other_doc,
+        decision.sets,
+        len(decision.set_aside),
+    )
     return decision
 
 
@@ -355,6 +371,7 @@ def not_duplicates(conn: sqlite3.Connection, set_id: int) -> Decision:
             raise LookupError(f"No open duplicate set {set_id}")
         batch = history.new_batch(conn)
         _decide(conn, batch, "not_duplicates", set_id, s.pair_ids, "not_duplicate", None)
+    log.info("Duplicate set %d: the pages aren't copies", set_id)
     return Decision(batch)
 
 

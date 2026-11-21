@@ -111,8 +111,12 @@ def judge(pages: list[Page], judge, answers: Answers, most: int | None = MOST) -
     for a, b in asking:
         try:
             a.runs_into[b.id] = answers.chance(judge, SYSTEM, question(a, b), [a.id, b.id])
-        except ProviderError as e:
-            log.warning("Checking whether pages carry on failed, so the rules sort alone: %s", e)
+        except Exception as e:  # noqa: BLE001 - a judge that fails any way means "rules alone"
+            log.warning(
+                "Checking whether pages carry on failed, so the rules sort alone: %s",
+                e,
+                exc_info=None if isinstance(e, ProviderError) else e,
+            )
             break
         finally:
             asked += 1

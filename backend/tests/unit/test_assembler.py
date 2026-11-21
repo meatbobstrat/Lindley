@@ -934,3 +934,12 @@ def test_pages_that_run_on_are_asked_about_though_they_may_not_be_the_whole_docu
     # The document itself is still far from sure: it's made only once a person says so
     [g] = segment(load_inbox(conn))[0]
     assert g.confidence < 45 <= g.together
+
+
+def test_an_ai_answer_that_isnt_used_is_said_in_the_log_with_why(caplog):
+    ps = _pages()
+    refine(Scripted("Sure! These pages go together."), ps, [Group(ps, 60)])
+    assert "answer about 2 page(s) wasn't used: the reply wasn't the JSON asked for" in caplog.text
+    caplog.clear()
+    refine(None, ps, [Group(ps, 60)])  # nothing was asked: nothing to say
+    assert "wasn't used" not in caplog.text

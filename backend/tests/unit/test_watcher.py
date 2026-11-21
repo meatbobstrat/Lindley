@@ -556,3 +556,91 @@ def test_a_page_a_person_turns_is_read_again_and_the_inbox_sorted(settings, inbo
         conn.close()
     assert turned == 180
     assert len(calls) == 2  # sorted again with its new text
+
+
+def test_a_step_that_keeps_failing_is_logged_in_full_once_then_now_and_again(
+    settings, inbox, monkeypatch, caplog
+):
+    w = make_watcher(settings)
+    monkeypatch.setattr(watcher_mod, "REPEAT_LOG", 5)
+    boom = RuntimeError("the same thing")
+    for _ in range(12):
+        w._tick_failed(boom)
+    full = [r for r in caplog.records if r.getMessage() == "Folder watcher step failed"]
+    again = [r for r in caplog.records if "still failing" in r.getMessage()]
+    assert len(full) == 1 and full[0].exc_info  # the whole story, once
+    assert [("5 times" in r.getMessage(), "10 times" in r.getMessage()) for r in again] == [
+        (True, False),
+        (False, True),
+    ]
+    w._tick_failed(ValueError("something else"))  # a different failure is told in full
+    assert len([r for r in caplog.records if r.getMessage() == "Folder watcher step failed"]) == 2
+
+
+def test_the_listener_the_system_ended_is_started_again(settings, inbox, monkeypatch, caplog):
+    w = make_watcher(settings)
+
+    class Dead:
+        def is_alive(self):
+            return False
+
+    w._observer = Dead()
+    started = []
+    monkeypatch.setattr(w, "_watch", lambda folders: started.append(folders))
+    monkeypatch.setattr(w, "sweep", lambda folders: started.append("swept"))
+    w._keep_listening([inbox])
+    w._keep_listening([inbox])  # not again within the minute
+    assert started == [[inbox], "swept"]
+    assert "stopped listening on its own" in caplog.text
+
+
+def test_a_folder_that_cant_be_listened_to_doesnt_stop_the_others(settings, inbox, caplog):
+    other = inbox.parent / "other"
+    other.mkdir()
+    w = make_watcher(settings)
+
+    class Observer:
+        def __init__(self):
+            self.watching = []
+
+        def schedule(self, handler, path, recursive):
+            if path == str(inbox):
+                raise OSError("the drive went away")
+            self.watching.append(path)
+
+        def start(self):
+            pass
+
+    monkeypatch_observer = watcher_mod.Observer
+    watcher_mod.Observer = Observer
+    try:
+        w._watch([inbox, other])
+    finally:
+        watcher_mod.Observer = monkeypatch_observer
+    assert w._observer.watching == [str(other)]
+    assert f"Couldn't watch {inbox}" in caplog.text
+
+
+def test_a_failing_duplicate_check_doesnt_stop_the_inbox_being_sorted(
+    settings, inbox, monkeypatch, caplog
+):
+    calls = []
+    monkeypatch.setattr(
+        watcher_mod, "find_duplicates", lambda conn: (_ for _ in ()).throw(ValueError("bad page"))
+    )
+    monkeypatch.setattr(watcher_mod, "sort_on_its_own", lambda *a: calls.append(1) or _Report())
+    w = make_watcher(settings)
+    w._assemble(w._db())
+    assert calls == [1]  # sorted all the same
+    assert "Looking for duplicate pages failed" in caplog.text
+
+
+def test_one_file_that_cant_be_taken_is_said_with_why(settings, inbox, caplog):
+    damaged = bytearray(png_bytes())
+    damaged[40:60] = bytes(20)  # the ending is there, so it's taken; its picture is broken
+    (inbox / "scan_0001.png").write_bytes(bytes(damaged))
+    w = make_watcher(settings)
+    w.notice(inbox / "scan_0001.png")
+    w.tick()  # sees it
+    w.tick()  # it hasn't changed: taken
+    assert "scan_0001.png couldn't be taken in" in caplog.text

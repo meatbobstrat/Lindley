@@ -1079,3 +1079,78 @@ def test_with_the_vision_model_alone_turned_pages_arent_read_again(conn, setting
     organise.rotate(conn, [page], 180)
     settings.ocr.engine = "vision"
     assert pipe.read_turned_again(conn) == (0, False)
+
+
+# ---------------------------------------------------------------- what goes wrong, and the log
+
+
+def test_a_scan_that_fails_says_which_page_and_why_in_the_log(conn, settings, scan, caplog):
+    sid = scan()
+    pipe = Pipeline(settings, StubOcr(RuntimeError("Tesseract blew up")))
+    assert pipe.process_scan(conn, sid) == "failed"
+    [record] = [r for r in caplog.records if "failed at page" in r.getMessage()]
+    assert str(sid) in record.getMessage() and "Tesseract blew up" in record.getMessage()
+    assert record.exc_info  # with its traceback
+
+
+def test_tesseract_not_being_installed_is_explained_not_a_traceback(conn, settings, scan, caplog):
+    from lindley.worker.ocr.tesseract import TesseractNotFound
+
+    sid = scan()
+    pipe = Pipeline(settings, StubOcr(TesseractNotFound("Tesseract wasn't found")))
+    assert pipe.process_scan(conn, sid) == "failed"
+    [record] = [r for r in caplog.records if "failed at page" in r.getMessage()]
+    assert not record.exc_info
+
+
+def test_looking_for_a_better_turn_failing_keeps_the_reading_it_has(conn, settings, scan, caplog):
+    sid = scan()
+    ocr = StubOcr(
+        ("He had been a mule driver", 61.0),
+        RuntimeError("the turned copy can't be read"),
+        osd=(180, 0.8),
+    )
+    assert Pipeline(settings, ocr).process_scan(conn, sid) == "read"
+    assert current_text(conn, sid) == "He had been a mule driver"
+    assert "looking for a better turn failed" in caplog.text
+    assert steps(conn, sid, "ocr")[-1][0] == "failed"  # the attempt is on record
+
+
+def test_looking_for_a_mirror_image_failing_keeps_the_reading_it_has(conn, settings, scan, caplog):
+    class Failing(MirrorOcr):
+        def mirrored_reading(self, image_path):
+            raise RuntimeError("mirror reading failed")
+
+    sid = scan()
+    ocr = Failing(("He had been a mule driver", 41.0))
+    assert Pipeline(settings, ocr).process_scan(conn, sid) == "read"
+    assert current_text(conn, sid) == "He had been a mule driver"
+    assert "looking for a mirror image failed" in caplog.text
+
+
+def test_a_vision_call_that_fails_is_logged_with_the_page(conn, settings, scan, caplog):
+    settings.ai.providers["local"].allow = "auto"
+    sid = scan()
+    pipe = Pipeline(settings, StubOcr(("Dcar Sistcr", 41.0)), BrokenVision())
+    assert pipe.process_scan(conn, sid) == "read"
+    assert "the vision call failed: vision model not running" in caplog.text
+
+
+def test_a_step_that_fails_doesnt_keep_what_it_left_half_written(conn, settings, scan):
+    sid = scan()
+    with (
+        pytest.raises(RuntimeError),
+        run_step(conn, sid, Step.OCR, page_id=page_row(conn, sid)["id"]),
+    ):
+        conn.execute("UPDATE scans SET status = 'reading' WHERE id = ?", (sid,))
+        raise RuntimeError("cut off")
+    assert status(conn, sid) != "reading"
+    assert steps(conn, sid, "ocr") == [("failed", "cut off")]
+
+
+def test_each_step_is_in_the_debug_log_with_how_long_it_took(conn, settings, scan, caplog):
+    caplog.set_level("DEBUG", logger="lindley")
+    sid = scan()
+    Pipeline(settings, StubOcr(("Dear Sister, we are well.", 92.0))).process_scan(conn, sid)
+    assert "ocr started" in caplog.text and "ocr done in" in caplog.text
+    assert "Dear Sister" not in caplog.text  # what's on the page is never logged

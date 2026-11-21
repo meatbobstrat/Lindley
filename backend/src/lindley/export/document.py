@@ -129,16 +129,22 @@ def export_document(
     stem = safe_name(doc["name"]) or f"Document {doc_id}"
     folder = _folder(conn, output, doc_id, stem) if going or kept else None
     dest = _destination(conn, folder or output, doc_id, folder.name if folder else stem)
-    dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".tmp")
     try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
         tmp.write_bytes(data)
         os.replace(tmp, dest)
     except PermissionError as e:  # on Windows, open in a PDF viewer
         tmp.unlink(missing_ok=True)
+        log.warning("Couldn't write %s for document %d: %s", dest, doc_id, e)
         raise ValueError(
             f"{dest.name} is open in another program. Close it there, and export again."
         ) from e
+    except OSError as e:  # no room on the disk, a drive that went away: no half a file left
+        tmp.unlink(missing_ok=True)
+        log.error("Couldn't write %s for document %d: %s", dest, doc_id, e)
+        raise
+    log.debug("Wrote %s: %d page(s), %d bytes", dest.name, len(pages), len(data))
 
     out = Exported(doc_id, dest, "", [r["id"] for r in rows], [], unplaced, folder)
     out.kept = [r["original_name"] for r in kept]
@@ -154,47 +160,69 @@ def export_document(
             if there != src:
                 move_checked(src, there, r["sha256"])
         except OSError as e:
+            log.warning("Couldn't move the original %s to %s: %s", src, there, e)
             out.problems.append(f"{r['original_name']} couldn't be moved there: {e}")
             continue
         moved.append((r["id"], there))
         out.originals.append(there)
 
-    with conn:
-        before = [
-            Path(p)
-            for (p,) in conn.execute(
-                "SELECT DISTINCT pdf_path FROM exports WHERE document_id = ?", (doc_id,)
-            )
-        ]
-        export_id = conn.execute(
-            "INSERT INTO exports (document_id, pdf_path, page_ids, originals) VALUES (?, ?, ?, ?)",
-            (doc_id, str(dest), json.dumps(out.pages), json.dumps([str(p) for p in out.originals])),
-        ).lastrowid
-        for scan_id, where in moved:
+    try:
+        with conn:
+            before = [
+                Path(p)
+                for (p,) in conn.execute(
+                    "SELECT DISTINCT pdf_path FROM exports WHERE document_id = ?", (doc_id,)
+                )
+            ]
+            export_id = conn.execute(
+                "INSERT INTO exports (document_id, pdf_path, page_ids, originals)"
+                " VALUES (?, ?, ?, ?)",
+                (
+                    doc_id,
+                    str(dest),
+                    json.dumps(out.pages),
+                    json.dumps([str(p) for p in out.originals]),
+                ),
+            ).lastrowid
+            for scan_id, where in moved:
+                conn.execute(
+                    "UPDATE scans SET original_path = coalesce(?, original_path),"
+                    " original_state = CASE WHEN ? IS NULL THEN 'missing' ELSE 'exported' END"
+                    " WHERE id = ?",
+                    (where and str(where), where and str(where), scan_id),
+                )
             conn.execute(
-                "UPDATE scans SET original_path = coalesce(?, original_path),"
-                " original_state = CASE WHEN ? IS NULL THEN 'missing' ELSE 'exported' END"
+                "UPDATE documents SET status = 'exported', updated_at = datetime('now')"
                 " WHERE id = ?",
-                (where and str(where), where and str(where), scan_id),
+                (doc_id,),
             )
-        conn.execute(
-            "UPDATE documents SET status = 'exported', updated_at = datetime('now') WHERE id = ?",
-            (doc_id,),
-        )
-        history.log(
-            conn,
-            None,
-            "export",
-            "document",
-            doc_id,
-            {"status": doc["status"]},
-            {
-                "status": "exported",
-                "pdf_path": str(dest),
-                "pages": out.pages,
-                "originals": [str(p) for p in out.originals],
-            },
-        )
+            history.log(
+                conn,
+                None,
+                "export",
+                "document",
+                doc_id,
+                {"status": doc["status"]},
+                {
+                    "status": "exported",
+                    "pdf_path": str(dest),
+                    "pages": out.pages,
+                    "originals": [str(p) for p in out.originals],
+                },
+            )
+    except Exception:
+        # The originals have moved, and the database won't say so: they go back where Lindley
+        # keeps them, or it would look for them in the wrong place
+        log.error("Exporting document %d: couldn't record it, putting its originals back", doc_id)
+        _put_back(going, moved)
+        raise
+    log.info(
+        "Exported document %d as %s (%d page(s), %d original(s) given back)",
+        doc_id,
+        dest.name,
+        len(out.pages),
+        len(out.originals),
+    )
     for old in before:  # its earlier PDF, under another name or in another folder
         mine = old.parent == output or old.parent.parent == output
         if old != dest and mine and not _held_by_another(conn, old, doc_id):
@@ -211,8 +239,28 @@ def export_document(
     out.to_review = pages_to_review(conn, doc_id, review_below)
     if library is not None:
         scans = {r["scan_id"] for r in rows}
-        out.copies_kept = let_go(conn, library, scans).kept
+        try:
+            out.copies_kept = let_go(conn, library, scans).kept
+        except Exception:  # noqa: BLE001 - it's exported; Lindley lets go of its copies at start-up
+            log.exception("Exported document %d, but couldn't let go of Lindley's copies", doc_id)
+            if conn.in_transaction:
+                conn.rollback()
     return out
+
+
+def _put_back(going: list[sqlite3.Row], moved: list[tuple[int, Path | None]]) -> None:
+    """Originals moved to the output folder go back where Lindley kept them."""
+    now = {scan: where for scan, where in moved if where is not None}
+    for r in going:
+        there, src = now.get(r["id"]), Path(r["original_path"])
+        if there is None or there == src:
+            continue
+        try:
+            move_checked(there, src, r["sha256"])
+        except OSError as e:
+            log.error(
+                "Couldn't put %s back at %s; it's at %s: %s", r["original_name"], src, there, e
+            )
 
 
 def reopen_document(

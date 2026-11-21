@@ -79,6 +79,7 @@ def let_go(conn: sqlite3.Connection, library: Path, scan_ids: Iterable[int] | No
         if wanted is not None and r["id"] not in wanted:
             continue
         if not _original_safe(r):
+            log.debug("Keeping Lindley's copy of scan %d: its original isn't safe", r["id"])
             out.kept.append(r["original_name"])
             continue
         if _remove_copies(conn, library, r):
@@ -186,7 +187,7 @@ def _remove_copies(conn: sqlite3.Connection, library: Path, r: sqlite3.Row) -> b
     original = (
         os.path.normcase(str(Path(r["original_path"]).resolve())) if r["original_path"] else None
     )
-    files = [Path(r["library_path"])] + [
+    files = ([Path(r["library_path"])] if r["library_path"] else []) + [
         Path(p)
         for (p,) in conn.execute(
             "SELECT image_path FROM pages WHERE scan_id = ? AND image_path IS NOT NULL", (r["id"],)
@@ -203,10 +204,13 @@ def _remove_copies(conn: sqlite3.Connection, library: Path, r: sqlite3.Row) -> b
         except OSError as e:
             log.warning("Couldn't remove %s, Lindley's copy of an exported scan: %s", f, e)
             ok = False
-    for folder in (pages_folder(library, r["id"]), Path(r["library_path"]).resolve().parent):
+    folders = [pages_folder(library, r["id"])]
+    if r["library_path"]:
+        folders.append(Path(r["library_path"]).resolve().parent)
+    for folder in folders:
         try:
             if folder.is_relative_to(library) and folder != library and folder.is_dir():
                 folder.rmdir()  # only when empty
-        except OSError:
-            pass
+        except OSError as e:
+            log.debug("Left %s, which isn't empty or can't be removed: %s", folder, e)
     return ok

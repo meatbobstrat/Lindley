@@ -37,6 +37,8 @@ from functools import lru_cache
 from hashlib import blake2b
 from pathlib import Path
 
+from PIL import Image
+
 from lindley.worker.image import BLANK_AT, image_signature, signature_likeness
 
 log = logging.getLogger(__name__)
@@ -179,7 +181,8 @@ def find_duplicates(conn: sqlite3.Connection) -> DuplicateReport:
             rotation = ((r["detected_rotation"] or 0) + (r["user_rotation"] or 0)) % 360
             try:
                 sig = image_signature(Path(r["image_path"]), rotation, bool(r["mirrored"]))
-            except OSError as e:  # the image has gone: compare what text there is
+            except (OSError, ValueError, Image.DecompressionBombError) as e:
+                # the image has gone, or is damaged or enormous: compare what text there is
                 log.warning("Page %d's image couldn't be opened: %s", i, e)
         if sig is not None:
             sigs[i] = sig
@@ -223,6 +226,12 @@ def find_duplicates(conn: sqlite3.Connection) -> DuplicateReport:
             if added:
                 report.found.append((*pair, match))
         conn.commit()
+    log.debug(
+        "Duplicates: %d page(s) checked (%d by their pictures), %d pair(s) found",
+        report.checked,
+        sum(1 for i in fresh if i in sigs),
+        len(report.found),
+    )
     return report
 
 

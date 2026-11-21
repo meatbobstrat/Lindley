@@ -19,11 +19,13 @@ place of any words Tesseract made of the same mark.
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from collections import Counter
 from functools import cache
 from pathlib import Path
@@ -33,6 +35,8 @@ from PIL import Image, ImageOps
 from lindley.config import OcrSettings
 from lindley.worker.ocr import margins
 from lindley.worker.ocr.base import PageResult
+
+log = logging.getLogger(__name__)
 
 # Where the UB-Mannheim installer puts it when it isn't added to PATH.
 WINDOWS_DEFAULT = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
@@ -80,11 +84,15 @@ def tsv_lines(tsv: str) -> Lines:
         if len(cols) < 12 or cols[0] != "5":  # level 5 is a word
             continue
         text = cols[11].strip()
-        conf = float(cols[10])
-        if not text or conf < 0:
+        try:
+            conf = float(cols[10])
+            if not text or conf < 0:
+                continue
+            page, block, par, line = (int(c) for c in cols[1:5])
+            x, y, w, h = (int(c) for c in cols[6:10])
+        except ValueError:  # a row that isn't numbers: one word lost, not the page
+            log.debug("Skipping a row of Tesseract's output that isn't a word: %r", row[:80])
             continue
-        page, block, par, line = (int(c) for c in cols[1:5])
-        x, y, w, h = (int(c) for c in cols[6:10])
         word = {"text": text, "conf": round(conf, 1), "bbox": [x, y, w, h]}
         lines.setdefault((page, block, par, line), []).append(word)
     return [(key[:3], ws) for key, ws in lines.items()]  # TSV rows are in reading order
@@ -176,11 +184,22 @@ def find_tesseract(configured: Path | None = None) -> Path | None:
 
 @cache
 def _version(exe: Path) -> str:
-    out = subprocess.run(
-        [str(exe), "--version"], capture_output=True, text=True, encoding="utf-8", check=False
-    )
+    try:
+        out = subprocess.run(
+            [str(exe), "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:  # it'll say so when it's asked to read
+        log.warning("Couldn't ask %s for its version: %s", exe, e)
+        return "tesseract"
     first = (out.stdout or out.stderr).splitlines()[:1]
-    return first[0].strip() if first else "tesseract"
+    version = first[0].strip() if first else "tesseract"
+    log.debug("Tesseract at %s: %s", exe, version)
+    return version
 
 
 class TesseractEngine:
@@ -264,20 +283,33 @@ class TesseractEngine:
         try:
             with Image.open(image_path) as img:
                 gray = img.convert("L")
-        except OSError:
+        except OSError as e:
+            log.debug(
+                "Page numbers not looked for, %s can't be opened here: %s", image_path.name, e
+            )
             return lines
-        if turn:
-            gray = gray.rotate(-turn, expand=True)
-        marks = margins.find(gray, [w for _, ws in lines for w in ws])
-        if not marks:
+        # An extra: the reading in hand is the page's, whatever goes wrong looking for numbers
+        try:
+            if turn:
+                gray = gray.rotate(-turn, expand=True)
+            marks = margins.find(gray, [w for _, ws in lines for w in ws])
+            if not marks:
+                return lines
+            sheet, rows = margins.sheet(gray, marks)
+            with tempfile.TemporaryDirectory(prefix=WORK_PREFIX, ignore_cleanup_errors=True) as d:
+                path = Path(d) / "margins.png"
+                sheet.save(path, dpi=(300, 300))
+                read = tsv_lines(self._run(path, "stdout", ["--psm", "6", *DIGITS, "tsv"]))
+            found = margins.numbers(marks, rows, [w for _, ws in read for w in ws])
+            log.debug("%s: %d page number(s) read in the margins", image_path.name, len(found))
+            return with_numbers(lines, found)
+        except Exception:
+            log.warning(
+                "Reading the page numbers in the margins of %s failed; the page is as read",
+                image_path.name,
+                exc_info=True,
+            )
             return lines
-        sheet, rows = margins.sheet(gray, marks)
-        with tempfile.TemporaryDirectory(prefix=WORK_PREFIX, ignore_cleanup_errors=True) as d:
-            path = Path(d) / "margins.png"
-            sheet.save(path, dpi=(300, 300))
-            read = tsv_lines(self._run(path, "stdout", ["--psm", "6", *DIGITS, "tsv"]))
-        found = margins.numbers(marks, rows, [w for _, ws in read for w in ws])
-        return with_numbers(lines, found)
 
     def _read(self, image_path: Path, extra: list[str] | None = None) -> Lines:
         return tsv_lines(self._run(image_path, "stdout", (extra or []) + ["tsv"]))
@@ -288,23 +320,53 @@ class TesseractEngine:
         with tempfile.TemporaryDirectory(prefix=WORK_PREFIX, ignore_cleanup_errors=True) as d:
             out = Path(d) / "page"
             self._run(image_path, str(out), ["--psm", "1", *(extra or []), "tsv", "hocr"])
-            tsv = out.with_suffix(".tsv").read_text(encoding="utf-8", errors="replace")
-            hocr = out.with_suffix(".hocr").read_text(encoding="utf-8", errors="replace")
+            try:
+                tsv = out.with_suffix(".tsv").read_text(encoding="utf-8", errors="replace")
+                hocr = out.with_suffix(".hocr").read_text(encoding="utf-8", errors="replace")
+            except FileNotFoundError as e:  # it said all was well, and wrote nothing
+                raise RuntimeError(f"Tesseract made no reading of {image_path.name}") from e
         turn, size = parse_hocr_turn(hocr)
         return turn, size, tsv_lines(tsv)
 
     def _run(self, image_path: Path, output: str, args: list[str]) -> str:
-        run = subprocess.run(
-            [str(self.exe), str(image_path), output, "-l", "+".join(self.settings.languages)]
-            + args,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=TIMEOUT_S,
-            check=False,
+        command = [
+            str(self.exe),
+            str(image_path),
+            output,
+            "-l",
+            "+".join(self.settings.languages),
+            *args,
+        ]
+        started = time.monotonic()
+        try:
+            run = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=TIMEOUT_S,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(
+                f"Tesseract took more than {TIMEOUT_S} s to read {image_path.name}, so it was"
+                " stopped"
+            ) from e
+        except OSError as e:  # not there any more, not allowed to run, or out of memory
+            raise RuntimeError(
+                f"Tesseract couldn't be run ({e.strerror or type(e).__name__}): see {self.exe}"
+            ) from e
+        log.debug(
+            "Tesseract %s on %s: exit %d in %.2f s",
+            " ".join(args),
+            image_path.name,
+            run.returncode,
+            time.monotonic() - started,
         )
         if run.returncode != 0:
-            raise RuntimeError(f"Tesseract couldn't read {image_path.name}: {run.stderr.strip()}")
+            raise RuntimeError(
+                f"Tesseract couldn't read {image_path.name}: {run.stderr.strip()[:500]}"
+            )
         return run.stdout
 
     def orientation(self, image_path: Path) -> tuple[int, float] | None:
@@ -326,7 +388,8 @@ class TesseractEngine:
                 timeout=TIMEOUT_S,
                 check=False,
             )
-        except (OSError, subprocess.TimeoutExpired):
+        except (OSError, subprocess.TimeoutExpired) as e:
+            log.debug("Tesseract's orientation check of %s failed: %s", image_path.name, e)
             return None  # the page is still read the way it was scanned
         return parse_osd(run.stdout) if run.returncode == 0 else None
 

@@ -491,3 +491,22 @@ def test_stopping_drops_the_work_still_queued(settings):
         assert work.wait_idle()
         work._thread.join(5)
     assert done == [[1]] and work.pages() == set() and not work._thread.is_alive()
+
+
+def test_ai_work_that_cant_even_start_is_told_not_lost(settings, caplog):
+    """Settings or a database that fail before a job begins mustn't end the thread silently."""
+    from lindley import activity
+    from lindley.worker.ai_work import AiWork
+
+    def broken():
+        raise OSError("the settings are gone")
+
+    work = AiWork(broken)
+    work.read([1])
+    assert work.wait_idle()
+    [done] = activity.recent()
+    assert done["ok"] is False and "the settings are gone" in done["message"]
+    assert "AI work a person asked for failed (read)" in caplog.text
+    work.read([2])  # and the next job is still done
+    assert work.wait_idle() and len(activity.recent()) == 2
+    work.stop()

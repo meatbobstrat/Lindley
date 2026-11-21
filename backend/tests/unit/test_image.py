@@ -1,4 +1,5 @@
 import random
+from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
@@ -151,3 +152,19 @@ def test_words_on_one_line_are_judged_together():
     # Slightly uneven baselines are still one line: one confident line, so printed.
     words = line(10, [90]) + line(14, [92]) + line(8, [88])
     assert classify_script(words, 0.8) == "printed"
+
+
+def test_a_turned_copy_that_cant_be_saved_leaves_no_half_a_picture(tmp_path, monkeypatch):
+    from lindley.worker.image import upright_copy
+
+    src, dest = tmp_path / "page.png", tmp_path / "work" / "turned.png"
+    page().save(src)
+
+    def full(self, fp, *a, **k):
+        Path(fp).write_bytes(b"half a pic")
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(Image.Image, "save", full)
+    with pytest.raises(OSError, match="No space left"):
+        upright_copy(src, dest, 90)
+    assert not dest.exists()

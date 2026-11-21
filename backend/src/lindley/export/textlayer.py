@@ -13,9 +13,12 @@ turned round, since it was read has its boxes turned with it (reframe).
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+
+log = logging.getLogger(__name__)
 
 Box = tuple[float, float, float, float]
 
@@ -48,16 +51,27 @@ def page_text(
     ).fetchone()
     if cur is None or not cur["text"].strip():
         return PageText([], True)
-    if cur["words"]:
-        return PageText(_turned(_boxed(json.loads(cur["words"])), cur, size, turned), True)
+    if cur["words"] and (found := _loaded(cur["words"], page_id)) is not None:
+        return PageText(_turned(_boxed(found), cur, size, turned), True)
     tess = conn.execute(
         "SELECT words, read_rotation, read_mirror FROM transcriptions WHERE page_id = ?"
         " AND source = 'tesseract' AND words IS NOT NULL ORDER BY id DESC LIMIT 1",
         (page_id,),
     ).fetchone()
-    if tess and (boxed := _boxed(json.loads(tess["words"]))):
+    if tess and (boxed := _boxed(_loaded(tess["words"], page_id) or [])):
         return PageText(align(cur["text"], _turned(boxed, tess, size, turned)), True)
     return PageText(lay_out(cur["text"], size), False)
+
+
+def _loaded(raw: str, page_id: int) -> list | None:
+    """A reading's word boxes, kept as JSON. Damaged, they're None: the page's text is laid out
+    as lines, as for a reading with no boxes, rather than the page stopping the export."""
+    try:
+        words = json.loads(raw)
+    except ValueError:
+        log.warning("Page %d's word boxes are damaged, so its text is laid out afresh", page_id)
+        return None
+    return words if isinstance(words, list) else None
 
 
 def _turned(

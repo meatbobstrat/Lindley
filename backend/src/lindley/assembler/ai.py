@@ -10,6 +10,7 @@ before is answered from the earlier reply, with no call.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 
@@ -18,6 +19,8 @@ from lindley.assembler.model import Group, Page
 from lindley.assembler.place import Candidate
 from lindley.assembler.segment import describe
 from lindley.providers.base import ChatMessage, ChatProvider
+
+log = logging.getLogger(__name__)
 
 SYSTEM = """You sort scanned pages from a family or local-history archive into documents.
 You get some pages, each with an id, the start and end of its text, and clues found by simple rules.
@@ -116,6 +119,25 @@ def refine(
 ) -> AiResult:
     """Ask the AI to group and order these pages. Checks the reply before trusting it.
     Without `chat`, only an earlier reply in `answers` is used."""
+    result = _refine(chat, pages, proposal, answers)
+    if result.problem:  # the rules' answer stands; the person isn't told, so the log is
+        # Only for a call that may have been made now: an earlier answer is met again each run
+        level = logging.DEBUG if chat is None else logging.WARNING
+        log.log(
+            level,
+            "The sorting AI's answer about %d page(s) wasn't used: %s",
+            len(pages),
+            result.problem,
+        )
+    return result
+
+
+def _refine(
+    chat: ChatProvider | None,
+    pages: list[Page],
+    proposal: list[Group],
+    answers: Answers | None,
+) -> AiResult:
     by_id = {p.id: p for p in pages}
     question = {"pages": [_page_json(p) for p in pages]}
     proposed = {"rules_proposal": [{"pages": g.ids, "confidence": g.confidence} for g in proposal]}
@@ -211,6 +233,23 @@ def place(
     """Ask the AI which of a few likely documents these pages belong to: only those, not every
     document. Checks the reply before trusting it. Without `chat`, only an earlier reply in
     `answers` is used."""
+    placed = _place(chat, group, candidates, answers)
+    if placed.problem:
+        log.log(
+            logging.DEBUG if chat is None else logging.WARNING,
+            "The sorting AI's answer about where %d page(s) go wasn't used: %s",
+            len(group.pages),
+            placed.problem,
+        )
+    return placed
+
+
+def _place(
+    chat: ChatProvider | None,
+    group: Group,
+    candidates: list[Candidate],
+    answers: Answers | None,
+) -> Placed:
     by_id = {c.document.id: c for c in candidates if c.document}
     question = {
         "pages": [_page_json(p) for p in group.pages],
@@ -259,7 +298,8 @@ def suggest_names(
     ids = [p.id for g in groups for p in g.pages]
     try:
         reply = _ask(chat, answers, "name", NAME_SYSTEM, question, {}, ids)
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001 - names are a bonus: the rules' own stay
+        log.warning("Asking the AI for better document names failed: %s", e)
         return {}
     data = _parse(reply or "") or {}
     names = data.get("names") if isinstance(data.get("names"), dict) else {}

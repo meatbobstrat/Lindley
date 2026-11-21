@@ -6,6 +6,7 @@ Safe to run as often as you like; the worker runs it whenever new scans have set
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 from collections import Counter
@@ -24,6 +25,8 @@ from lindley.assembler.terms import Library
 from lindley.config import AssemblerSettings
 from lindley.duplicates.resolve import quoted
 from lindley.providers.base import ChatProvider
+
+log = logging.getLogger(__name__)
 
 MAX_AI_PAGES = 40  # pages per AI question; larger tangles are left to the rules
 _ONE_AT_A_TIME = threading.Lock()  # the watcher and a person's request may both assemble
@@ -356,6 +359,13 @@ def _assemble(
     windows = _ai_windows(groups, pairs, ordered, cfg.ai_band)
     report.ai_windows = len(windows)
     report.ai_pages = sum(len(g.pages) for w in windows for g in w)
+    log.debug(
+        "Sorting %d Inbox page(s) into %d group(s); %d window(s), %d page(s), left to the AI",
+        len(pages),
+        len(groups),
+        report.ai_windows,
+        report.ai_pages,
+    )
     if asked:  # pages a person asked about, though the rules didn't think them uncertain
         sent = {p.id for w in windows for g in w for p in g.pages}
         more = [g for g in groups if not g.set_aside and set(g.ids) & (asked - sent)]
@@ -426,6 +436,14 @@ def _assemble(
                 hint(d, at_end, score, why, g)
                 return
             apply.attach(conn, d.id, g, at_end, score, why, by_ai)
+            log.debug(
+                "Added %d page(s) to document %d, at its %s (%d%%%s)",
+                len(g.pages),
+                d.id,
+                "end" if at_end else "start",
+                score,
+                ", by the AI" if by_ai else "",
+            )
             a, b = (d.last, g.pages[0]) if at_end else (g.pages[-1], d.first)
             links.extend((a.id, b.id, k) for k in pair(a, b).links)
             if at_end:
@@ -503,6 +521,7 @@ def _assemble(
                 guess[i].name, guess[i].name_is_guess = name, False
         for g in new:
             doc_id = apply.create_document(conn, g)
+            log.debug("Made document %d from %d page(s) (%d%%)", doc_id, len(g.pages), g.confidence)
             docs.append(DocEnds(doc_id, g.name, g.pages[0], g.pages[-1], False))
             report.documents_created += 1
             report.pages_grouped += len(g.pages)
@@ -532,6 +551,7 @@ def _assemble(
                 raise AskFirst  # put it all back, ask, and decide again
             answers.drop_waiting()
     report.inbox_left = report.considered - report.pages_grouped - report.pages_added
+    log.debug("Sorted the Inbox: %s", report)
     report.ai_calls, report.ai_reused, report.ai_failed = (
         answers.calls,
         answers.reused,

@@ -8,6 +8,7 @@ keeps under providers' image limits (and their per-image charges).
 from __future__ import annotations
 
 import io
+import logging
 from pathlib import Path
 
 from PIL import Image
@@ -15,6 +16,8 @@ from PIL import Image
 from lindley.providers.base import VisionProvider
 from lindley.worker.image import open_upright
 from lindley.worker.ocr.base import PageResult, marked_confidence
+
+log = logging.getLogger(__name__)
 
 MAX_SIDE = 2000
 SEND_AS_IS = frozenset({"JPEG", "PNG", "WEBP"})  # formats every provider takes
@@ -27,11 +30,14 @@ def image_bytes(path: Path, max_side: int = MAX_SIDE) -> bytes:
     with Image.open(path) as img:
         fits = max(img.size) <= max_side and img.format in SEND_AS_IS
     if fits and path.stat().st_size <= MAX_BYTES:
-        return path.read_bytes()
+        data = path.read_bytes()
+        log.debug("Sending %s as it is: %d bytes", path.name, len(data))
+        return data
     img = open_upright(path)
     img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=JPEG_QUALITY)
+    log.debug("Sending %s reduced to %dx%d: %d bytes", path.name, *img.size, len(buf.getvalue()))
     return buf.getvalue()
 
 

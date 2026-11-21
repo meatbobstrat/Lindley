@@ -46,6 +46,7 @@ STABLE_S = 3.0  # a file unchanged this long has finished arriving, if its endin
 STUCK_S = 60.0  # a file unchanged this long but still not ready no longer holds things up
 MAX_TRIES = 3  # a file whose import raised is tried this many times, then left until it changes
 BACKOFF_S = (30.0, 3600.0)  # waits after the assembler fails: the first, doubling to the most
+REPEAT_LOG = 30  # a step that keeps failing is logged in full once, then every this many times
 
 # Held while a watcher works. A watcher replaced by new settings may still be finishing a long
 # read; its successor waits, so the two never read the same file or page at once.
@@ -97,6 +98,9 @@ class FolderWatcher:
         self._added: list[int] = []  # scans a person added with Add scans…, to read
         self._assemble_after = 0.0  # after a failure, the assembler waits until then
         self._backoff = 0.0
+        self._failure: tuple | None = None  # the step that failed last, and how often in a row
+        self._repeats = 0
+        self._listen_again = 0.0  # not before then is the system's listener started again
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -127,20 +131,51 @@ class FolderWatcher:
         tesseract = getattr(self.pipeline.tesseract, "is_available", lambda: True)
         if self.settings.ocr.engine != "vision" and not tesseract():
             log.warning("Tesseract isn't installed: new scans will be imported but not read")
-        self._observer = Observer()
-        for folder in folders:
-            self._observer.schedule(_Handler(self), str(folder), recursive=True)
-        self._observer.start()
+        self._watch(folders)
         self._thread = threading.Thread(
             target=self._run, args=(folders,), name="lindley-watcher", daemon=True
         )
         self._thread.start()
 
+    def _watch(self, folders: list[Path]) -> None:
+        """Start listening for files arriving in these folders. A folder that can't be listened
+        to (a drive that went away, no permission) is said, and the others are still watched."""
+        self._observer = Observer()
+        listening = 0
+        for folder in folders:
+            try:
+                self._observer.schedule(_Handler(self), str(folder), recursive=True)
+                listening += 1
+            except Exception:  # watchdog raises OSError, and more, from the system's own calls
+                log.exception("Couldn't watch %s for new scans", folder)
+        try:
+            self._observer.start()
+        except Exception:
+            log.exception("The folder watcher couldn't start: new scans won't be noticed")
+            return
+        log.debug("Watching %d of %d folder(s)", listening, len(folders))
+
+    def _keep_listening(self, folders: list[Path]) -> None:
+        """The system's listener ended on its own (a watched drive taken away, say): new files
+        would go unnoticed until Lindley next starts. Started again, at most once a minute."""
+        if self._observer is None or self._observer.is_alive():
+            return
+        now = time.monotonic()
+        if now < self._listen_again:
+            return
+        self._listen_again = now + 60
+        log.error("The folder watcher stopped listening on its own; starting it again")
+        self._watch(folders)
+        self.sweep(folders)  # what arrived while it wasn't listening
+
     def sweep(self, folders: list[Path]) -> None:
         """Notice anything dropped in while Lindley was closed."""
         for folder in folders:
-            for f in folder.rglob("*"):
-                self.notice(f)
+            try:  # one folder that can't be listed doesn't stop the others being looked at
+                for f in folder.rglob("*"):
+                    self.notice(f)
+            except OSError as e:
+                log.warning("Couldn't look through %s for scans: %s", folder, e)
 
     def stop(self, wait: bool = True) -> None:
         """Stop after the file or page in hand. `wait=False` returns at once (new settings: the
@@ -170,12 +205,31 @@ class FolderWatcher:
                     if self._stop.is_set():
                         break
                     try:
+                        self._keep_listening(folders)
                         self.tick()
-                    except Exception:
-                        log.exception("Folder watcher step failed")
+                        self._failure, self._repeats = None, 0
+                    except Exception as e:
+                        self._tick_failed(e)
         finally:
             if self._conn:
                 self._conn.close()
+
+    def _tick_failed(self, error: Exception) -> None:
+        """A step that fails does so again every poll: the first is logged in full, then a line
+        every so often, so the log isn't all one failure."""
+        failure = (type(error), str(error))
+        if failure != self._failure:
+            self._failure, self._repeats = failure, 1
+            log.exception("Folder watcher step failed")
+            return
+        self._repeats += 1
+        if self._repeats % REPEAT_LOG == 0:
+            log.error(
+                "Folder watcher step is still failing (%d times in a row): %s: %s",
+                self._repeats,
+                type(error).__name__,
+                error,
+            )
 
     def resume(self) -> list[int]:
         """Read scans whose reading never finished: cut off when Lindley closed, or failed
@@ -247,7 +301,10 @@ class FolderWatcher:
                     # Stopped before it was read, or its reading raised (logged): the next
                     # start picks it up from Lindley's own copy (unfinished_scans).
                     continue
-            log.info("%s: %s%s", path.name, r.status, f", {r.reading}" if r.reading else "")
+            if r.status == "failed":
+                log.warning("%s couldn't be taken in: %s", path.name, r.error)
+            else:
+                log.info("%s: %s%s", path.name, r.status, f", {r.reading}" if r.reading else "")
             if r.status == "new" or r.reading:
                 self._unassembled = True
             self._last_new = time.monotonic()
@@ -345,7 +402,15 @@ class FolderWatcher:
                 log.error("Gave up on %s after %d tries, until it changes", path, tries)
 
     def _assemble(self, conn: sqlite3.Connection) -> None:
-        found = find_duplicates(conn).found  # first: copies of a page never share a document
+        try:  # first: copies of a page never share a document
+            found = find_duplicates(conn).found
+        except Exception:
+            # Sorting goes on without: a page that can't be compared mustn't stop the Inbox
+            # being sorted again and again
+            log.exception("Looking for duplicate pages failed, so the Inbox is sorted without")
+            if conn.in_transaction:
+                conn.rollback()
+            found = []
         if found:
             log.info("%d possible duplicate(s) to look at under Duplicates", len(found))
         report = sort_on_its_own(conn, self.settings, self.chat)

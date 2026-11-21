@@ -9,7 +9,8 @@ export type MenuItem =
   | { label: string; icon?: IconName; onSelect: () => void; disabled?: boolean; depth?: number; tip?: string }
 
 export interface Feedback {
-  toast: (msg: string, undo?: number | null) => void
+  /** `problem`: something didn't work: it's announced, and stays longer. */
+  toast: (msg: string, undo?: number | null, problem?: boolean) => void
   /** Make a change, then show what happened, with Undo when it can be undone. */
   run: <T>(p: Promise<T>, msg: string | ((r: T) => string)) => Promise<T | undefined>
   undo: (batch?: number | null) => void

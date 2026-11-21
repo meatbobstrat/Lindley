@@ -517,7 +517,7 @@ export function LocalModels({ tier, now, setNow }: { tier: Tier; now?: boolean; 
       invalidate()
       toast(`Downloading ${names}. The status bar shows how far it’s got, and you can keep working.`)
     } catch (e) {
-      toast((e as Error).message)
+      toast((e as Error).message, null, true)
     }
   }
   return (
@@ -616,7 +616,7 @@ function SettingsScreen({ settings }: { settings: Settings }) {
       toast(`Settings saved.${now.length ? ` From now on your scans are sent to ${now.join(' and ')}.` : ''}`)
       return true
     } catch (e) {
-      toast((e as Error).message)
+      toast((e as Error).message, null, true)
       return false
     } finally {
       setSaving(false)

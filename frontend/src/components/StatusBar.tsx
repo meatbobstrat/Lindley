@@ -37,7 +37,7 @@ export function StatusBar() {
   useEffect(() => {
     if (!finished) return
     const last = finished.length ? finished[finished.length - 1].id : 0
-    if (seen.current !== null) finished.filter((f) => f.id > seen.current!).forEach((f) => toast(f.message))
+    if (seen.current !== null) finished.filter((f) => f.id > seen.current!).forEach((f) => toast(f.message, null, !f.ok))
     seen.current = Math.max(seen.current ?? 0, last)
   }, [finished, toast])
 

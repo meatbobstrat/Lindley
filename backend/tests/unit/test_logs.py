@@ -80,9 +80,8 @@ def test_the_config_keeps_everything_in_the_file_and_is_applied_cleanly(tmp_path
     config = logs.log_config(file, "DEBUG")
     assert config["root"]["level"] == "WARNING" and "file" in config["root"]["handlers"]
     assert all(config["loggers"][n]["level"] == "WARNING" for n in logs.QUIET)
-    assert "filters" not in config["loggers"]["uvicorn.access"]  # debug: the polling too
+    assert config["loggers"]["uvicorn.access"]["filters"] == ["polling"]  # whatever the level
     assert config["handlers"]["file"]["maxBytes"] == logs.LOG_BYTES
-    assert "filters" in logs.log_config(file, "INFO")["loggers"]["uvicorn.access"]
     assert "file" not in logs.log_config(None)["handlers"]  # no file: console only
     assert logs.log_config(None)["root"]["handlers"] == ["default"]
 

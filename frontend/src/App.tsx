@@ -181,7 +181,7 @@ export default function App() {
                 api.quit().then(
                   () => setStopped(true),
                   // No answer: it had stopped already. Else it says why it can't
-                  (e: ApiError) => (e.status === 0 ? setStopped(true) : toast(e.message)),
+                  (e: ApiError) => (e.status === 0 ? setStopped(true) : toast(e.message, null, true)),
                 )
               }
             >

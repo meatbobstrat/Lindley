@@ -127,8 +127,7 @@ def log_config(file: Path | None = None, level: str = "INFO", rotate: bool = Tru
         config["handlers"][handler]["filters"] = ["privacy"]
     handlers = ["default"]
     config["loggers"]["lindley"] = {"handlers": ["default"], "level": level, "propagate": False}
-    if level != "DEBUG":
-        config["loggers"]["uvicorn.access"]["filters"] = ["polling"]
+    config["loggers"]["uvicorn.access"]["filters"] = ["polling"]  # in debug too: no detail in it
     if file is not None:
         file.parent.mkdir(parents=True, exist_ok=True)
         config["formatters"]["file"] = {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"}

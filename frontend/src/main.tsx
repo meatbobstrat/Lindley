@@ -11,15 +11,20 @@ import { createBrowserRouter, RouterProvider } from 'react-router'
 import './index.css'
 import './app.css'
 import App from './App.tsx'
+import { ErrorBoundary, RouteError } from './components/ErrorScreen'
 import { ActionsProvider } from './lib/actions'
 import { AppProvider } from './lib/app'
+import { installErrorReporting } from './lib/errors'
 import { FeedbackProvider } from './ui/feedback'
+
+installErrorReporting()
 
 // A data router, so Settings can ask before you leave it with changes unsaved (useBlocker).
 // The fonts are bundled, so Lindley never asks another site for anything.
 const router = createBrowserRouter([
   {
     path: '*',
+    errorElement: <RouteError />,
     element: (
       <AppProvider>
         <FeedbackProvider>
@@ -34,6 +39,8 @@ const router = createBrowserRouter([
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <ErrorBoundary>
+      <RouterProvider router={router} />
+    </ErrorBoundary>
   </StrictMode>,
 )

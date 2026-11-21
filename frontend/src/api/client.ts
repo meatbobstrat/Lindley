@@ -402,26 +402,44 @@ export class ApiError extends Error {
   /** The detail the API sent along with its message, when it sent more than words */
   detail: Record<string, unknown> | null
 
-  constructor(status: number, message: string, detail: Record<string, unknown> | null = null) {
-    super(message)
+  constructor(status: number, message: string, detail: Record<string, unknown> | null = null, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause })
     this.status = status
     this.detail = detail
   }
 }
 
+// Reading shouldn't wait for ever on a backend that's stuck: past this, it's told so. Changes
+// aren't cut short: an export or an upload may take as long as it takes.
+const READ_TIMEOUT_MS = 60_000
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const form = init?.body instanceof FormData
+  const reading = !init?.method || init.method === 'GET'
   let res: Response
   try {
     res = await fetch(`/api${path}`, {
+      signal: reading ? AbortSignal.timeout(READ_TIMEOUT_MS) : undefined,
       ...init,
       headers: form ? init?.headers : { 'Content-Type': 'application/json', ...init?.headers },
     })
-  } catch {
-    throw new ApiError(0, 'Lindley’s backend isn’t answering. Is it running?')
+  } catch (e) {
+    throw unreachable(e)
   }
   if (!res.ok) throw await errorOf(res)
-  return res.json() as Promise<T>
+  try {
+    return (await res.json()) as T
+  } catch (e) {
+    // Answered fine, but not in words the page can read: a page being replaced as it loaded, say
+    throw new ApiError(res.status, 'Lindley answered with something the page couldn’t read. Reload it, and try again.', null, e)
+  }
+}
+
+/** Why a request never got an answer, in words: it took too long, or nothing is listening. */
+function unreachable(e: unknown): ApiError {
+  if (e instanceof DOMException && e.name === 'TimeoutError')
+    return new ApiError(0, 'Lindley took too long to answer. It may be busy: try again in a moment.', null, e)
+  return new ApiError(0, 'Lindley’s backend isn’t answering. Is it running?', null, e)
 }
 
 async function errorOf(res: Response): Promise<ApiError> {
@@ -437,7 +455,9 @@ async function errorOf(res: Response): Promise<ApiError> {
       if (typeof d.message === 'string') message = d.message
     }
   } catch {
-    // not JSON: keep the status
+    // Not JSON (the server's own words, or a proxy's). A failure inside Lindley is said so, and
+    // where to look: the status alone says nothing to a person
+    if (res.status >= 500) message = 'Something went wrong inside Lindley. The details are in Lindley’s log.'
   }
   return new ApiError(res.status, message, detail)
 }
@@ -604,33 +624,44 @@ export async function ask(q: Question, on: (e: AskEvent) => void, signal: AbortS
   let res: Response
   try {
     res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(q), signal })
-  } catch {
+  } catch (e) {
     if (signal.aborted) return
-    throw new ApiError(0, 'Lindley’s backend isn’t answering. Is it running?')
+    throw unreachable(e)
   }
   if (!res.ok || !res.body) throw await errorOf(res)
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   let buf = ''
-  try {
-    for (;;) {
-      const { value, done } = await reader.read()
-      if (done) return
-      buf += value.replace(/\r\n?/g, '\n')
-      for (let cut = buf.indexOf('\n\n'); cut >= 0; cut = buf.indexOf('\n\n')) {
-        const frame = buf.slice(0, cut)
-        buf = buf.slice(cut + 2)
-        let event = 'message'
-        const data: string[] = []
-        for (const line of frame.split('\n')) {
-          if (line.startsWith('event:')) event = line.slice(6).trim()
-          else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''))
-        }
-        // A frame with no data is the server's keep-alive, while the AI thinks
-        if (data.length) on({ event, data: JSON.parse(data.join('\n')) } as AskEvent)
-      }
+  for (;;) {
+    // Only the reading is what a dropped connection ends: a frame that can't be read, or the page
+    // not coping with one, isn't "the backend stopped"
+    let chunk: ReadableStreamReadResult<string>
+    try {
+      chunk = await reader.read()
+    } catch (e) {
+      if (signal.aborted) return
+      throw new ApiError(0, 'The answer stopped coming: Lindley’s backend may have stopped.', null, e)
     }
-  } catch {
-    if (signal.aborted) return
-    throw new ApiError(0, 'The answer stopped coming: Lindley’s backend may have stopped.')
+    if (chunk.done) return
+    buf += chunk.value.replace(/\r\n?/g, '\n')
+    for (let cut = buf.indexOf('\n\n'); cut >= 0; cut = buf.indexOf('\n\n')) {
+      const frame = buf.slice(0, cut)
+      buf = buf.slice(cut + 2)
+      let event = 'message'
+      const data: string[] = []
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim()
+        else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''))
+      }
+      // A frame with no data is the server's keep-alive, while the AI thinks
+      if (!data.length) continue
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(data.join('\n'))
+      } catch {
+        console.warn('Lindley sent an answer frame that isn’t JSON; skipped it', event)
+        continue
+      }
+      on({ event, data: parsed } as AskEvent)
+    }
   }
 }

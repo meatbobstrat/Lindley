@@ -89,7 +89,6 @@ def test_settings_it_cant_read_are_said_in_words_not_a_traceback(
 ):
     ran = _started(monkeypatch)
     monkeypatch.setattr(entry.logs, "default_log_file", lambda: tmp_path / "logs" / "lindley.log")
-    monkeypatch.setattr(entry.logging.config, "dictConfig", lambda config: None)
     bad = tmp_path / "settings.json"
     bad.write_text("{ not json")
     with pytest.raises(SystemExit) as stopped:
@@ -97,7 +96,10 @@ def test_settings_it_cant_read_are_said_in_words_not_a_traceback(
     assert stopped.value.code == 1 and not ran  # didn't start
     said = capsys.readouterr().err
     assert str(bad) in said and "couldn't read its settings" in said
-    assert "Traceback" not in said
+    assert "Traceback" not in said and said.count("couldn't read its settings") == 1
+    kept = (tmp_path / "logs" / "lindley.log").read_text(encoding="utf-8")
+    assert "ERROR lindley: Lindley couldn't read its settings" in kept
+    assert "Traceback" in kept  # the whole story is in the log
     bad.write_text(json.dumps({"move_files": "sometimes"}))
     with pytest.raises(SystemExit):
         entry.main(["--settings", str(bad)])

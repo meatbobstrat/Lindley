@@ -674,7 +674,12 @@ h1.title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 6
   display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px);
   padding: 9px 10px 9px 14px; border-radius: 8px; background: var(--ink); color: var(--surface); box-shadow: var(--shadow); font-size: 13px;
 }
+.toast.problem { border-left: 4px solid var(--warn); }
 .toast button { border: 0; background: none; color: var(--accent-soft); font-weight: 600; padding: 2px 6px; }
+.crash { display: grid; gap: 12px; justify-items: start; max-width: 520px; margin: 12vh auto 0; padding: 0 16px; color: var(--ink); }
+.crash h1 { margin: 0; font-family: var(--serif); font-size: 26px; }
+.crash p { margin: 0; color: var(--muted); }
+.crash .crash-why { font-family: var(--mono); font-size: 13px; padding: 8px 10px; border-radius: 6px; background: var(--panel); color: var(--ink); overflow-wrap: anywhere; }
 :root[data-theme="dark"] .toast button { color: var(--accent-ink); }
 .scrim { position: absolute; inset: 0; z-index: 40; background: rgba(10, 15, 12, .35); }
 .modal {

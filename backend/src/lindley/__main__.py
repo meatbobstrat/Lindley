@@ -99,10 +99,19 @@ def _cant_read(path: Path, error: Exception, level: str) -> None:
         f"Lindley couldn't read its settings from {path}: {_short(error)}. "
         "Fix that file, or move it aside to start afresh, and start Lindley again."
     )
-    try:
+    try:  # to the file only: the console gets the message once, below, without the traceback
         file = logs.default_log_file()
-        logging.config.dictConfig(logs.log_config(file, level))
-        logging.getLogger("lindley").error("%s", message, exc_info=error)
+        file.parent.mkdir(parents=True, exist_ok=True)
+        handler = logging.FileHandler(file, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        handler.addFilter(logs.PrivacyFilter())
+        log = logging.getLogger("lindley")
+        log.addHandler(handler)
+        try:
+            log.error("%s", message, exc_info=error)
+        finally:
+            log.removeHandler(handler)
+            handler.close()
     except OSError:  # nowhere to write it either
         pass
     print(message, file=sys.stderr)
@@ -112,9 +121,11 @@ def _short(error: Exception) -> str:
     """What was wrong, in a line: a validation error runs to a screen."""
     if isinstance(error, ValidationError):
         first = error.errors()[0]
-        where = ".".join(str(p) for p in first["loc"]) or "the file"
+        where = ".".join(str(p) for p in first["loc"])
         more = error.error_count() - 1
-        return f"{where}: {first['msg']}" + (f" (and {more} more)" if more else "")
+        return (
+            (f"{where}: " if where else "") + first["msg"] + (f" (and {more} more)" if more else "")
+        )
     lines = str(error).strip().splitlines()
     return lines[0] if lines else type(error).__name__
 

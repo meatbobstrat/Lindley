@@ -135,7 +135,7 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
         } catch (e) {
           const needed = e instanceof ApiError ? (e.detail?.needed as NeededOriginal[] | undefined) : undefined
           if (needed?.length) setDialog({ kind: 'originals', doc, needed, unmatched: [], message: (e as Error).message })
-          else toast((e as Error).message)
+          else toast((e as Error).message, null, true)
         }
       },
       editDetails: (doc) => setDialog({ kind: 'details', doc }),
@@ -166,7 +166,7 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
           invalidate()
           if (f.folder_id) run(api.updateDocument(docId, { folder_id: f.folder_id }), 'Created a folder and moved the document into it. Click the folder to rename it.')
         } catch (e) {
-          toast((e as Error).message)
+          toast((e as Error).message, null, true)
         }
       },
       moveMenu: (ids, anchor, here) => {
@@ -496,7 +496,7 @@ function OriginalsDialog({ d, close, again }: { d: Extract<Dialog, { kind: 'orig
       if (needed?.length) again({ ...d, needed, unmatched, message: (e as Error).message })
       else {
         close()
-        toast((e as Error).message)
+        toast((e as Error).message, null, true)
       }
     } finally {
       setBusy(false)

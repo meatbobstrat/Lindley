@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, type Connector, type Help, type HelpKind, JOBS, type Settings, type Tier } from '../api/client'
 import { invalidate, useApi } from '../api/store'
 import { cloudInUse } from '../lib/ai'
+import { describe, reportProblem } from '../lib/errors'
 import { plural } from '../lib/words'
 import { useFeedback } from '../ui/feedbackContext'
 import { Icon, Mark } from '../ui/icons'
@@ -54,7 +55,12 @@ export function Setup({ settings, connectors, tiers, helps }: { settings: Settin
       document.getElementById('su-path')?.focus()
       return
     }
-    const missing = (await api.checkFolders(folders).catch(() => null))?.folders.filter((f) => !f.found).map((f) => f.path) ?? []
+    // A check that can't be made doesn't stop Setup: it's said in the log, and the save goes on
+    const checked = await api.checkFolders(folders).catch((err) => {
+      reportProblem('warning', `Checking the folders failed: ${describe(err)}`, err)
+      return null
+    })
+    const missing = checked?.folders.filter((f) => !f.found).map((f) => f.path) ?? []
     if (missing.length) {
       toast(`Lindley can’t find ${missing.join(' or ')}. Check the path, or remove it.`)
       document.getElementById('su-path')?.focus()

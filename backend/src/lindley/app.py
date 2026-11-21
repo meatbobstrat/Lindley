@@ -38,6 +38,9 @@ from lindley.api import (
     suggestions,
 )
 from lindley.api import history as history_api
+from lindley.api import (
+    log as log_api,
+)
 from lindley.api import settings as settings_api
 from lindley.config import Settings, load_settings
 from lindley.db.database import connect, init_db
@@ -241,6 +244,7 @@ def create_app(
         assembler_api.router,
         needs_ai.router,
         local_ai.router,
+        log_api.router,
     ):
         app.include_router(router, prefix="/api")
 

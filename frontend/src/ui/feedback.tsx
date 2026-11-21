@@ -16,14 +16,15 @@ import { FeedbackCtx, type MenuItem } from './feedbackContext'
 import { Icon } from './icons'
 
 export function FeedbackProvider({ children }: { children: ReactNode }) {
-  const [toastState, setToast] = useState<{ msg: string; undo?: number | null; n: number } | null>(null)
+  const [toastState, setToast] = useState<{ msg: string; undo?: number | null; problem?: boolean; n: number } | null>(null)
   const [menu, setMenu] = useState<{ items: MenuItem[]; x: number; y: number; up: boolean; back: Element | null } | null>(null)
   const timer = useRef<number>(undefined)
 
-  const toast = useCallback((msg: string, undo?: number | null) => {
-    setToast((t) => ({ msg, undo, n: (t?.n ?? 0) + 1 }))
+  const toast = useCallback((msg: string, undo?: number | null, problem?: boolean) => {
+    setToast((t) => ({ msg, undo, problem, n: (t?.n ?? 0) + 1 }))
     window.clearTimeout(timer.current)
-    timer.current = window.setTimeout(() => setToast(null), undo ? 7000 : 3500)
+    // A problem stays long enough to read, and to see what it was
+    timer.current = window.setTimeout(() => setToast(null), problem ? 9000 : undo ? 7000 : 3500)
   }, [])
 
   const undo = useCallback(
@@ -33,7 +34,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
           invalidate()
           toast('Undone.')
         },
-        (e: Error) => toast(e.message),
+        (e: Error) => toast(e.message, null, true),
       )
     },
     [toast],
@@ -48,7 +49,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
         toast(typeof msg === 'function' ? msg(r) : msg, c && typeof c === 'object' ? c.undo : null)
         return r
       } catch (e) {
-        toast((e as Error).message)
+        toast((e as Error).message, null, true)
         invalidate()
         return undefined
       }
@@ -77,8 +78,8 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
       {menu && <Menu {...menu} close={() => setMenu(null)} />}
       {toastState && (
         <div
-          className="toast"
-          role="status"
+          className={toastState.problem ? 'toast problem' : 'toast'}
+          role={toastState.problem ? 'alert' : 'status'}
           key={toastState.n}
           onPointerEnter={() => window.clearTimeout(timer.current)}
           onFocus={() => window.clearTimeout(timer.current)}

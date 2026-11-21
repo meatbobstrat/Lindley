@@ -5,7 +5,7 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { api, type DupCopy, type DupDocPair, type Duplicates, type DupSet, imageAt } from '../api/client'
-import { useApi } from '../api/store'
+import { invalidate, useApi } from '../api/store'
 import { Banner, Crumb, Done, ErrorBox, Head, Loading } from '../components/bits'
 import { ScanImage } from '../components/ScanImage'
 import { docHome, useApp, useLooking } from '../lib/appContext'
@@ -153,7 +153,7 @@ export function DupView() {
   const key = useParams().key ?? ''
   const dups = useApi('duplicates', api.duplicates)
   const { docs, folderPath } = useApp()
-  const { run } = useFeedback()
+  const { run, toast } = useFeedback()
   const nav = useNavigate()
   const [cur, setCur] = useState(0)
   const [mode, setMode] = useState<'scan' | 'text'>('scan')
@@ -262,7 +262,16 @@ export function DupView() {
   }
   const notDup = async () => {
     const ids = e.pair ? e.pair.sets : [e.set!.id]
-    for (const id of ids.slice(0, -1)) await api.notDuplicates(id).catch(() => undefined)
+    for (const id of ids.slice(0, -1)) {
+      try {
+        await api.notDuplicates(id)
+      } catch (err) {
+        // Stopped, not carried on as if it had worked: what was decided so far stays decided
+        toast(`${(err as Error).message} The rest weren’t changed.`, null, true)
+        invalidate()
+        return
+      }
+    }
     run(api.notDuplicates(ids[ids.length - 1]).then(decided(ids)), 'Kept both. Lindley won’t suggest these as duplicates again.').then((r) => r && after())
   }
 

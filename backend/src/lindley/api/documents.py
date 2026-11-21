@@ -7,6 +7,7 @@ Each change returns `undo`: the batch to send to POST /api/undo/{batch} to take 
 
 from __future__ import annotations
 
+import logging
 import shutil
 import uuid
 from pathlib import Path
@@ -30,7 +31,25 @@ from lindley.worker.intake import sha256_of
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
+log = logging.getLogger(__name__)
+
 NO_OUTPUT = "Choose where exported documents go first, in Settings › Library: the Exported folder."
+UNEXPECTED = "Something went wrong exporting this. The details are in Lindley's log."
+
+
+def _os_words(err: OSError) -> str:
+    """What the system said, without the paths in it: the file is the person's own, but the
+    words are for the screen."""
+    return err.strerror or type(err).__name__
+
+
+def _why(err: ValueError | OSError, what: str) -> str:
+    """For the screen: a ValueError is Lindley's own words; a system error is said in the
+    system's, and logged with where."""
+    if isinstance(err, OSError):
+        log.warning("Couldn't %s: %s", what, err)
+        return f"Lindley couldn't do that: {_os_words(err)}."
+    return str(err)
 
 
 class NewDocument(BaseModel):
@@ -119,6 +138,11 @@ def export_many(body: Many, conn: Conn, request: Request) -> dict:
             exported.append(_exported_json(_export(conn, request, doc_id)))
         except (LookupError, ValueError) as err:
             failed.append({"document_id": doc_id, "error": str(err)})
+        except Exception:  # noqa: BLE001 - what was exported stays told, whatever this one met
+            log.exception("Exporting document %d failed", doc_id)
+            if conn.in_transaction:
+                conn.rollback()
+            failed.append({"document_id": doc_id, "error": UNEXPECTED})
     return {"exported": exported, "failed": failed}
 
 
@@ -137,9 +161,13 @@ def _export(conn, request: Request, doc_id: int) -> Exported:
     settings = request.app.state.settings
     if settings.output_dir is None:
         raise ValueError(NO_OUTPUT)
-    return export_document(
-        conn, settings.output_dir, doc_id, settings.ocr.review_below, settings.library_dir
-    )
+    try:
+        return export_document(
+            conn, settings.output_dir, doc_id, settings.ocr.review_below, settings.library_dir
+        )
+    except OSError as err:  # disk full, a folder that can't be written, a file in use
+        log.exception("Exporting document %d to %s failed", doc_id, settings.output_dir)
+        raise ValueError(f"Lindley couldn't write the PDF: {_os_words(err)}.") from err
 
 
 def _exported_json(e: Exported) -> dict:
@@ -179,7 +207,7 @@ def reopen(doc_id: int, conn: Conn, request: Request) -> dict:
     except OriginalsNeeded as err:
         raise HTTPException(409, _needed_json(err)) from err
     except (ValueError, OSError) as err:
-        raise HTTPException(409, str(err)) from err
+        raise HTTPException(409, _why(err, f"reopen document {doc_id}")) from err
     return {"document_id": doc_id, "status": "progress"}
 
 
@@ -200,10 +228,17 @@ def reopen_with_originals(
         for i, f in enumerate(files):
             name = Path(f.filename or "scan").name or "scan"
             path = folder / str(i) / name
-            path.parent.mkdir(parents=True)
-            with path.open("wb") as out:
-                shutil.copyfileobj(f.file, out)
-            if (scan := wanted.get(sha256_of(path))) is not None:
+            try:
+                path.parent.mkdir(parents=True)
+                with path.open("wb") as out:
+                    shutil.copyfileobj(f.file, out)
+                fingerprint = sha256_of(path)
+            except OSError as err:  # disk full, or the folder can't be written
+                log.exception("Couldn't take in the original %s for document %d", name, doc_id)
+                raise HTTPException(
+                    500, f"Lindley couldn't take in {name}: {_os_words(err)}."
+                ) from err
+            if (scan := wanted.get(fingerprint)) is not None:
                 found[scan] = path
             else:
                 unmatched.append(name)
@@ -214,7 +249,7 @@ def reopen_with_originals(
         except OriginalsNeeded as err:
             raise HTTPException(409, _needed_json(err, unmatched)) from err
         except (ValueError, OSError) as err:
-            raise HTTPException(409, str(err)) from err
+            raise HTTPException(409, _why(err, f"reopen document {doc_id}")) from err
     finally:
         shutil.rmtree(folder, ignore_errors=True)
     return {"document_id": doc_id, "status": "progress", "unmatched": unmatched}

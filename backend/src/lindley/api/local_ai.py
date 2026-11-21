@@ -6,6 +6,7 @@ them, and they're said done in a toast, like other work a person asked for.
 
 from __future__ import annotations
 
+import logging
 import shutil
 
 from fastapi import APIRouter, HTTPException, Request
@@ -19,6 +20,8 @@ from lindley.localai.catalog import MODELS, engine
 from lindley.providers import tiers
 from lindley.providers.registry import model_for
 
+log = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/local-ai", tags=["local-ai"])
 
 
@@ -26,7 +29,11 @@ def _free(path) -> int | None:
     """Bytes free on the disk the models go on (the nearest folder that's there)."""
     for p in (path, *path.parents):
         if p.exists():
-            return shutil.disk_usage(p).free
+            try:
+                return shutil.disk_usage(p).free
+            except OSError as e:  # a drive that's gone: Setup just doesn't say how much is free
+                log.warning("Couldn't see how much room %s has: %s", p, e)
+                return None
     return None
 
 
@@ -131,5 +138,15 @@ def remove(model_id: str, request: Request) -> dict:
     if model_id in request.app.state.downloads.asked():
         raise HTTPException(409, f"{m.label} is downloading. Cancel it first.")
     local_server.current().stop()  # Windows can't delete a file the server has open
-    shutil.rmtree(m.folder(settings.ai.local.folder()), ignore_errors=True)
+    folder = m.folder(settings.ai.local.folder())
+    try:
+        shutil.rmtree(folder)
+    except FileNotFoundError:
+        pass  # already gone
+    except OSError as e:  # a file another program has open (Windows), or isn't Lindley's to delete
+        log.warning("Couldn't remove %s (%s): %s", m.label, folder, e)
+        raise HTTPException(
+            409, f"Couldn't remove {m.label}: {e.strerror or type(e).__name__}. Is it in use?"
+        ) from e
+    log.info("Removed the model %s", m.label)
     return {"removed": model_id}

@@ -344,7 +344,7 @@ def test_search_finds_words_on_the_reading_in_use(client, settings, tmp_path):
     assert client.get("/api/search", params={"q": '"("'}).json()["results"] == []
 
 
-def test_one_scan_that_cant_be_added_doesnt_stop_the_others(client, settings, monkeypatch):
+def test_one_scan_that_cant_be_added_doesnt_stop_the_others(client, settings, monkeypatch, caplog):
     db(client, settings)
     from lindley.api import scans
 
@@ -352,7 +352,7 @@ def test_one_scan_that_cant_be_added_doesnt_stop_the_others(client, settings, mo
 
     def flaky(conn, s, path, origin):
         if path.name == "bad.png":
-            raise RuntimeError("database is locked")
+            raise RuntimeError("no such column: secret_internal")
         return real(conn, s, path, origin=origin)
 
     monkeypatch.setattr(scans, "import_file", flaky)
@@ -366,7 +366,10 @@ def test_one_scan_that_cant_be_added_doesnt_stop_the_others(client, settings, mo
         ("bad.png", "failed"),
         ("good.png", "new"),
     ]
-    assert body["added"][0]["error"] == "database is locked"
+    # The screen is told in words; the cause (a database's, a path) is in the log, not the answer
+    assert "secret_internal" not in body["added"][0]["error"]
+    assert "Lindley couldn't add this file" in body["added"][0]["error"]
+    assert "no such column: secret_internal" in caplog.text
 
 
 def test_adding_scans_imports_them_into_the_inbox(client, settings):

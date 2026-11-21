@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 
@@ -5,6 +6,8 @@ from fastapi import APIRouter, HTTPException, Request
 
 from lindley import __version__
 from lindley.providers.base import JOBS
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
 
@@ -40,5 +43,6 @@ def quit_lindley(request: Request) -> dict:
         raise HTTPException(
             409, "This Lindley can't be stopped from the app: stop it where it was started"
         )
+    log.info("Quit Lindley, asked for in the app")
     quit()
     return {"stopping": True}

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 17
 
@@ -50,9 +53,15 @@ def connect(db_path: Path, *, any_thread: bool = False) -> sqlite3.Connection:
     # The watcher, API requests and scripts share the database: a writer waits up to `timeout`
     # seconds for another to finish (SQLite's busy timeout) rather than failing at once.
     conn = sqlite3.connect(db_path, timeout=30, check_same_thread=not any_thread)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        mode = conn.execute("PRAGMA journal_mode = WAL").fetchone()[0]
+    except BaseException:
+        conn.close()  # not left open on a file that can't be used
+        raise
+    if str(mode).lower() != "wal":  # a network drive, say: slower, and readers wait for writers
+        log.warning("The database at %s is in %s mode, not WAL", db_path, mode)
     return conn
 
 
@@ -117,6 +126,13 @@ def _continues(conn: sqlite3.Connection) -> None:
     """v15: whether one page carries on from another is an AI job of its own ('continues'),
     recorded and kept like the others. SQLite can't change a CHECK, so ai_calls and ai_answers
     are made again from schema.sql, and what they held copied over."""
+    for t in ("ai_calls", "ai_answers"):
+        # An earlier try cut off part way (each statement below commits as it goes) left the
+        # table's old self beside it: that one is whole, so it goes back and this starts again
+        if f"{t}_v14" in _tables(conn):
+            log.warning("Picking up an upgrade of %s that was cut off", t)
+            conn.execute(f"DROP TABLE IF EXISTS {t}")
+            conn.execute(f"ALTER TABLE {t}_v14 RENAME TO {t}")
     tables = _tables(conn)
     old = [t for t in ("ai_calls", "ai_answers") if t in tables]
     if not old:
@@ -222,7 +238,11 @@ def not_lindleys(db_path: Path) -> str | None:
             tables = _tables(conn)
         finally:
             conn.close()
-    except sqlite3.DatabaseError:
+    except sqlite3.OperationalError as e:  # locked, or not allowed: the file may be Lindley's
+        log.warning("Couldn't look at the database %s: %s", db_path, e)
+        return f"Lindley can't open {db_path} just now ({e}). Close whatever has it open."
+    except sqlite3.DatabaseError as e:
+        log.warning("%s isn't a database Lindley can open: %s", db_path, e)
         return f"{db_path} isn't a database Lindley can open."
     if not version or "pages" not in tables:
         return f"{db_path} isn't Lindley's database."
@@ -246,12 +266,45 @@ def init_db(db_path: Path) -> None:
             )
         if version == 0 and "jobs" in _tables(conn):
             _drop_placeholder(conn)
-        # A new database is built from schema.sql; an existing one is upgraded step by step.
+        if version == 0:
+            log.info("Making a new database at %s", db_path)
+        elif version < SCHEMA_VERSION:
+            log.info("Upgrading the database from schema %d to %d", version, SCHEMA_VERSION)
+        # A new database is built from schema.sql; an existing one is upgraded step by step,
+        # each one recorded as it's done: cut off, the next start carries on from there.
         for target in range(version + 1 if version else SCHEMA_VERSION + 1, SCHEMA_VERSION + 1):
-            step = MIGRATIONS[target]
-            step(conn) if callable(step) else conn.executescript(step)
+            try:
+                _migrate(conn, target)
+            except Exception:
+                log.exception(
+                    "Upgrading the database to schema %d failed; %s is as it was after %d",
+                    target,
+                    db_path,
+                    target - 1,
+                )
+                raise
         conn.executescript(schema)  # idempotent: creates a new database, fills in anything missing
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         conn.commit()
+        log.debug("The database at %s is at schema %d", db_path, SCHEMA_VERSION)
     finally:
         conn.close()
+
+
+def _migrate(conn: sqlite3.Connection, target: int) -> None:
+    """One step up to schema `target`, and the version recorded with it."""
+    log.debug("Upgrading the database to schema %d", target)
+    step = MIGRATIONS[target]
+    try:
+        if callable(step):
+            step(conn)
+            conn.commit()
+            conn.execute(f"PRAGMA user_version = {target}")
+        else:
+            # In one transaction with the version: a step that's done is never done twice (a
+            # column added twice is an error). user_version is part of the transaction.
+            conn.executescript(f"BEGIN;\n{step}\nPRAGMA user_version = {target};\nCOMMIT;")
+    except BaseException:
+        if conn.in_transaction:
+            conn.rollback()  # a script that failed part way leaves its transaction open
+        raise

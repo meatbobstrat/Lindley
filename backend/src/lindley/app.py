@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import sqlite3
 import threading
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -53,6 +56,8 @@ from lindley.worker.pipeline import (
 
 # The built frontend, served so the app is a single process: inside the package once installed
 # (the installer copies frontend/dist to lindley/web), else frontend/dist in the repo.
+log = logging.getLogger(__name__)
+
 _HERE = Path(__file__).resolve().parent
 FRONTEND_DIRS = (_HERE / "web", _HERE.parents[2] / "frontend" / "dist")
 
@@ -91,10 +96,51 @@ class FromLindleyOnly:
                 and origin not in DEV_ORIGINS
                 and urlparse(origin).netloc != headers.get("host")
             ):
+                log.warning(
+                    "Refused %s %s from another site (%r)", scope["method"], scope["path"], origin
+                )
                 refused = JSONResponse({"detail": "Only Lindley's own pages can do that"}, 403)
                 await refused(scope, receive, send)
                 return
         await self.app(scope, receive, send)
+
+
+def _stopped(what: str, stop: Callable[[], object]) -> None:
+    try:
+        stop()
+    except Exception:
+        log.exception("Couldn't stop %s cleanly", what)
+
+
+def _asked(request: Request) -> str:
+    return f"{request.method} {request.url.path}"
+
+
+def _database_busy(request: Request, e: Exception) -> JSONResponse:
+    """Another writer (the watcher reading a long scan, a script) held the database past the
+    wait: said so, not a failure. Try again."""
+    if "locked" in str(e) or "busy" in str(e):
+        log.warning("%s: the database was busy: %s", _asked(request), e)
+        return JSONResponse(
+            {"detail": "Lindley's library is busy just now. Try that again in a moment."}, 503
+        )
+    return _database_failed(request, e)
+
+
+def _database_failed(request: Request, e: Exception) -> JSONResponse:
+    log.error("%s: the database failed: %s", _asked(request), e, exc_info=e)
+    return JSONResponse(
+        {"detail": "Lindley's library couldn't do that. The details are in Lindley's log."}, 500
+    )
+
+
+def _unexpected(request: Request, e: Exception) -> JSONResponse:
+    """Whatever nothing else met: a short, plain answer for the screen, not the server's own.
+    Uvicorn logs the traceback; this says which request it was."""
+    log.error("%s failed: %s: %s", _asked(request), type(e).__name__, e)
+    return JSONResponse(
+        {"detail": "Something went wrong inside Lindley. The details are in Lindley's log."}, 500
+    )
 
 
 class Frontend(StaticFiles):
@@ -128,29 +174,34 @@ def create_app(
         init_db(settings.db_path)
         conn = connect(settings.db_path)
         try:  # nothing else is running yet: whatever was running was cut off
-            recover_interrupted(conn)
-            remove_leftovers(settings)
-            rate_vision_readings(conn)
-            absolute_paths(conn)
-            follow_settings(conn, settings)  # settings.json may have changed while it was closed
-            let_go(conn, settings.library_dir)  # exported before, or a copy that was open then
+            log.debug("Recovered interrupted work: %s", recover_interrupted(conn))
+            log.debug("Removed %s leftover work file(s)", remove_leftovers(settings))
+            log.debug("Rated %s vision reading(s)", rate_vision_readings(conn))
+            log.debug("Made %s path(s) absolute", absolute_paths(conn))
+            # settings.json may have changed while it was closed
+            log.debug("Followed the settings: %s", follow_settings(conn, settings))
+            # exported before, or a copy that was open then
+            log.debug("Let go of %s", let_go(conn, settings.library_dir))
         finally:
             conn.close()
         watcher = FolderWatcher(settings) if watch else None
         if watcher:
             watcher.start()
         app.state.watcher = watcher
-        local_server.use(settings.ai.local)  # started when a job first needs it
+        log.info("Lindley is ready%s", "" if watcher else " (without the folder watcher)")
         try:
+            local_server.use(settings.ai.local)  # started when a job first needs it
             yield
         finally:
-            # The watcher in use now: saving settings starts a new one (api/settings.py)
-            with app.state.watcher_swap:
+            log.info("Lindley is stopping")
+            # Each in turn, whatever the one before did: a watcher that won't stop must not
+            # leave Lindley's own AI running with nobody to end it
+            with app.state.watcher_swap:  # the watcher in use now: saving settings starts a new one
                 if app.state.watcher:
-                    app.state.watcher.stop()
-            app.state.ai_work.stop()
-            app.state.downloads.stop()
-            local_server.stop()
+                    _stopped("the folder watcher", app.state.watcher.stop)
+            _stopped("the AI work", app.state.ai_work.stop)
+            _stopped("the downloads", app.state.downloads.stop)
+            _stopped("Lindley's own AI", local_server.stop)
 
     app = FastAPI(title="Lindley", version=__version__, lifespan=lifespan)
     app.state.settings = settings
@@ -161,6 +212,9 @@ def create_app(
     # Lindley's own AI's files, downloaded when a person asks, into the folder in use then
     app.state.downloads = Downloads(lambda: app.state.settings.ai.local.folder())
 
+    app.add_exception_handler(sqlite3.OperationalError, _database_busy)
+    app.add_exception_handler(sqlite3.DatabaseError, _database_failed)
+    app.add_exception_handler(Exception, _unexpected)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=DEV_ORIGINS,

@@ -20,6 +20,7 @@ on their way to the AI are marked `sending` until it's done.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 
 from fastapi import APIRouter, HTTPException, Request
@@ -33,6 +34,8 @@ from lindley.providers.base import ProviderError
 from lindley.providers.registry import connectors, get_provider
 from lindley.worker.ai_work import AiWork, connection_label
 from lindley.worker.pipeline import Pipeline, unread_without_ai, vision_queue
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/needs-ai", tags=["needs-ai"])
 
@@ -69,8 +72,14 @@ def _work(request: Request) -> AiWork:
 def sort_items(conn: sqlite3.Connection) -> list[dict]:
     out = []
     for r in conn.execute("SELECT * FROM needs_ai ORDER BY since, id").fetchall():
-        pages = json.loads(r["pages"])
-        if not _in_inbox(conn, pages):
+        try:
+            pages, proposal = json.loads(r["pages"]), json.loads(r["proposal"])
+        except (ValueError, TypeError):  # one damaged row mustn't take the overview down with it
+            log.warning(
+                "Skipping row %s of needs_ai: its pages or proposal isn't readable", r["id"]
+            )
+            continue
+        if not pages or not _in_inbox(conn, pages):
             continue  # a person has placed some of them since; the next run drops it
         marks = ",".join("?" * len(pages))
         files = dict(
@@ -85,7 +94,7 @@ def sort_items(conn: sqlite3.Connection) -> list[dict]:
                 "id": r["id"],
                 "since": r["since"],
                 "pages": [{"id": p, "file": files.get(p)} for p in pages],
-                "proposal": json.loads(r["proposal"]),
+                "proposal": proposal,
             }
         )
     return out

@@ -15,12 +15,27 @@ Each page has a `state`, the one thing the UI shows beside it, in this order of 
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 
 from lindley.db.progress import document_progress
 from lindley.duplicates import resolve
 from lindley.worker import image as pageimage
 from lindley.worker.pipeline import _LAST_VISION, mirrored, turned_since_read
+
+log = logging.getLogger(__name__)
+
+
+def _json_list(text: str | None, what: str) -> list:
+    """A list kept as JSON in the database. One that's damaged is an empty list, said in the log:
+    it mustn't take down the page or document it belongs to."""
+    try:
+        value = json.loads(text or "[]")
+    except ValueError:
+        log.warning("%s is damaged in the database, so it's shown as empty", what)
+        return []
+    return value if isinstance(value, list) else []
+
 
 _PAGES = f"""
 SELECT p.id, p.scan_id, p.page_index, s.original_name AS file, s.origin, s.imported_at,
@@ -138,7 +153,11 @@ def page(conn: sqlite3.Connection, page_id: int, review_below: float) -> dict | 
     ).fetchone()
     out["text"] = t["text"] if t else ""
     out["engine_model"] = t["engine_model"] if t else None
-    out["unsure"] = json.loads(t["unsure_spans"] or "[]") if t and out["state"] != "checked" else []
+    out["unsure"] = (
+        _json_list(t["unsure_spans"], f"page {page_id}'s unsure words")
+        if t and out["state"] != "checked"
+        else []
+    )
     out["readings"] = conn.execute(
         "SELECT COUNT(*) FROM transcriptions WHERE page_id = ?", (page_id,)
     ).fetchone()[0]
@@ -278,7 +297,7 @@ def document(conn: sqlite3.Connection, doc_id: int, review_below: float) -> dict
         )
     ]
     return _document_json(d) | {
-        "reasons": json.loads(d["reasons"] or "[]"),
+        "reasons": _json_list(d["reasons"], f"document {doc_id}'s reasons"),
         "summary": d["summary"],
         "pages": pages(conn, "p.document_id = ?", (doc_id,), review_below, "p.position"),
         "progress": {
@@ -293,7 +312,7 @@ def document(conn: sqlite3.Connection, doc_id: int, review_below: float) -> dict
             "file_name": export["pdf_path"].replace("\\", "/").rsplit("/", 1)[-1],
             "exported_at": export["exported_at"],
             "pdf_path": export["pdf_path"],
-            "originals": len(json.loads(export["originals"] or "[]")),
+            "originals": len(_json_list(export["originals"], f"document {doc_id}'s export")),
             # Lindley let go of its copies of the scans (lindley.export.keeping)
             "let_go": d["status"] == "exported"
             and not conn.execute(

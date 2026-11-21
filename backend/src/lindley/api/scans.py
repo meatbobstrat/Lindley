@@ -19,7 +19,7 @@ import uuid
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Form, Request, UploadFile
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 
 from lindley.api.deps import Conn
 from lindley.config import Settings
@@ -38,7 +38,13 @@ def add_scans(
 ) -> dict:
     settings: Settings = request.app.state.settings
     drop = settings.processing_dir / "added" / uuid.uuid4().hex
-    drop.mkdir(parents=True)
+    try:
+        drop.mkdir(parents=True)
+    except OSError as e:
+        log.exception("Couldn't make a folder to take the files into, %s", drop)
+        raise HTTPException(
+            500, f"Lindley couldn't take the files in: {e.strerror or type(e).__name__}."
+        ) from e
     move = (mode or settings.add_mode) == "move"
     # Copied: the upload's temporary copy goes with its folder, below. Moved: it's taken into
     # Lindley's keeping, as the original.
@@ -69,7 +75,16 @@ def add_scans(
                 log.exception("Couldn't add %s", name)
                 if conn.in_transaction:
                     conn.rollback()
-                added.append({"file": name, "status": "failed", "pages": 0, "error": str(e)})
+                # Said without the details (a path, the database's words): they're in the log
+                said = e.strerror if isinstance(e, OSError) and e.strerror else None
+                added.append(
+                    {
+                        "file": name,
+                        "status": "failed",
+                        "pages": 0,
+                        "error": said or "Lindley couldn't add this file. See Lindley's log.",
+                    }
+                )
     finally:
         shutil.rmtree(drop, ignore_errors=True)
         # Those taken are read, even if a later one failed

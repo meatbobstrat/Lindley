@@ -7,6 +7,7 @@ Each change returns `undo`: the batch to send to POST /api/undo/{batch} to take 
 from __future__ import annotations
 
 import io
+import logging
 import textwrap
 from pathlib import Path
 from typing import Annotated, Literal
@@ -20,6 +21,8 @@ from lindley.api.deps import Conn
 from lindley.api.library import change_json, errors, review_below
 from lindley.worker.image import upright_page
 from lindley.worker.pipeline import mirrored
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/pages", tags=["pages"])
 
@@ -119,10 +122,14 @@ def page_image(
     }
     if request.headers.get("if-none-match") == headers["ETag"]:
         return Response(status_code=304, headers=headers)
-    img = upright_page(Path(row["image_path"]), rotation, mirrored(row))
-    img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
-    buf = io.BytesIO()
-    img.save(buf, "JPEG", quality=85)
+    try:
+        img = upright_page(Path(row["image_path"]), rotation, mirrored(row))
+        img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=85)
+    except (OSError, ValueError, Image.DecompressionBombError):  # a file that's damaged or huge
+        log.exception("Page %d's image %s couldn't be shown", page_id, row["image_path"])
+        raise HTTPException(422, "That page's image can't be opened") from None
     return Response(buf.getvalue(), media_type="image/jpeg", headers=headers)
 
 

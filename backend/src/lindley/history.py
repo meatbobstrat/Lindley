@@ -21,16 +21,23 @@ Targets undo knows how to put back:
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+
+_log = logging.getLogger(__name__)  # `log` is taken: it writes a history row
 
 PLACE = ("document_id", "position", "set_aside_at")
 
 
 class UndoError(Exception):
     """Nothing to undo, or something changed since, so it can't be undone safely."""
+
+
+class NothingToUndo(UndoError):
+    """There's no such change, or nothing to undo at all (the API says 404)."""
 
 
 @dataclass
@@ -51,8 +58,13 @@ def deciding(conn: sqlite3.Connection) -> Iterator[None]:
         try:
             yield
         except BaseException:
-            conn.execute("ROLLBACK TO deciding")
-            conn.execute("RELEASE deciding")
+            try:
+                conn.execute("ROLLBACK TO deciding")
+                conn.execute("RELEASE deciding")
+            except sqlite3.OperationalError as e:
+                # SQLite had already put everything back (a full disk, an I/O error) and the
+                # savepoint is gone: that's the error worth showing, not this one
+                _log.warning("Couldn't put back part of a change: %s", e)
             raise
         conn.execute("RELEASE deciding")
         return
@@ -125,16 +137,31 @@ def latest(conn: sqlite3.Connection) -> int | None:
 def undo(conn: sqlite3.Connection, batch: int | None = None) -> Undone:
     """Undo one batch (the latest, if none is given), all or nothing."""
     try:
+        return _undo_batch(conn, batch)
+    except NothingToUndo as e:
+        _log.info("Undo: %s", e)
+        raise
+    except UndoError as e:
+        _log.info("Undo of change %s refused: %s", batch, e)
+        raise
+    except (KeyError, ValueError, TypeError, IndexError) as e:
+        # What was recorded isn't what undo reads (an older Lindley's, or damaged): not a crash
+        _log.exception("The record of change %s can't be undone", batch)
+        raise UndoError("The record of that change is damaged, so it can't be undone") from e
+
+
+def _undo_batch(conn: sqlite3.Connection, batch: int | None) -> Undone:
+    try:
         with deciding(conn):  # all or nothing: an UndoError part-way rolls everything back
             if batch is None:
                 batch = latest(conn)
                 if batch is None:
-                    raise UndoError("There's nothing to undo")
+                    raise NothingToUndo("There's nothing to undo")
             rows = conn.execute(
                 "SELECT * FROM history WHERE batch = ? ORDER BY id DESC", (batch,)
             ).fetchall()
             if not rows or any(r["action"] == "undo" for r in rows):
-                raise UndoError(f"There's no change {batch} to undo")
+                raise NothingToUndo(f"There's no change {batch} to undo")
             if conn.execute(
                 "SELECT 1 FROM history WHERE action = 'undo' AND target_id = ?", (batch,)
             ).fetchone():
@@ -150,6 +177,7 @@ def undo(conn: sqlite3.Connection, batch: int | None = None) -> Undone:
             log(conn, new_batch(conn), "undo", "history_batch", batch, None, {"rows": len(rows)})
     except sqlite3.IntegrityError as e:  # something it would put back is taken by now
         raise UndoError("Things have changed since, so this can't be undone") from e
+    _log.info("Undid change %d (%s)", done.batch, ", ".join(done.actions))
     return done
 
 

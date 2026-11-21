@@ -11,11 +11,14 @@ there's nothing in hand.
 from __future__ import annotations
 
 import itertools
+import logging
 import threading
 from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Literal
+
+log = logging.getLogger(__name__)
 
 FINISHED_KEPT = 20  # results kept for the app to pick up
 
@@ -71,7 +74,10 @@ def doing(
 
 
 def finished(kind: Kind, message: str, ok: bool = True) -> int:
-    """What came of work a person asked for, in words. Returns its id: newer ones are higher."""
+    """What came of work a person asked for, in words. Returns its id: newer ones are higher.
+    One that failed is in the log too: the one place every background job's failure passes."""
+    if not ok:
+        log.warning("%s work didn't finish: %s", kind, message)
     with _lock:
         key = next(_ids)
         _finished.append({"id": key, "kind": kind, "message": message, "ok": ok})

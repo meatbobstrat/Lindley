@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -14,6 +15,8 @@ from lindley.providers.registry import connectors
 from lindley.providers.tiers import TIER_IDS
 from lindley.watcher.watcher import FolderWatcher
 from lindley.worker.pipeline import follow_settings
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -58,31 +61,72 @@ def put_settings(new: Settings, request: Request, conn: Conn) -> Settings:
     if problems:
         raise HTTPException(422, problems)
     if moved:
+        log.info("The database is moving to %s", new.db_path)
         try:
             init_db(new.db_path)  # one from an earlier Lindley is brought up to date
-        except (RuntimeError, sqlite3.Error) as e:
+        except (RuntimeError, OSError, sqlite3.Error) as e:
+            log.warning("Can't use the database at %s: %s", new.db_path, e)
             raise HTTPException(422, [f"Lindley can't use {new.db_path}: {e}"]) from e
-    save_settings(new, request.app.state.settings_path)
+    try:
+        save_settings(new, request.app.state.settings_path)
+    except OSError as e:  # already logged, with the path; the settings in use are as they were
+        raise HTTPException(
+            500, f"Lindley couldn't save the settings ({e.strerror or type(e).__name__})."
+        ) from e
     request.app.state.settings = new
-    # A new threshold, or a vision model set up or taken away, counts for pages read before.
-    if moved:
-        with closing(connect(new.db_path, any_thread=True)) as there:
-            follow_settings(there, new)
-    else:
-        follow_settings(conn, new)
-    with request.app.state.watcher_swap:
-        if (watcher := getattr(request.app.state, "watcher", None)) is not None:
-            # The watcher works from the settings it started with: start it again with these,
-            # so new folders are watched, and an AI that may now run on its own gets what's
-            # waiting. The old one may be part way through a long read; the new one waits for
-            # it to finish.
-            watcher.stop(wait=False)
-            request.app.state.watcher = FolderWatcher(new)
-            request.app.state.watcher.start()
-    local_server.use(new.ai.local)  # a new folder or device stops the one running
-    for name in set(old.ai.providers) - set(new.ai.providers):
-        keys.delete_key(name)  # a connection removed takes its key with it
+    log.info("Settings saved; changed: %s", ", ".join(_changed(old, new)) or "nothing")
+    # What follows needs the new settings in use, so a step that fails doesn't stop the rest: each
+    # is logged, and the person told which didn't happen.
+    failed: list[str] = []
+
+    def follow() -> None:
+        # A new threshold, or a vision model set up or taken away, counts for pages read before.
+        if moved:
+            with closing(connect(new.db_path, any_thread=True)) as there:
+                follow_settings(there, new)
+        else:
+            follow_settings(conn, new)
+
+    def restart_watcher() -> None:
+        with request.app.state.watcher_swap:
+            if (watcher := getattr(request.app.state, "watcher", None)) is not None:
+                # The watcher works from the settings it started with: start it again with these,
+                # so new folders are watched, and an AI that may now run on its own gets what's
+                # waiting. The old one may be part way through a long read; the new one waits
+                # for it to finish.
+                watcher.stop(wait=False)
+                request.app.state.watcher = FolderWatcher(new)
+                request.app.state.watcher.start()
+
+    def forget_keys() -> None:
+        for name in set(old.ai.providers) - set(new.ai.providers):
+            keys.delete_key(name)  # a connection removed takes its key with it
+
+    for what, step in (
+        ("update the pages waiting for the AI", follow),
+        ("restart the folder watcher", restart_watcher),
+        ("restart Lindley's own AI", lambda: local_server.use(new.ai.local)),  # new folder, device
+        ("forget the keys of connections taken away", forget_keys),
+    ):
+        try:
+            step()
+        except Exception:
+            log.exception("After saving the settings, couldn't %s", what)
+            failed.append(what)
+    if failed:
+        raise HTTPException(
+            500,
+            f"The settings were saved, but Lindley couldn't {' or '.join(failed)}. "
+            "Starting Lindley again will put that right. The details are in Lindley's log.",
+        )
     return new
+
+
+def _changed(old: Settings, new: Settings) -> list[str]:
+    """The names of the settings that differ: never their values (a path, or a connection's
+    address, isn't for the log)."""
+    before, after = old.model_dump(mode="json"), new.model_dump(mode="json")
+    return [name for name in after if after[name] != before.get(name)]
 
 
 def watchable(folder: Path) -> bool:

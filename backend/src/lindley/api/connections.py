@@ -3,6 +3,8 @@ connection."""
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -11,6 +13,8 @@ from lindley.providers import keys
 from lindley.providers.base import JOBS, Job, ProviderError
 from lindley.providers.registry import connectors
 from lindley.providers.tiers import HELPS, TIERS
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["connections"])
 
@@ -89,7 +93,9 @@ def save_key(name: str, body: Key, request: Request) -> dict:
     try:
         keys.set_key(name, body.key.strip())
     except ProviderError as e:
+        log.error("Couldn't save the key for the connection %r: %s", name, e)
         raise HTTPException(500, str(e)) from e
+    log.info("Saved the key for the connection %r", name)  # only that: never the key
     return {"key_hint": keys.key_hint(name)}
 
 
@@ -97,6 +103,7 @@ def save_key(name: str, body: Key, request: Request) -> dict:
 def forget_key(name: str, request: Request) -> dict:
     _connection(request, name)
     keys.delete_key(name)
+    log.info("Removed the key for the connection %r", name)
     return {"key_hint": None}
 
 
@@ -116,7 +123,9 @@ def try_connection(draft: Draft, request: Request) -> dict:
     if connector is None:
         raise HTTPException(422, f"Unknown provider type: {draft.connection.type}")
     info, cfg = connector.info, draft.connection
-    job = draft.job or next(j for j in JOBS if j in info.jobs)
+    job = draft.job or next((j for j in JOBS if j in info.jobs), None)
+    if job is None:
+        raise HTTPException(422, f"{info.company or info.label} has no job to try")
     model = cfg.model if job != "embed" and cfg.model else info.default_models.get(job)
     # A saved key only goes where it was saved for: not to an address changed since
     saved: Settings = request.app.state.settings
@@ -128,5 +137,14 @@ def try_connection(draft: Draft, request: Request) -> dict:
     try:
         message = connector.provider(config=cfg, model=model, api_key=key).check()
     except ProviderError as e:
+        log.info("Trying the %s connection failed: %s", cfg.type, e)
         return {"ok": False, "message": str(e)}
+    except Exception as e:  # noqa: BLE001 - a connector's library can raise anything
+        log.exception("Trying the %s connection failed unexpectedly", cfg.type)
+        return {
+            "ok": False,
+            "message": f"The test stopped on an error ({type(e).__name__}). "
+            "The details are in Lindley's log.",
+        }
+    log.info("Tried the %s connection: ok", cfg.type)
     return {"ok": True, "message": message}

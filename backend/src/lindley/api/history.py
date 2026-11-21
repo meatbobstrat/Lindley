@@ -34,7 +34,8 @@ def undo_batch(batch: int, conn: Conn) -> dict:
 def _undo(conn, batch: int | None) -> dict:
     try:
         done = history.undo(conn, batch)
+    except history.NothingToUndo as e:
+        raise HTTPException(404, str(e)) from e
     except history.UndoError as e:
-        missing = "nothing" in str(e) or "no change" in str(e)
-        raise HTTPException(404 if missing else 409, str(e)) from e
+        raise HTTPException(409, str(e)) from e
     return {"undone": done.batch, "actions": done.actions, "pages": done.pages}

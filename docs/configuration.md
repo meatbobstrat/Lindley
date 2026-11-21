@@ -39,3 +39,30 @@ Settings › AI and privacy saves it there for you (through `PUT /api/connection
 connection can instead name an environment variable that holds its key (`api_key_env`, for
 example `OPENAI_API_KEY`). A Linux desktop with no keyring running gets that advice in words:
 Lindley never keeps a key in a plain file.
+
+
+## The log
+
+Lindley keeps a log, `logs/lindley.log` beside the database (`%LOCALAPPDATA%\Lindley\logs` on
+Windows): 5 MB at most, with the two before it kept. An app started from the menu has no
+console, so this is where to look when something went wrong, and what to send with a report. It
+holds what Lindley did and what failed, with where (which scan, which page) and why; errors have
+their traceback. The screen's own errors are in it too, as `lindley.frontend`.
+
+To find a problem, ask for more: start Lindley with `--debug`, or set `LINDLEY_LOG_LEVEL`
+(`DEBUG`, `INFO`, `WARNING` or `ERROR`; the flag wins):
+
+```powershell
+python -m lindley --debug
+$env:LINDLEY_LOG_LEVEL = "DEBUG"; python -m lindley
+```
+
+Debug adds each step of reading a page with how long it took, why a page went to the vision
+model or not, each question to an AI (which connection and model, how long, how many tokens),
+how the Inbox was sorted, and each step of an export.
+
+What's never in the log, at any level: what's on a scan or in a question or answer, and any key.
+Keys, tokens and passwords are hidden in every line, the AI companies' libraries (which print
+whole requests when asked) are held to warnings, and an AI's address appears as where it is,
+without any path or query. The regular questions the screens ask every few seconds are left out
+of the request lines.

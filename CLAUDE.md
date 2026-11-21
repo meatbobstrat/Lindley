@@ -4,7 +4,14 @@
 - `backend/`: Python 3.13 FastAPI app, `src/lindley/`, setuptools, pytest and ruff
   - `config.py`: Pydantic `Settings`, plus the settings.json lookup and load/save. A connection's
     `allow` is `ask` out of the box, but `auto` for Lindley's own AI (`builtin`): it sends nothing
-  - `app.py`: `create_app(settings)` factory; routers live in `api/`
+  - `app.py`: `create_app(settings)` factory; routers live in `api/`. Errors nothing met are
+    answered in words (`_unexpected`, `_database_busy`) and logged; the lifespan stops each part
+    on its own, so one failing doesn't leave Lindley's own AI running
+  - `logs.py`: the log (`logs/lindley.log` beside the database; `--debug` or
+    `LINDLEY_LOG_LEVEL`), `redact` and `web_address` (never log a key, what's on a page, or an
+    address beyond where it is), the polling and privacy filters, `install_excepthooks`.
+    `api/log.py` (`POST /api/log`) takes the browser's errors, rate-limited
+    (`frontend/src/lib/errors.ts`, `components/ErrorScreen.tsx`)
   - `__main__.py` and `launcher.py`: Lindley as an app. One running at a time (a second start
     opens it), the browser opened once it's up, a tray icon (pystray; on Ubuntu the system's)
     and Quit Lindley (`POST /api/quit`, offered when `/api/health` says `can_quit`). The icons

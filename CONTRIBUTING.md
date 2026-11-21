@@ -34,7 +34,8 @@ Started that way (or from the menu, once installed), Lindley serves the built UI
 the browser and puts its icon in the tray, with Open and Quit; started again, it opens the one
 already running. `--no-browser` and `--no-tray` leave those out. Quit Lindley (the power button
 in the app) stops it; closing the tab leaves it running. Its log is kept beside the database
-(`logs/lindley.log`), since an app started from the menu has no console.
+(`logs/lindley.log`), since an app started from the menu has no console; `--debug` (or
+`LINDLEY_LOG_LEVEL=DEBUG`) logs in detail, and `--reload` logs to the file too.
 Lindley has no login, so it answers only to `127.0.0.1` and `localhost`, and only its own pages
 may change anything; other web pages can't reach it. Started with `--host` on a network
 address, it answers to any name: only do that on a network you trust.
@@ -69,6 +70,15 @@ folders.
   network.
 - Never call an AI while a database write is open: a call can take minutes and holds SQLite's
   lock.
+- Errors are handled where they can be, and logged where they're met: `log =
+  logging.getLogger(__name__)` in each module; `log.exception` (or `exc_info`) for what nobody
+  expected, a plain `log.warning` or `log.error` with the cause for what's expected (a file that
+  can't be read, an AI that's down), and `log.debug` for each step of the work. A message says
+  which scan, page or document it's about. Never log what's on a page, a question or an answer,
+  a prompt, a key, or an address beyond where it is (`logs.web_address`): `logs.redact` is a
+  last defence, not the plan. What a person is told is in words, without paths or the database's
+  own; the detail is in the log. Anything that runs on a thread of its own catches what its work
+  raises, so the thread doesn't end silently.
 - Lindley's own AI and ML run on an ordinary laptop: no graphics card needed, no heavy ML
   packages.
 

@@ -144,6 +144,7 @@ it (to the Exported folder chosen in Setup). The mockup covers:
 | `backend/` | Python 3.13 and FastAPI (`src/lindley/`) |
 | `backend/src/lindley/db/` | SQLite schema (with full-text search), migrations, document completeness |
 | `backend/src/lindley/assembler/` | Clues, evidence, grouping, AI refinement, test bench |
+| `backend/src/lindley/logs.py` | Logging: the log file and level (`--debug`), hiding keys, leaving out the screens' regular questions, and logging what nothing caught. `api/log.py` takes the screen's own errors |
 | `backend/src/lindley/localai/` | Lindley's own AI: the pinned llama.cpp build and models (`catalog.py`), downloading them when a person asks, and running `llama-server` |
 | `backend/src/lindley/providers/` | AI connectors, one file each in `connectors/`: Lindley's own AI, a local AI (Ollama, LM Studio, vLLM), Anthropic, OpenAI, Google, any OpenAI-compatible service, and a fake one for tests. Plus limits, throttling and keys |
 | `backend/src/lindley/worker/` | Intake (hash, EXIF, split) and reading (Tesseract, vision model) |

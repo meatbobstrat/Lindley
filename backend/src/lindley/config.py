@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -12,6 +13,8 @@ from platformdirs import user_config_dir, user_data_dir, user_documents_dir
 from pydantic import BaseModel, Field, model_validator
 
 from lindley.providers.base import JOBS, Job
+
+log = logging.getLogger(__name__)
 
 APP_NAME = "Lindley"
 SETTINGS_ENV_VAR = "LINDLEY_SETTINGS"
@@ -310,16 +313,24 @@ def load_settings(path: str | Path | None = None) -> Settings:
     """Load settings from the resolved path, falling back to defaults if the file is missing."""
     resolved = resolve_settings_path(path)
     if not resolved.exists():
+        log.debug("No settings file at %s: the defaults", resolved)
         return Settings()
+    log.debug("Reading settings from %s", resolved)
     return Settings.model_validate_json(resolved.read_text(encoding="utf-8"))
 
 
 def save_settings(settings: Settings, path: str | Path | None = None) -> Path:
     resolved = resolve_settings_path(path)
-    resolved.parent.mkdir(parents=True, exist_ok=True)
     # Written beside it, then put in its place: a crash part-way never leaves half a file,
     # which Lindley couldn't start with
     tmp = resolved.with_name(resolved.name + ".tmp")
-    tmp.write_text(settings.model_dump_json(indent=2), encoding="utf-8")
-    os.replace(tmp, resolved)
+    try:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(settings.model_dump_json(indent=2), encoding="utf-8")
+        os.replace(tmp, resolved)  # can fail on Windows while a sync client holds the file
+    except OSError as e:
+        log.error("Couldn't save the settings to %s: %s", resolved, e)
+        tmp.unlink(missing_ok=True)
+        raise
+    log.debug("Saved settings to %s", resolved)
     return resolved

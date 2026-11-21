@@ -61,12 +61,21 @@ def look() -> Computer:
     else:
         processor, memory, graphics = _linux_processor, _linux_memory, _linux_graphics
     cards = _try("graphics", graphics, [])
-    return Computer(
+    found = Computer(
         processor=_try("processor", processor, None),
         threads=os.cpu_count() or 1,
         memory=_try("memory", memory, None),
         graphics=tuple(sorted((g for g in cards if g.memory >= CARD_MIN), key=lambda g: -g.memory)),
     )
+    # What the choice of tier goes on: said once, for a report of a tier that doesn't suit
+    log.info(
+        "This computer: %s, %d thread(s), %s GB memory, graphics: %s",
+        found.processor or "processor unknown",
+        found.threads,
+        round(found.memory / 1024**3, 1) if found.memory else "unknown",
+        ", ".join(f"{g.name} ({g.memory >> 30} GB)" for g in found.graphics) or "none that count",
+    )
+    return found
 
 
 # ------------------------------------------------------------------ Windows

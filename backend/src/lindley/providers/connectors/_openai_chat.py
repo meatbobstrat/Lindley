@@ -8,6 +8,7 @@ newer Responses API for chat, and this class for embeddings.)
 
 from __future__ import annotations
 
+import logging
 import math
 from collections.abc import Callable, Iterator
 from urllib.parse import urlparse
@@ -23,6 +24,8 @@ from lindley.providers.base import (
 )
 from lindley.providers.connectors._common import b64, cut_off, image_type, sdk_errors
 from lindley.providers.prompts import transcribe_prompt
+
+log = logging.getLogger(__name__)
 
 
 class OpenAIChat:
@@ -102,6 +105,7 @@ class OpenAIChat:
                 if not self.quick_options:
                     raise
                 # Refused before the AI did any work, so this isn't repeating a failed call
+                log.info("%s refused the quick options, so they're left out from now on", self.who)
                 self.quick_options = {}
                 r = self.client.chat.completions.create(
                     model=self.model, messages=messages, **options

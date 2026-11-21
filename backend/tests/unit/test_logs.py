@@ -51,9 +51,7 @@ def test_web_address_shows_where_and_nothing_else():
         "https://host.example:8443"
     )
     assert logs.web_address("http://localhost:11434/v1") == "http://localhost:11434"
-    assert logs.web_address("") == "its address" and logs.web_address("http://h:notaport/") == (
-        "its address"
-    )
+    assert logs.web_address("") == "" and logs.web_address("http://h:notaport/") == ""
 
 
 def test_the_screens_regular_questions_stay_out_of_the_access_log():

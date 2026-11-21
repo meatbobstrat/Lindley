@@ -29,6 +29,7 @@ def get_key(name: str) -> str | None:
     try:
         return keyring.get_password(SERVICE, name)
     except NoKeyringError:
+        log.debug("No credential store here, so no key is saved for %r", name)
         return None  # nowhere a key could have been saved
     except KeyringError:
         log.exception("Couldn't read the key for %r from the credential store", name)
@@ -48,7 +49,7 @@ def delete_key(name: str) -> None:
     try:
         keyring.delete_password(SERVICE, name)
     except (PasswordDeleteError, NoKeyringError):
-        pass  # there was none
+        log.debug("No key to delete for %r", name)  # there was none
     except KeyringError:
         log.exception("Couldn't delete the key for %r from the credential store", name)
 

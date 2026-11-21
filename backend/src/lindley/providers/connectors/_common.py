@@ -13,6 +13,7 @@ import base64
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+from lindley.logs import redact, web_address
 from lindley.providers.base import ProviderError
 
 BUSY = (429, 503, 529)  # too many requests, unavailable, overloaded
@@ -23,8 +24,8 @@ def detail(body: object, fallback: object = "") -> str:
     """The message in an error's body ({"error": {"message": ...}} or {"message": ...})."""
     err = body.get("error", body) if isinstance(body, dict) else None
     if isinstance(err, dict) and err.get("message"):
-        return str(err["message"])[:200]
-    return str(fallback)[:200]
+        return redact(str(err["message"])[:200])
+    return redact(str(fallback)[:200])  # some servers repeat the key they were sent
 
 
 def retry_after(headers) -> float | None:
@@ -60,8 +61,9 @@ def sdk_errors(sdk, who: str, where: str | None = None) -> Iterator[None]:
     except sdk.APITimeoutError as e:
         raise ProviderError(f"{who} took too long to answer") from e
     except sdk.APIConnectionError as e:
-        at = f" at {where}" if where else ""
-        raise ProviderError(f"Couldn't reach {who}{at}: {e}") from e
+        shown = web_address(where)  # where, not the path or query: they can carry a key
+        at = f" at {shown}" if shown else ""
+        raise ProviderError(f"Couldn't reach {who}{at}: {redact(str(e))}") from e
     except sdk.APIStatusError as e:
         status = e.status_code
         err = e.body.get("error") if isinstance(e.body, dict) else None

@@ -212,3 +212,45 @@ def test_calls_on_other_threads_are_kept_apart():
     for t in threads:
         t.join()
     assert {n: len(u) for n, u in seen.items()} == {1: 1, 2: 2, 3: 3}
+
+
+def test_each_call_to_an_ai_is_in_the_debug_log_without_what_was_said(caplog):
+    caplog.set_level("DEBUG", logger="lindley")
+    p = guarded_fake()
+    p.chat([ChatMessage("user", "tell me about Will Branson's saddle")])
+    p.transcribe(b"1234")
+    assert "AI call chat on f (fake): ok in" in caplog.text
+    assert "AI call transcribe on f (fake): ok in" in caplog.text
+    assert "tokens in/out/cached" in caplog.text
+    assert "Branson" not in caplog.text and "saddle" not in caplog.text
+
+
+def test_a_failed_call_and_a_stream_are_in_the_debug_log(caplog):
+    caplog.set_level("DEBUG", logger="lindley")
+
+    class Failing:
+        model = "big-model"
+
+        def chat(self, messages):
+            raise ProviderError("it refused")
+
+    p = Guarded(Failing(), "cloud", Throttle(name="cloud"))
+    with pytest.raises(ProviderError):
+        p.chat([ChatMessage("user", "hi")])
+    assert "AI call chat on cloud" in caplog.text and "failed (ProviderError)" in caplog.text
+    assert list(guarded_fake().chat_stream([ChatMessage("user", "hi")]))
+    assert "AI call chat_stream on f" in caplog.text and "ended after" in caplog.text
+
+
+def test_a_busy_ai_is_named_in_the_log_and_so_is_one_still_busy_after_the_tries(caplog):
+    caplog.set_level("INFO", logger="lindley")
+    clock = Clock()
+    t = Throttle(clock=clock, sleep=clock.sleep, name="the cloud one")
+
+    def busy():
+        raise ProviderError("overloaded", busy=True, retry_after=1)
+
+    with pytest.raises(ProviderError):
+        t.call(busy)
+    assert "the cloud one is busy: trying again in 1 s (try 1 of 3)" in caplog.text
+    assert "the cloud one is still busy after 3 tries" in caplog.text

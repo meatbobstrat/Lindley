@@ -905,3 +905,26 @@ def test_builtin_check_looks_for_the_files_without_starting_anything(running, mo
     with pytest.raises(ProviderError, match="no model called 'gemma4:e4b'"):
         make(builtin, Server(), key=None, model="gemma4:e4b").check()
     assert running.asked == []
+
+
+def test_an_error_says_where_the_ai_is_but_not_the_path_or_a_key_in_the_address():
+    """A server's address can carry a key (user:password@, ?api-key=): errors name only where."""
+    server = Server(down)
+    config = ProviderConfig(
+        type="local", base_url="http://me:hunter2@box.local:11434/v1?api-key=sk-secret-key-123456"
+    )
+    p = local.Provider(config=config, model=None, api_key="k", http_client=server.client())
+    with pytest.raises(ProviderError) as e:
+        p.chat(TALK)
+    assert "box.local:11434" in str(e.value)
+    for hidden in ("hunter2", "sk-secret", "api-key", "/v1"):
+        assert hidden not in str(e.value)
+
+
+def test_a_key_a_server_repeats_in_its_error_is_hidden():
+    echoed = httpx2.Response(
+        401, json={"error": {"message": "Incorrect API key: sk-proj-AbCdEfGh12345678"}}
+    )
+    with pytest.raises(ProviderError) as e:
+        make(openai, Server(echoed)).chat(TALK)
+    assert "Incorrect API key" in str(e.value) and "AbCdEfGh" not in str(e.value)

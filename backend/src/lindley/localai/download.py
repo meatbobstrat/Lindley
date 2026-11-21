@@ -64,8 +64,17 @@ def fetch(
     part = dest.with_name(dest.name + ".part")
     have = part.stat().st_size if part.is_file() else 0
     if have > file.size:
+        log.warning(
+            "%s: the part downloaded is bigger than the file, so it starts again", file.name
+        )
         part.unlink()
         have = 0
+    log.info(
+        "Downloading %s (%d MB)%s",
+        file.name,
+        file.size >> 20,
+        f", going on from {have >> 20} MB" if have else "",
+    )
     digest = hashlib.sha256()
     if have:
         with part.open("rb") as f:
@@ -77,26 +86,38 @@ def fetch(
         if have < file.size:
             with client.stream("GET", file.url, headers=headers) as r:
                 if r.status_code == 200 and have:  # the server sent it all again
+                    log.info("%s: the server sent it all again, so it starts again", file.name)
                     have, digest = 0, hashlib.sha256()
                 elif r.status_code not in (200, 206):
+                    log.warning("%s: the server answered %d", file.name, r.status_code)
                     raise DownloadError(f"{file.name}: the server answered {r.status_code}")
                 with part.open("ab" if have else "wb") as f:
                     for chunk in r.iter_bytes(CHUNK):
                         if cancelled is not None and cancelled.is_set():
+                            log.info("Downloading %s was cancelled at %d MB", file.name, have >> 20)
                             raise Cancelled(f"{file.name}: cancelled")
                         f.write(chunk)
                         digest.update(chunk)
                         have += len(chunk)
                         progress(have)
     except httpx2.HTTPError as e:
+        log.warning("%s stopped downloading at %d MB: %s", file.name, have >> 20, e)
         raise DownloadError(f"{file.name} stopped downloading: {e}") from e
     if have != file.size or digest.hexdigest() != file.sha256:
+        log.error(
+            "%s didn't come down as it should: %d of %d bytes, checksum %s",
+            file.name,
+            have,
+            file.size,
+            "right" if digest.hexdigest() == file.sha256 else "wrong",
+        )
         part.unlink(missing_ok=True)
         raise DownloadError(
             f"{file.name} didn't come down as it should (its size or checksum is wrong), so it "
             "was deleted. Try again."
         )
     os.replace(part, dest)
+    log.info("Downloaded %s", file.name)
 
 
 def unpack(engine: Engine, root: Path, archive: Path) -> None:
@@ -106,12 +127,23 @@ def unpack(engine: Engine, root: Path, archive: Path) -> None:
     into = engine.folder(root)
     tmp = into.with_name(into.name + ".tmp")
     shutil.rmtree(tmp, ignore_errors=True)
-    if engine.file.name.endswith(".tar.gz"):
-        with tarfile.open(archive) as t:
-            t.extractall(tmp, filter="data")
-    else:
-        with zipfile.ZipFile(archive) as z:
-            z.extractall(tmp)
+    try:
+        if engine.file.name.endswith(".tar.gz"):
+            with tarfile.open(archive) as t:
+                t.extractall(tmp, filter="data")
+        else:
+            with zipfile.ZipFile(archive) as z:
+                z.extractall(tmp)
+    except (tarfile.TarError, zipfile.BadZipFile, shutil.Error, EOFError) as e:
+        # It came down whole (its checksum was right), but can't be opened, or would land where it
+        # shouldn't: not kept, so a next try downloads it afresh
+        log.error("Couldn't unpack %s: %s", engine.file.name, e)
+        shutil.rmtree(tmp, ignore_errors=True)
+        archive.unlink(missing_ok=True)
+        raise DownloadError(
+            f"{engine.file.name} came down but can't be unpacked ({e}), so it was deleted."
+            " Try again."
+        ) from e
     found = next(tmp.rglob(engine.program), None)
     if found is None:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -249,10 +281,18 @@ class Downloads:
                 )
         except Cancelled:
             activity.finished("download", f"Stopped downloading {names}.", ok=False)
-        except (DownloadError, OSError) as e:
-            log.warning("Downloading %s failed: %s", names, e)
+        except (DownloadError, OSError) as e:  # said by activity.finished: in the log too
             activity.finished("download", f"Couldn't download {names}: {e}", ok=False)
+        except Exception as e:  # noqa: BLE001 - whatever it was, the person is told and it's logged
+            log.exception("Downloading %s stopped on an error nothing expected", names)
+            activity.finished(
+                "download",
+                f"Couldn't download {names}: something unexpected went wrong ({type(e).__name__})."
+                " The details are in Lindley's log.",
+                ok=False,
+            )
         else:
+            log.info("Downloaded %s", names)
             activity.finished("download", f"{names} downloaded, ready to use.")
 
 

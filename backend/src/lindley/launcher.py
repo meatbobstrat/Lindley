@@ -70,6 +70,7 @@ def _open_when_started(server: uvicorn.Server, url: str) -> None:
         if server.should_exit:
             return
         done.wait(0.1)
+    log.warning("Lindley hadn't started after %d seconds, so the browser wasn't opened", START_S)
 
 
 def tray_icon(url: str, quit: Callable[[], None]):

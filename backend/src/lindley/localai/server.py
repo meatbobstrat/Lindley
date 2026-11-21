@@ -112,6 +112,13 @@ class LocalServer:
         """The server's OpenAI-compatible address, started (or started again, to know a model
         downloaded since) if need be. Raises ProviderError when it can't run this model."""
         with self._lock:
+            if self._proc is not None and (code := self._proc.poll()) is not None:
+                log.warning(
+                    "Lindley's own AI had stopped by itself (exit code %s), so it's started again."
+                    " It said: %s",
+                    code,
+                    self._said(),
+                )
             if not (self.running() and model in self._models):
                 self._start_for(model)
             if model not in self._loaded:
@@ -139,8 +146,20 @@ class LocalServer:
             self._loaded.add(model)
             return
         try:
+            started = time.monotonic()
             with httpx2.Client(timeout=10) as client:
-                client.post(f"{base}/models/load", json={"model": model})
+                asked = client.post(f"{base}/models/load", json={"model": model})
+                if asked.status_code >= 400:
+                    log.error(
+                        "Lindley's own AI refused to load %s (%d): %s",
+                        label,
+                        asked.status_code,
+                        asked.text[:200],
+                    )
+                    raise ProviderError(
+                        f"Lindley's own AI refused to load {label} ({asked.status_code}). "
+                        f"Its log: {self.log}"
+                    )
                 deadline = time.monotonic() + LOAD_S
                 while time.monotonic() < deadline:
                     if self._stopping.is_set():
@@ -150,14 +169,32 @@ class LocalServer:
                     status = found[0]["status"] if found else {}
                     if status.get("value") == "loaded":
                         self._loaded.add(model)
+                        log.debug("%s loaded in %.1f s", label, time.monotonic() - started)
                         return
                     if status.get("failed"):
                         break
                     self._stopping.wait(0.5)
                 else:
+                    log.error(
+                        "%s didn't load in %d minutes. It said: %s",
+                        label,
+                        LOAD_S // 60,
+                        self._said(),
+                    )
                     raise ProviderError(f"{label} didn't load in {LOAD_S // 60} minutes")
         except httpx2.HTTPError as e:  # it stopped, or didn't answer: the next call tries again
+            log.error(
+                "Lindley's own AI stopped answering as %s loaded: %s. It said: %s",
+                label,
+                e,
+                self._said(),
+            )
             raise ProviderError(f"Lindley's own AI stopped answering as {label} loaded") from e
+        except (KeyError, IndexError, TypeError, ValueError) as e:  # an answer that isn't the list
+            log.exception("Lindley's own AI gave an answer about %s that couldn't be read", label)
+            raise ProviderError(
+                f"Lindley's own AI gave an answer Lindley couldn't read as {label} loaded"
+            ) from e
         if self.local.device is None and not self.on_processor:
             log.warning("%s didn't load on the graphics, so it runs on the processor", label)
             self.on_processor = True
@@ -165,6 +202,7 @@ class LocalServer:
             self._start(self.installed())
             self._load(model)
             return
+        log.error("%s couldn't be loaded. It said: %s (its log: %s)", label, self._said(), self.log)
         raise ProviderError(f"{label} couldn't be loaded. Its log: {self.log}")
 
     def _start(self, models: list[Model]) -> None:
@@ -213,7 +251,14 @@ class LocalServer:
             while time.monotonic() < deadline:
                 if self._stopping.is_set():
                     raise ProviderError("Lindley's own AI stopped as it started")
-                if self._proc.poll() is not None:
+                if (code := self._proc.poll()) is not None:
+                    log.error(
+                        "Lindley's own AI stopped as it started (exit code %s). It said: %s"
+                        " (log: %s)",
+                        code,
+                        self._said(),
+                        self.log,
+                    )
                     raise ProviderError(f"Lindley's own AI stopped as it started: {self._said()}")
                 try:
                     if client.get(f"http://{HOST}:{self.port}/health").status_code == 200:
@@ -221,8 +266,14 @@ class LocalServer:
                 except httpx2.HTTPError:
                     pass
                 self._stopping.wait(0.2)
+        log.error(
+            "Lindley's own AI didn't start in %d seconds. It said: %s (log: %s)",
+            START_S,
+            self._said(),
+            self.log,
+        )
         self._stop()
-        raise ProviderError(f"Lindley's own AI didn't start in {START_S} seconds")
+        raise ProviderError(f"Lindley's own AI didn't start in {START_S} seconds: {self._said()}")
 
     def _said(self) -> str:
         """The last thing the server wrote, for an error."""
@@ -247,8 +298,13 @@ class LocalServer:
                 try:
                     self._proc.wait(10)
                 except subprocess.TimeoutExpired:
+                    log.warning("Lindley's own AI didn't stop when asked, so it was ended")
                     self._proc.kill()
-            log.info("Stopped Lindley's own AI")
+                log.info("Stopped Lindley's own AI")
+            else:
+                log.info(
+                    "Lindley's own AI was no longer running (exit code %s)", self._proc.returncode
+                )
         _close(self._job)  # and any model process left
         self._proc, self._job, self._models, self._loaded = None, None, set(), set()
 
@@ -345,11 +401,27 @@ if sys.platform == "win32":
         its last handle closes: when Lindley stops, or ends any other way."""
         job = _k32.CreateJobObjectW(None, None)
         if not job:
+            log.warning(
+                "Couldn't make a job to end Lindley's own AI with Lindley (error %d): it may be"
+                " left running if Lindley ends without stopping it",
+                ctypes.get_last_error(),
+            )
             return None
         info = _Extended()
         info.BasicLimitInformation.LimitFlags = _KILL_ON_JOB_CLOSE
-        _k32.SetInformationJobObject(job, _EXTENDED_INFO, ctypes.byref(info), ctypes.sizeof(info))
+        if not _k32.SetInformationJobObject(
+            job, _EXTENDED_INFO, ctypes.byref(info), ctypes.sizeof(info)
+        ):
+            log.warning(
+                "Couldn't set Lindley's own AI's job to end with Lindley (error %d)",
+                ctypes.get_last_error(),
+            )
         if not _k32.AssignProcessToJobObject(job, int(proc._handle)):  # type: ignore[attr-defined]
+            log.warning(
+                "Couldn't put Lindley's own AI in its job (error %d): it may be left running if"
+                " Lindley ends without stopping it",
+                ctypes.get_last_error(),
+            )
             _k32.CloseHandle(job)
             return None
         return job

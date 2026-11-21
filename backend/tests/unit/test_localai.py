@@ -561,3 +561,115 @@ def test_stopping_doesnt_wait_for_a_model_to_load(tmp_path, made_up):
     assert not stopped.is_alive() and not asking.is_alive()
     assert not s.running()
     assert failed and "stopped while Reader was loading" in str(failed[0])
+
+
+# ---------------------------------------------------------------- what goes wrong, and the log
+
+
+def test_a_server_that_stopped_by_itself_is_said_and_started_again(
+    tmp_path: Path, made_up, stub, caplog
+):
+    _, _, reader, _ = made_up
+    root = tmp_path / "models"
+    install(root, reader)
+    s = server.LocalServer(LocalAiSettings(models_dir=root), command=stub)
+    try:
+        s.url("reader")
+        s._proc.kill()
+        s._proc.wait(10)
+        s.url("reader")  # asked for again: the crash is said, and it's started afresh
+        assert s.running()
+    finally:
+        s.stop()
+    assert "had stopped by itself (exit code" in caplog.text
+
+
+def test_a_server_that_wont_start_is_in_the_log_with_what_it_said(tmp_path: Path, made_up, caplog):
+    _, _, reader, _ = made_up
+    root = tmp_path / "models"
+    install(root, reader)
+    s = server.LocalServer(
+        LocalAiSettings(models_dir=root), command=[sys.executable, "-c", "print('no Vulkan')"]
+    )
+    with pytest.raises(ProviderError, match="no Vulkan"):
+        s.url("reader")
+    assert "stopped as it started (exit code" in caplog.text and "no Vulkan" in caplog.text
+
+
+def test_a_model_that_wont_load_says_what_the_server_said(tmp_path, made_up, caplog):
+    _, _, reader, _ = made_up
+    root = tmp_path / "models"
+    install(root, reader)
+    (tmp_path / "loading.py").write_text(LOADING_STUB, encoding="utf-8")
+    command = [sys.executable, str(tmp_path / "loading.py")]
+    s = server.LocalServer(
+        LocalAiSettings(models_dir=root, device="Vulkan1"), command=command, loads=True
+    )
+    try:
+        with pytest.raises(ProviderError, match="couldn't be loaded"):
+            s.url("reader")
+    finally:
+        s.stop()
+    assert "Reader couldn't be loaded. It said:" in caplog.text
+
+
+def test_a_server_that_answers_in_a_form_nobody_expected_is_said(tmp_path, made_up, caplog):
+    _, _, reader, _ = made_up
+    root = tmp_path / "models"
+    install(root, reader)
+    odd = LOADING_STUB.replace('"data"', '"nothing"')  # the list of models isn't where it should be
+    (tmp_path / "odd.py").write_text(odd, encoding="utf-8")
+    s = server.LocalServer(
+        LocalAiSettings(models_dir=root, device="none"),
+        command=[sys.executable, str(tmp_path / "odd.py")],
+        loads=True,
+    )
+    try:
+        with pytest.raises(ProviderError, match="answer Lindley couldn't read"):
+            s.url("reader")
+    finally:
+        s.stop()
+    assert "couldn't be read" in caplog.text
+
+
+def test_an_engine_that_came_down_damaged_is_deleted_and_said(
+    tmp_path: Path, made_up, monkeypatch, caplog
+):
+    files, eng, _, _ = made_up
+    bad = b"this is not a zip file"
+    files.files["engine.zip"] = bad
+    broken = Engine(eng.build, file_of("engine.zip", bad), eng.program)
+    monkeypatch.setattr(download, "engine", lambda: broken)
+    d = Downloads(lambda: tmp_path, transport=httpx2.MockTransport(files))
+    d.start(["small"])
+    assert d.idle.wait(10)
+    last = activity.recent()[-1]
+    assert not last["ok"] and "can't be unpacked" in last["message"]
+    assert not (tmp_path / "engine" / "engine.zip").exists()  # a next try downloads it afresh
+    assert "Couldn't unpack engine.zip" in caplog.text
+
+
+def test_a_download_that_stops_on_an_unexpected_error_is_told_not_lost(
+    tmp_path: Path, made_up, monkeypatch, caplog
+):
+    files, *_ = made_up
+
+    def broken(*a, **k):
+        raise KeyError("nobody expected this")
+
+    monkeypatch.setattr(download, "get", broken)
+    d = Downloads(lambda: tmp_path, transport=httpx2.MockTransport(files))
+    d.start(["small"])
+    assert d.idle.wait(10)
+    last = activity.recent()[-1]
+    assert not last["ok"] and "something unexpected went wrong (KeyError)" in last["message"]
+    assert "stopped on an error nothing expected" in caplog.text
+
+
+def test_a_download_says_where_it_goes_on_from(tmp_path: Path, caplog):
+    caplog.set_level("INFO", logger="lindley")
+    f = file_of("m.gguf", DATA)
+    (tmp_path / "m.gguf.part").write_bytes(DATA[: 3 << 20 >> 1])
+    fetch(Files({"m.gguf": DATA}).client(), f, tmp_path / "m.gguf")
+    assert "Downloading m.gguf" in caplog.text and "going on from 1 MB" in caplog.text
+    assert "Downloaded m.gguf" in caplog.text

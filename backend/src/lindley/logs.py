@@ -57,14 +57,14 @@ def redact(text: str) -> str:
 
 def web_address(url: str | None) -> str:
     """An address as far as it says where: no user name, password, path or query, which can
-    carry a key. For messages and logs."""
+    carry a key. For messages and logs; "" when there's no address to show."""
     try:
         parts = urlparse(url or "")
         host, port = parts.hostname, parts.port
     except ValueError:  # a port that isn't one
-        return "its address"
+        return ""
     if not host:
-        return "its address"
+        return ""
     return f"{parts.scheme}://{host}" + (f":{port}" if port else "")
 
 

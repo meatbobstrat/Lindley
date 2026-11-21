@@ -7,6 +7,7 @@ server's address is only known once it's running, so it's started when the first
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -17,6 +18,8 @@ from lindley.localai import server as local_server
 from lindley.localai.catalog import MODELS, engine
 from lindley.providers.base import JOBS, ConnectorInfo, ProviderError
 from lindley.providers.connectors._openai_chat import OpenAIChat
+
+log = logging.getLogger(__name__)
 
 INFO = ConnectorInfo(
     id="builtin",
@@ -84,6 +87,9 @@ class Provider(OpenAIChat):
                 yield
         except ProviderError as e:
             if not e.answered:
+                log.info(
+                    "Lindley's own AI couldn't be reached (%s): it's asked for afresh next time", e
+                )
                 self._client = None
             raise
 

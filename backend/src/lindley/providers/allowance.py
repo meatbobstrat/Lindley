@@ -13,12 +13,15 @@ Lindley waits FAILING_WAIT_MIN minutes before trying it on its own again.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from itertools import zip_longest
 
 from lindley.config import ProviderConfig, Settings
 from lindley.providers.base import Usage
 from lindley.providers.prices import cost
+
+log = logging.getLogger(__name__)
 
 FAILING_AFTER = 3  # calls made on its own that failed in a row: the AI looks down
 FAILING_WAIT_MIN = 15  # then Lindley waits this long before calling it on its own again
@@ -83,6 +86,9 @@ def automatic_left(conn: sqlite3.Connection, settings: Settings, name: str | Non
 
 def may_call(conn: sqlite3.Connection, settings: Settings, name: str | None) -> bool:
     left = automatic_left(conn, settings, name)
+    # Said at debug: it's asked before each page, so each page waiting would say it again
+    if left is not None and left <= 0 and log.isEnabledFor(logging.DEBUG):
+        log.debug("%s may not be called on its own: %s", name, why_waiting(conn, settings, name))
     return left is None or left > 0
 
 
@@ -149,6 +155,10 @@ def record_run(
     for (it answered, but the answer was cut off or refused) is among `used`, beyond `worked`;
     record counts those as failed already."""
     charged = max(0, len(used) - worked)
+    if failed:
+        log.debug(
+            "%d call(s) to %s for %s failed", failed, provider, purpose
+        )  # the caller says why
     with conn:
         if worked or used:
             record(conn, provider, purpose, automatic, count=worked, used=used)

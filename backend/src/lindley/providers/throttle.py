@@ -40,7 +40,9 @@ class Throttle:
         at_once: int = 2,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        name: str = "",
     ) -> None:
+        self.name = name or "an AI connection"  # for the log
         self.per_minute = per_minute
         self.at_once = at_once
         self.clock, self.sleep = clock, sleep
@@ -59,7 +61,9 @@ class Throttle:
                     self._started.append(now)
                     return
                 wait = WINDOW - (now - self._started[0])
-            log.info("Waiting %.0f s to keep to %d AI calls a minute", wait, self.per_minute)
+            log.info(
+                "Waiting %.0f s to keep %s to %d calls a minute", wait, self.name, self.per_minute
+            )
             self.sleep(wait)
 
     @contextmanager
@@ -72,9 +76,11 @@ class Throttle:
     def _wait_if_busy(self, e: ProviderError, tries: int) -> None:
         """Raise `e` unless the AI said it's busy and there are tries left; else wait."""
         if not e.busy or tries >= TRIES:
+            if e.busy:
+                log.warning("%s is still busy after %d tries: %s", self.name, tries, e)
             raise e
         wait = min(e.retry_after if e.retry_after is not None else BUSY_WAIT[tries - 1], MAX_WAIT)
-        log.info("The AI is busy: trying again in %.0f s", wait)
+        log.info("%s is busy: trying again in %.0f s (try %d of %d)", self.name, wait, tries, TRIES)
         self.sleep(wait)
 
     def call(self, fn: Callable, *args):
@@ -113,7 +119,7 @@ def throttle_for(name: str, config: ProviderConfig) -> Throttle:
     with _throttles_lock:
         held = _throttles.get(name)
         if held is None or held[0] != limits:
-            held = (limits, Throttle(config.per_minute, config.at_once))
+            held = (limits, Throttle(config.per_minute, config.at_once, name=name))
             _throttles[name] = held
         return held[1]
 
@@ -170,20 +176,75 @@ class Guarded:
     def model(self) -> str | None:
         return getattr(self.inner, "model", None)
 
+    def _call(self, what: str, fn: Callable, *args):
+        """A call through the throttle, with one line in the debug log: which connection and
+        model, how long it took, what it used, and how it ended. Never what was sent or said."""
+        started = time.monotonic()
+        with self.meter.watch() as used:
+            try:
+                result = self.throttle.call(fn, *args)
+            except Exception as e:
+                self._noted(what, started, used, f"failed ({type(e).__name__})")
+                raise
+        self._noted(what, started, used, "ok")
+        return result
+
+    def _noted(self, what: str, started: float, used: list[Usage], how: str) -> None:
+        if not log.isEnabledFor(logging.DEBUG):
+            return
+        tokens = (
+            "; tokens in/out/cached: "
+            f"{sum(u.input_tokens for u in used)}/{sum(u.output_tokens for u in used)}"
+            f"/{sum(u.cache_read_tokens for u in used)}"
+            if used
+            else ""
+        )
+        log.debug(
+            "AI call %s on %s (%s): %s in %.2f s%s",
+            what,
+            self.name,
+            self.model or "no model named",
+            how,
+            time.monotonic() - started,
+            tokens,
+        )
+
+    def _streamed(self, stream: Iterator[str]) -> Iterator[str]:
+        started, pieces, how = time.monotonic(), 0, "ended"
+        try:
+            for piece in stream:
+                pieces += 1
+                yield piece
+        except GeneratorExit:
+            how = "stopped by the reader"
+            raise
+        except Exception as e:
+            how = f"failed ({type(e).__name__})"
+            raise
+        finally:
+            log.debug(
+                "AI call chat_stream on %s (%s): %s after %d piece(s), %.2f s",
+                self.name,
+                self.model or "no model named",
+                how,
+                pieces,
+                time.monotonic() - started,
+            )
+
     def chat(self, messages: list[ChatMessage]) -> str:
-        return self.throttle.call(self.inner.chat, messages)
+        return self._call("chat", self.inner.chat, messages)
 
     def chat_stream(self, messages: list[ChatMessage]) -> Iterator[str]:
-        return self.throttle.stream(self.inner.chat_stream, messages)
+        return self._streamed(self.throttle.stream(self.inner.chat_stream, messages))
 
     def transcribe(self, image: bytes, hints: str | None = None) -> Transcription:
-        return self.throttle.call(self.inner.transcribe, image, hints)
+        return self._call("transcribe", self.inner.transcribe, image, hints)
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        return self.throttle.call(self.inner.embed, texts)
+        return self._call("embed", self.inner.embed, texts)
 
     def p_yes(self, system: str, question: str) -> float:
-        return self.throttle.call(self.inner.p_yes, system, question)
+        return self._call("p_yes", self.inner.p_yes, system, question)
 
     def check(self) -> str:
-        return self.throttle.call(self.inner.check)
+        return self._call("check", self.inner.check)
